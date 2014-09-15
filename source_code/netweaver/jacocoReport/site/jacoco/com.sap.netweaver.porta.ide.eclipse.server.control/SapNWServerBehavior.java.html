@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>SapNWServerBehavior.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">netweaver</a> &gt; <a href="index.source.html" class="el_package">com.sap.netweaver.porta.ide.eclipse.server.control</a> &gt; <span class="el_source">SapNWServerBehavior.java</span></div><h1>SapNWServerBehavior.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2009, 2010 SAP AG.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *    Kaloyan Raev (SAP AG) - initial API and implementation
+ *******************************************************************************/
+package com.sap.netweaver.porta.ide.eclipse.server.control;
+
+import java.io.File;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Status;
+import org.eclipse.debug.core.DebugException;
+import org.eclipse.debug.core.DebugPlugin;
+import org.eclipse.debug.core.ILaunch;
+import org.eclipse.debug.core.ILaunchConfiguration;
+import org.eclipse.debug.core.ILaunchConfigurationType;
+import org.eclipse.debug.core.ILaunchConfigurationWorkingCopy;
+import org.eclipse.debug.core.ILaunchManager;
+import org.eclipse.debug.core.model.IDisconnect;
+import org.eclipse.jdt.launching.IJavaLaunchConfigurationConstants;
+import org.eclipse.wst.server.core.IServer;
+import org.eclipse.wst.server.core.internal.Server;
+import org.eclipse.wst.server.core.model.ServerBehaviourDelegate;
+
+import com.sap.netweaver.porta.core.Application;
+import com.sap.netweaver.porta.core.DebugSessionInfo;
+import com.sap.netweaver.porta.core.DeployManager;
+import com.sap.netweaver.porta.core.DeployResult;
+import com.sap.netweaver.porta.core.DeployResultStatus;
+import com.sap.netweaver.porta.core.LifecycleManager;
+import com.sap.netweaver.porta.core.NotAuthorizedException;
+import com.sap.netweaver.porta.core.ProxyException;
+import com.sap.netweaver.porta.core.ServerState;
+import com.sap.netweaver.porta.ide.eclipse.SapNWPlugin;
+import com.sap.netweaver.porta.ide.eclipse.server.SapNWServer;
+import com.sap.netweaver.porta.ide.eclipse.util.ProxyUtilCaller;
+
+<span class="nc" id="L48">public class SapNWServerBehavior extends ServerBehaviourDelegate {</span>
+	
+	private DebugSessionInfo debugSessionInfo;
+	private IDisconnect debugLaunch;
+
+	@Override
+	protected void initialize(IProgressMonitor monitor) {
+<span class="nc" id="L55">		super.initialize(monitor);</span>
+		
+		// force refresh of the server state
+		try {
+<span class="nc" id="L59">			refreshServerState();</span>
+<span class="nc" id="L60">		} catch (Exception e) {</span>
+<span class="nc" id="L61">			SapNWPlugin.logError(&quot;Error on refreshing server state&quot;, e); </span>
+<span class="nc" id="L62">		}</span>
+<span class="nc" id="L63">	}</span>
+
+	@Override
+	public void stop(boolean force) {
+		try {
+<span class="nc" id="L68">			disconnectDebugSession();</span>
+<span class="nc" id="L69">			getLM().stop();</span>
+<span class="nc" id="L70">			setServerState(IServer.STATE_STOPPING);</span>
+<span class="nc" id="L71">		} catch (NotAuthorizedException e) {</span>
+<span class="nc" id="L72">			SapNWPlugin.errorDialog(&quot;Not authorized&quot;, &quot;You do not have sufficient rights to manage server's lifecycle. &quot;);</span>
+<span class="nc" id="L73">		} catch (com.sap.netweaver.porta.core.CoreException e) {</span>
+<span class="nc" id="L74">			SapNWPlugin.logError(&quot;Stop operation for SAP server failed.&quot;, e);</span>
+<span class="nc" id="L75">		}</span>
+<span class="nc" id="L76">	}</span>
+
+	@Override
+	public void restart(String launchMode) throws CoreException {
+		try {
+<span class="nc bnc" id="L81" title="All 2 branches missed.">			if (getServer().getMode().equals(launchMode)) {</span>
+				// regular restart is triggered
+<span class="nc" id="L83">				restartServer(launchMode);</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">			} else if (ILaunchManager.DEBUG_MODE.equals(launchMode)) {</span>
+				// switch debug mode on
+<span class="nc" id="L86">				enableDebugging();</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">			} else if (ILaunchManager.RUN_MODE.equals(launchMode)) {</span>
+				// switch debug mode off
+<span class="nc" id="L89">				disableDebugging();</span>
+			}
+<span class="nc" id="L91">		} catch (NotAuthorizedException e) {</span>
+<span class="nc" id="L92">			SapNWPlugin.errorDialog(&quot;Not authorized&quot;, &quot;You do not have sufficient rights to manage server's lifecycle. &quot;);</span>
+<span class="nc" id="L93">		} catch (com.sap.netweaver.porta.core.CoreException e) {</span>
+<span class="nc" id="L94">			SapNWPlugin.logError(&quot;Server lifecycle operation for the SAP NetWeaver server failed.&quot;, e);</span>
+<span class="nc" id="L95">		}</span>
+
+<span class="nc" id="L97">	}</span>
+
+//	@Override - not available in Europa
+	public IStatus canStart(String launchMode) {
+<span class="nc bnc" id="L101" title="All 2 branches missed.">		if (getServer().getServerState() == IServer.STATE_UNKNOWN) {</span>
+<span class="nc" id="L102">			return new Status(Status.INFO, SapNWPlugin.PLUGIN_ID, IStatus.OK, &quot;Server is in unknown state. Lifecycle actions are not available. &quot;, null);</span>
+		}
+		
+<span class="nc" id="L105">		return Status.OK_STATUS;</span>
+	}
+
+//	@Override - not available in Europa
+	public IStatus canStop() {
+<span class="nc bnc" id="L110" title="All 2 branches missed.">		if (getServer().getServerState() == IServer.STATE_UNKNOWN) {</span>
+<span class="nc" id="L111">			return new Status(Status.INFO, SapNWPlugin.PLUGIN_ID, IStatus.OK, &quot;Server is in unknown state. Lifecycle actions are not available. &quot;, null);</span>
+		}
+		
+<span class="nc bnc" id="L114" title="All 2 branches missed.">		if (getServer().getServerState() == IServer.STATE_STARTING) {</span>
+<span class="nc" id="L115">			return new Status(Status.INFO, SapNWPlugin.PLUGIN_ID, IStatus.OK, &quot;Cannot stop the starting server. Wait the start to complete first. &quot;, null);</span>
+		}
+		
+<span class="nc" id="L118">		return Status.OK_STATUS;</span>
+	}
+
+//	@Override - not available in Europa
+	public IStatus canRestart(String mode) {
+<span class="nc bnc" id="L123" title="All 2 branches missed.">		if (getServer().getServerState() == IServer.STATE_UNKNOWN) {</span>
+<span class="nc" id="L124">			return new Status(Status.INFO, SapNWPlugin.PLUGIN_ID, IStatus.OK, &quot;Server is in unknown state. Lifecycle actions are not available. &quot;, null);</span>
+		}
+		
+<span class="nc" id="L127">		return Status.OK_STATUS;</span>
+	}
+
+//	@Override - not available in Europa
+	public IStatus canPublish() {
+<span class="nc bnc" id="L132" title="All 2 branches missed.">		if (getServer().getServerState() == IServer.STATE_UNKNOWN) {</span>
+<span class="nc" id="L133">			return new Status(Status.INFO, SapNWPlugin.PLUGIN_ID, IStatus.OK, &quot;Server is in unknown state. Publish actions are not available. &quot;, null);</span>
+		}
+		
+<span class="nc" id="L136">		return Status.OK_STATUS;</span>
+	}
+
+	private int getServerState() {
+		try {
+<span class="nc" id="L141">			ServerState state = getLM().getState();</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">			if (state == ServerState.RUNNING){</span>
+<span class="nc" id="L143">				return IServer.STATE_STARTED; </span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">			} else if(state == ServerState.STARTING){</span>
+<span class="nc" id="L145">				return IServer.STATE_STARTING;</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">			} else if(state == ServerState.STOPPING ){</span>
+<span class="nc" id="L147">				return IServer.STATE_STOPPING;</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">			} else if(state == ServerState.STOPPED ){</span>
+<span class="nc" id="L149">				return IServer.STATE_STOPPED;</span>
+			}
+<span class="nc" id="L151">		} catch (NotAuthorizedException e) {</span>
+			// should not be possible to happen
+<span class="nc" id="L153">		} catch (ProxyException e) {</span>
+<span class="nc" id="L154">			ProxyUtilCaller.handleProxyException(e);</span>
+<span class="nc" id="L155">		} catch (com.sap.netweaver.porta.core.CoreException e) {</span>
+<span class="nc" id="L156">			SapNWPlugin.logError(&quot;Cannot get server state. &quot;, e);</span>
+<span class="nc" id="L157">		}</span>
+<span class="nc" id="L158">		return IServer.STATE_UNKNOWN;</span>
+	}
+
+
+	private LifecycleManager getLM() throws com.sap.netweaver.porta.core.CoreException {
+<span class="nc" id="L163">		return ((SapNWServer)getServer().loadAdapter(SapNWServer.class, null)).getServerCore().getLifecycleManager();</span>
+	}
+	
+	private DeployManager getDM() throws com.sap.netweaver.porta.core.CoreException {
+<span class="nc" id="L167">		return ((SapNWServer)getServer().loadAdapter(SapNWServer.class, null)).getServerCore().getDeployManager();</span>
+	}
+	
+	public void refreshServerState() throws NotAuthorizedException, CoreException, com.sap.netweaver.porta.core.CoreException {
+<span class="nc" id="L171">		int currentState = getServerState();</span>
+<span class="nc" id="L172">		int latestState = getServer().getServerState();</span>
+		
+<span class="nc bnc" id="L174" title="All 4 branches missed.">		if (latestState == IServer.STATE_STARTING &amp;&amp; </span>
+				currentState == IServer.STATE_STOPPED) {
+			// the server has not changed to starting state yet
+			// don't change the state - remain in starting
+<span class="nc" id="L178">			return;</span>
+		}
+		
+<span class="nc bnc" id="L181" title="All 4 branches missed.">		if (latestState == IServer.STATE_STOPPING &amp;&amp; </span>
+				currentState == IServer.STATE_STARTED) {
+			// the server has not changed to stopping state yet
+			// don't change the state - remain in stopping
+<span class="nc" id="L185">			return;</span>
+		}
+		
+<span class="nc bnc" id="L188" title="All 8 branches missed.">		if (latestState == IServer.STATE_STARTING &amp;&amp; </span>
+				currentState == IServer.STATE_STARTED &amp;&amp; 
+				ILaunchManager.DEBUG_MODE.equals(getServer().getMode()) &amp;&amp; 
+				debugSessionInfo == null) {
+			// the server has been started in debug mode and it has just finished starting
+			// switch the debug mode on
+<span class="nc" id="L194">			enableDebugging();</span>
+		}
+		
+<span class="nc" id="L197">		setServerState(currentState);</span>
+<span class="nc" id="L198">	}</span>
+
+	protected void setupLaunch(ILaunch launch, String launchMode, IProgressMonitor monitor) throws CoreException {
+		try {
+			// check if the server is already started
+<span class="nc bnc" id="L203" title="All 4 branches missed.">			if (getServerState() == IServer.STATE_UNKNOWN || getServerState() == IServer.STATE_STOPPED) {</span>
+				// trigger start
+<span class="nc" id="L205">				getLM().start();</span>
+<span class="nc" id="L206">				setServerState(IServer.STATE_STARTING);</span>
+<span class="nc" id="L207">				setMode(launchMode);</span>
+			}
+<span class="nc" id="L209">		} catch (NotAuthorizedException e) {</span>
+<span class="nc" id="L210">			throw new CoreException(</span>
+					new Status(IStatus.ERROR, SapNWPlugin.PLUGIN_ID, IStatus.OK, &quot;You do not have sufficient rights to manage server's lifecycle.&quot;, e));
+<span class="nc" id="L212">		} catch (com.sap.netweaver.porta.core.CoreException e) {</span>
+<span class="nc" id="L213">			SapNWPlugin.errorDialog(&quot;Starting server failed&quot;, &quot;Cannot start the server. &quot;, e);</span>
+<span class="nc" id="L214">		}</span>
+<span class="nc" id="L215">	}</span>
+
+	public void publish(File archiveFile) throws com.sap.netweaver.porta.core.CoreException {
+<span class="nc" id="L218">		DeployResult result = getDM().deploy(new File[] { archiveFile });</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">		if (result.getStatus() != DeployResultStatus.SUCCESS){</span>
+<span class="nc" id="L220">			throw new PublishException(result);</span>
+		}
+<span class="nc" id="L222">	}</span>
+	
+	public void unpublish(String appName) throws com.sap.netweaver.porta.core.CoreException {
+<span class="nc" id="L225">		Application[] apps = getDM().getApplications();</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">		for (Application app : apps) {</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">			if (app.getName().equals(appName)) {</span>
+				// TODO process deploy result
+<span class="nc" id="L229">				getDM().undeploy(new Application[] { app });</span>
+<span class="nc" id="L230">				break;</span>
+			}
+		}
+<span class="nc" id="L233">	}</span>
+	
+	public Application[] getPublishedApplications() throws com.sap.netweaver.porta.core.CoreException {
+<span class="nc" id="L236">		return getDM().getApplications();</span>
+	}
+
+	@Override
+	protected void publishServer(int kind, IProgressMonitor monitor)
+			throws CoreException {
+<span class="nc" id="L242">		setServerPublishState(IServer.PUBLISH_STATE_NONE);</span>
+<span class="nc" id="L243">	}</span>
+	
+	private void enableDebugging() throws CoreException, com.sap.netweaver.porta.core.CoreException {
+<span class="nc" id="L246">		debugSessionInfo = getLM().enableDebugging();</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">		if (debugSessionInfo.getPort() == 0) {</span>
+			// there is a problem switching to debug mode without restarting
+<span class="nc" id="L249">			SapNWPlugin.logWarning(&quot;Cannot not switch server &quot; + getServer().getName() + &quot; to debug mode without restarting. Restarting the server. &quot;, null);</span>
+			// restart the server
+<span class="nc" id="L251">			restartServer(ILaunchManager.DEBUG_MODE);</span>
+		} else {
+<span class="nc" id="L253">			setMode(ILaunchManager.DEBUG_MODE);</span>
+<span class="nc" id="L254">			launchRemoteDebugging();</span>
+		}
+<span class="nc" id="L256">	}</span>
+	
+	private void disableDebugging() throws com.sap.netweaver.porta.core.CoreException, DebugException {
+<span class="nc" id="L259">		disconnectDebugSession();</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">		if (debugSessionInfo != null) {</span>
+<span class="nc" id="L261">			String key = debugSessionInfo.getKey();</span>
+<span class="nc" id="L262">			getLM().disableDebugging(key);</span>
+		}
+<span class="nc" id="L264">	}</span>
+	
+	private void disconnectDebugSession() {
+		try {
+<span class="nc bnc" id="L268" title="All 2 branches missed.">			if (debugLaunch != null) {</span>
+<span class="nc" id="L269">				debugLaunch.disconnect();</span>
+			}
+<span class="nc" id="L271">		} catch (DebugException e) {</span>
+<span class="nc" id="L272">			SapNWPlugin.logError(&quot;Error on disconnecting debug session&quot;, e);</span>
+		} finally {
+<span class="nc" id="L274">			debugSessionInfo = null;</span>
+<span class="nc" id="L275">			debugLaunch = null;</span>
+<span class="nc" id="L276">			setMode(ILaunchManager.RUN_MODE);</span>
+<span class="nc" id="L277">		}</span>
+<span class="nc" id="L278">	}</span>
+
+	void launchRemoteDebugging() throws CoreException {
+<span class="nc bnc" id="L281" title="All 4 branches missed.">		if (debugLaunch != null &amp;&amp; !debugLaunch.isDisconnected())</span>
+<span class="nc" id="L282">			return;</span>
+		
+<span class="nc" id="L284">		ILaunchConfiguration launchConfiguration = getExistingRemoteConfiguration();</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">		if (launchConfiguration == null) {</span>
+<span class="nc" id="L286">			launchConfiguration = createNewRemoteConfiguration();</span>
+		}
+<span class="nc" id="L288">		debugLaunch = (IDisconnect) launchConfiguration.launch(ILaunchManager.DEBUG_MODE, null);</span>
+<span class="nc" id="L289">	}</span>
+
+	private ILaunchConfiguration getExistingRemoteConfiguration() throws CoreException {
+<span class="nc" id="L292">		ILaunchManager launchManager = DebugPlugin.getDefault().getLaunchManager();</span>
+<span class="nc" id="L293">		ILaunchConfigurationType launchConfigurationType = launchManager.getLaunchConfigurationType(&quot;com.sap.netweaver.server.remote.debugging.launchConfigurationType&quot;);</span>
+<span class="nc" id="L294">		ILaunchConfiguration[] launchConfigurations = launchManager.getLaunchConfigurations(launchConfigurationType);</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">		for (ILaunchConfiguration lc : launchConfigurations) {</span>
+<span class="nc" id="L296">			Map&lt;String, String&gt; connectMap = lc.getAttribute(IJavaLaunchConfigurationConstants.ATTR_CONNECT_MAP, Collections.EMPTY_MAP);</span>
+<span class="nc" id="L297">			String serverId = lc.getAttribute(Server.ATTR_SERVER_ID, &quot;&quot;);</span>
+<span class="nc bnc" id="L298" title="All 6 branches missed.">			if (getServer().getId().equals(serverId) &amp;&amp; </span>
+					getServer().getHost().equals(connectMap.get(&quot;hostname&quot;)) &amp;&amp; 
+					Integer.toString(debugSessionInfo.getPort()).equals(connectMap.get(&quot;port&quot;))) {
+<span class="nc" id="L301">				return lc;</span>
+			}
+		}
+<span class="nc" id="L304">		return null;</span>
+	}
+
+	private ILaunchConfiguration createNewRemoteConfiguration() throws CoreException {
+<span class="nc" id="L308">		ILaunchManager launchManager = DebugPlugin.getDefault().getLaunchManager();</span>
+<span class="nc" id="L309">		ILaunchConfigurationType launchConfigurationType = launchManager.getLaunchConfigurationType(&quot;com.sap.netweaver.server.remote.debugging.launchConfigurationType&quot;);</span>
+<span class="nc" id="L310">		String launchName = getServer().getName() + &quot; Debug&quot;;</span>
+<span class="nc" id="L311">		launchName = launchManager.generateUniqueLaunchConfigurationNameFrom(launchName);</span>
+<span class="nc" id="L312">		ILaunchConfigurationWorkingCopy wc = launchConfigurationType.newInstance(null, launchName);</span>
+<span class="nc" id="L313">		Map&lt;String, String&gt; connectMap = new HashMap&lt;String, String&gt;();</span>
+<span class="nc" id="L314">		connectMap.put(&quot;hostname&quot;, getServer().getHost());</span>
+<span class="nc" id="L315">		connectMap.put(&quot;port&quot;, Integer.toString(debugSessionInfo.getPort()));</span>
+<span class="nc" id="L316">		wc.setAttribute(Server.ATTR_SERVER_ID, getServer().getId());</span>
+<span class="nc" id="L317">		wc.setAttribute(IJavaLaunchConfigurationConstants.ATTR_CONNECT_MAP, connectMap);</span>
+<span class="nc" id="L318">		return wc.doSave();</span>
+	}
+
+	private void restartServer(String launchMode) throws com.sap.netweaver.porta.core.CoreException {
+<span class="nc" id="L322">		disconnectDebugSession();</span>
+<span class="nc" id="L323">		getLM().restart();</span>
+<span class="nc" id="L324">		setServerState(IServer.STATE_STOPPING);</span>
+<span class="nc" id="L325">		setMode(launchMode);</span>
+<span class="nc" id="L326">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

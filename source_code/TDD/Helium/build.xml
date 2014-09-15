@@ -1,0 +1,149 @@
+<project name="helium" xmlns:jacoco="antlib:org.jacoco.ant" default="build" basedir=".">
+
+  <property file="build.properties" />
+  <property name="version" value="0.1"/>
+  <!-- Coverage -->
+  <property name="coverage.lib" location="lib/test" />
+  <property name="build.coverage" location="${build.home}/coverage" />
+  <property name="build.coverage.src" location="${build.coverage}/src" />
+  <property name="build.coverage.tests" location="${build.coverage}/tests" />
+  <property name="build.coverage.classes"
+            location="${build.coverage}/classes" />
+  <property name="build.coverage.instrument"
+            location="${build.coverage}/instrumented-classes" />
+  <property name="build.coverage.reports"
+            location="${build.coverage}/reports" />
+  <property name="mutOp" value=":NONE"/>
+
+<!-- ========================== PATHS ================================= -->
+  <path id="junit.cp">
+    <pathelement location="${jcoverage.lib}/junit/3.8.1/junit.jar" />
+  </path>
+
+  <path id="compile.cp">
+    <fileset dir="./lib" />
+  </path>
+
+  <path id="coverage.cp">
+    <fileset dir="${coverage.lib}" />
+  </path>
+<!-- ====================== Jacoco task ================================== -->
+
+ <taskdef uri="antlib:org.jacoco.ant" resource="org/jacoco/ant/antlib.xml">
+ <classpath path="lib/jacocoant.jar"/>
+ </taskdef>
+<!-- ==================== Targets ======================================== -->
+<target name="build" depends="clean, compile, test" />
+
+  <target name="clean">
+    <delete dir="${build.home}" />
+    <delete dir="jacocoReport" />
+  </target>
+
+  <target name="prepare"
+          description="Prepare for Coverage">
+    <tstamp />
+    <mkdir dir="${build.home}" />
+    <mkdir dir="${build.coverage}" />
+    <mkdir dir="${build.coverage.src}" />
+    <mkdir dir="${build.coverage.tests}" />
+    <mkdir dir="${build.coverage.classes}" />
+    <mkdir dir="${build.coverage.instrument}" />
+    <mkdir dir="${build.coverage.reports}" />
+    <copy todir="${build.coverage.src}">
+      <fileset dir="${src.api}" />
+      <fileset dir="${src.impl}" />
+      <fileset dir="${src.heliumx}" />
+    </copy>
+    <copy todir="${build.coverage.tests}">
+      <fileset dir="${src.test}" />
+      <fileset dir="${src.impl}">
+        <include name="**/*.has"/>
+      </fileset>
+      <fileset dir="${src.heliumx}">
+        <include name="**/*.has"/>
+      </fileset>
+    </copy>
+  </target>
+
+  <target name="compile"
+          depends="prepare"
+          description="Compile for Coverage">
+    <echo level="warning" message="Debugging: on" />
+    <javac srcdir="${build.coverage.src}"
+           destdir="${build.coverage.classes}"
+           nowarn="on"
+           debug="yes" 
+           includeantruntime="true" fork="yes" executable="/home/hessahalkaoud/tools/major/bin/javac">
+      <classpath refid="compile.cp" />
+      <compilerarg value="-XMutator${mutOp}"/>
+    </javac>
+    <javac srcdir="${build.coverage.tests}" nowarn="on" debug="yes"
+           includeantruntime="true" fork="yes" executable="/home/hessahalkaoud/tools/major/bin/javac">
+      <classpath refid="junit.cp" />
+      <classpath refid="compile.cp" />
+      <classpath location="${build.coverage.classes}" />
+    </javac>
+  </target>
+
+  <target name="test" depends="compile"
+          description="Unit test the application with Coverage">
+  <jacoco:coverage destfile="jacocoReport/jacoco.exec"> 
+    <junit fork="yes" showOutput="true" printsummary="true" haltonerror="true" haltonfailure="no" failureproperty="tests.failed" dir="${basedir}">
+      <classpath>
+        <pathelement location="${build.coverage.instrument}" />
+        <pathelement location="${build.coverage.classes}" />
+        <pathelement location="${build.coverage.tests}" />
+        <path refid="coverage.cp"/>
+        <path refid="compile.cp"/>
+      </classpath>
+      <batchtest fork="no">
+		<fileset dir="${build.coverage.tests}">
+			<include name="**/*Test.java"/>
+		</fileset>
+	</batchtest>
+    </junit>
+  </jacoco:coverage>
+ </target>
+<target name="jacoco.report" depends="test">
+  <jacoco:report>               
+        <executiondata>
+            <file file="jacocoReport/jacoco.exec"/>
+        </executiondata>
+                           
+        <structure name="helium">
+            <classfiles>
+                <fileset dir="${build.coverage.classes}"/>
+            </classfiles>
+            <sourcefiles encoding="UTF-8">
+                <fileset dir="${build.coverage.src}"/>
+            </sourcefiles>
+        </structure>
+                           
+        <html destdir="jacocoReport/site/jacoco"/>
+        <csv destfile="jacocoReport/site/jacoco/report.csv"/>
+    </jacoco:report>
+  </target>
+
+  <target name="mutation-test"
+          description="mutation analysisi using major">
+    <junit fork="no" haltonerror="true" printsummary="false"
+	 showoutput="false" failureproperty="tests.failed" dir="${basedir}"
+           mutationAnalysis="true"
+	   resultFile="results.csv"
+	   killDetailsFile="killed.csv">
+      <classpath>
+        <pathelement location="${build.coverage.instrument}" />
+        <pathelement location="${build.coverage.classes}" />
+        <pathelement location="${build.coverage.tests}" />
+        <path refid="coverage.cp" />
+        <path refid="compile.cp" />
+      </classpath>
+	<batchtest fork="no">
+		<fileset dir="${build.coverage.tests}">
+			<include name="**/*Test.java"/>
+		</fileset>
+	</batchtest>
+    </junit>
+  </target>
+</project>

@@ -1,0 +1,1588 @@
+#######################################################################
+# $Id:$
+# Abstract, Goals, and Design of the Helium Project
+#######################################################################
+
+#######################################################################
+# ABSTRACT
+#
+  Helium (He) is an extremely lightweight and useful templating engine
+  based entirely on XML. Based on XML means that the language conforms
+  entirely to XML and a standard XML parser (DOM) is used to drive the
+  engine.
+  
+  The initial goal of Helium is to provide a lighter-weight,
+  multi-purpose engine than other server-side languages in the web
+  environment; such as: JSP, ASP, PHP, etc. Although these languages
+  are useful and are in widespread use, they are generally limited
+  strictly to web content generation. In addition to the web
+  restriction, these languages are generally overly complex for
+  standard use and strictly target developers.
+
+  Helium will attempt solve the following perceived problems:
+    1. Target environment independence
+      - Helium should be able to be used for web, email, document
+        (text, PDF, etc.), VoXML, RSS, etc. content generation.
+      - In effect, Helium should be ubiquitous in the realm of dynamic
+        content generation.
+
+    2. Useful to all
+      - Helium should be able to be used by any level of user, not just
+        developers.
+
+  Helium will also be extensible, allowing others to add to it via a
+  plug-in framework, per se.
+  [...]
+
+#######################################################################
+# GOALS
+#
+  o Free
+  o Open Source (GPL)
+  o 100% TDD
+  o Lightweight and simple
+  o Multi-purpose, platform independent; not just web
+
+#######################################################################
+# DETAIL
+#
+
+///////////////////////////////////////////////////////////////////////
+// THIS DOCUMENT IS CURRENTLY UNDER CONSTRUCTION AND DOES NOT
+// NECESSARILY REFLECT THE TRUE STATE OF THE SYSTEM
+///////////////////////////////////////////////////////////////////////
+
+  =====================================================================
+  = 1. Helium Foundation
+  =
+    o Article
+    o Action
+    o DataMap
+    o Action Register
+    o Article Source
+    o Context
+    o Article Builder
+    o Article Parser
+
+    -------------------------------------------------------------------
+    - 1.1 Article
+    -
+    The Article is the most fundamental aspect of Helium. An Article
+    represents a single XML node. A node may have child nodes and/or
+    is child of a parent node. In general, an Article represents a
+    file (or some similar representation) containing Helium logic.
+
+		In code, an Article represents a tree that a) has knowledge of
+		itself at each leaf and b) knows how to parse itself. In essence,
+		the Article is the controller.
+
+    -------------------------------------------------------------------
+    - 1.2 Action
+    -
+    An Action is an "executable" Article. Executable means that Helium
+    has been "told" to execute some code when it identifies a
+    recognizable Article by name. Basically, an action is an Article
+    handler or XML node handler.
+
+    In theory, all Articles in Helium are Actions, meaning that Helium
+    actually executes each Article it comes across. The difference is
+    that Helium has a set of default Actions it executes in the event
+    that a user-defined Action is not found.
+
+    Following is the set of default Actions:
+      o Text
+        - Echoes any Article considered to be an XML Text node
+      o Literal
+        - Triggered by the XML CDATA node (<![CDATA[]]>). Echoes any
+          text as-is, minus the XML syntax. Any text within this
+          Article will not be parsed by Helium.
+      o Comment
+        - Echoes the entire Article (<!-- comment -->) including the
+          XML syntax. Basically, the comment is passed on to the
+          output.
+      o Xml
+        - Triggered when no other default or user-defined Action can be
+          used. The entire node is virtually echoed (start node,
+          attributes, end node). Any child articles will be parsed. The
+          side-effect is that the original XML node will be "tidied-up".
+          Child Articles/nodes will not be tidied unless they too are
+          XML Actions.
+
+          Following is what tidyness you should expect:
+            - Series of multiple spaces are converted to a single space
+            - Attributes will be ordered alphabetically
+            - Any Article without child Articles will be converted to
+              empty nodes (ex. <a></a> -> <a/>)
+
+    -------------------------------------------------------------------
+    - 1.3 DataMap
+    -
+    The DataMap is basically a hash-map, associative-array, data
+    dictionary, etc. It is a set of key/value pairs that is accessible
+    to the system and Articles at run-time.
+    
+    The DataMap is a contextual tool. It is used to record data state
+    during a request. It's use will become more eveident throughout
+    this document.
+
+    -------------------------------------------------------------------
+    - 1.4 Action Register
+    -
+    The Action Register is also a contextual tool. The Action Register
+    tracks the mapping of Article names and their Actions. During a
+    request, Helium defers to the Action Register to decide if how an
+    Article should handled.
+    
+    The Action Register contains only user-defined Actions; default
+    Actions are managed by Helium internally. The Action Register is
+    what makes Helium extensible.
+
+    -------------------------------------------------------------------
+    - 1.5 Article Source
+    -
+    An Article Source is used to find Articles by their name. Article
+    Sources can find Articles using any mechanism they wish; for
+    instance, an Article Source could be designed to treat each Article
+    name as a path to a file on the local file system.
+
+    In a Servlet context, the Article Source would most likely be
+    designed retrieve an Article as a resource in the WAR (classpath).
+
+    The Article Source makes Helium platform and context independent.
+    One could go so far as to store Articles as rows in a database.
+
+    -------------------------------------------------------------------
+    - 1.6 Context
+    -
+    The Helium Context is injected for every request and is an entity
+    the envelopes the: DataMap, Action Registry, Article Source, and a
+    writer.
+
+    The Context is passed around during the request is referenced by
+    Helium when: loading Articles, finding Actions, executing Actions,
+    writing output, etc.
+
+    The writer is used by Actions when they need to write to the output
+    stream. This too can be injected at request time by the calling
+    party. For instance, in a Servlet context, the output steam from
+    the ServletResponse can be injected and all output will be written
+    directly the Servlet's output.
+
+    -------------------------------------------------------------------
+    - 1.7 Article Builder
+    -
+    The main purpose of the Article Builder is to generate an Article
+    tree. Article Builder can do this in two ways:
+      1. By providing the Context and a an Article name. This mechanism
+         relies on the Article Source to obtain the XML.
+      2. By providing a reader that contains the XML.
+
+		The result is an Article tree that essentially decorates a DOM
+		node.
+
+    -------------------------------------------------------------------
+    - 1.8 Article Parser
+    -
+    The Parser is built directly into into each Article. This means
+    that each Article knows how to parse itself. The advantage to this
+    is that parsing is really as simple as executing an Action for each
+    Article (remember that an Article is an XML node). As long as an
+    Action exists for each Article (including a default Action),
+    parsing is simple and straightforward. There really is not much
+    work being done during a parse.
+
+    Because the Article structure is a tree, the simplest approach is
+    to parse in a depth-first fashion. This means that by the time the
+    root Article is finished being parsed, all other child Articles
+    have been parsed.
+
+    The only other built-in functionality is the DataMap tag. This tag
+    is very similar in nature to tags in other dynamic content
+    languages. The syntax is #{key} where /key/ is a key index in the
+    DataMap; hence, DataMap tag. What is returned is the value for the
+    key or /null/ if the key does not exist.
+    
+    If the DataMap contains a key/value pair of {myKey, some value},
+    then the output of [#{myKey}] is [some value]. DataMap tags can
+    only be used in argument values and Text Articles (XML Text
+    nodes).
+
+  =====================================================================
+  = 2. Core Actions
+  =
+    Helium is shipped with several Actions. The intent of the core
+    Actions is to provide a set of ubiquitous behavior for Helium. Core
+    Actions are Actions that are provided by Helium and can be used in
+    any setting (context independent).
+
+    Following is the list of core Helium Actions:
+      o /article/
+      o /var/
+      o /list/
+      o /when/
+      o /include/
+      o /iterate/
+      o /action/
+      o /actionset/
+      o /construct/
+      o /reflect/
+
+    Because Helium is so extensible, the core Actions can actually be
+    redefined. By default, Helium looks at the System property labeled
+    [helium.action] for the path to a Properties file defined somewhere
+    in the Classpath. If [helium.action] is not defined, Helium
+    defaults to the path [/com/thesleepless/helium/core.has]. The
+    format of this file is:
+    
+      actionName=package.for.Action
+
+    Each one of the core Actions listed above is defined in this way.
+    Currently, the only way to redefine the core Actions is to relist
+    the Actions in your own file and load that file using the command
+    line, as below:
+
+      -Dhelium.action=/package/for/myActions.has
+
+    If you don't want any core Actions, use the same process as above,
+    but leave the file empty. Unless you have an explicit need to do
+    so, it is not recommended to override the core Actions for the 
+    simple reason that a standard behavior should be expected across
+    Helium instances.
+
+    You will see below how you can define Actions at run-time using the
+    /action/ and /actionset/ Actions.
+
+    -------------------------------------------------------------------
+    - 2.1 /article/
+    -
+      This is a basic, placeholder Action. It's only purpose is to
+      provide a document root in the event that one can not otherwise
+      exist. As you will see, almost every example takes advantage of
+      this core Action.
+    
+      There are no arguments and the use of this Action is not required.
+      Any child Articles will be parsed.
+
+      Example 1, Basic use of article Action:
+
+        <?xml version="1.0"?>
+        <article>
+          hello, world
+        </article>
+
+        # Output of Example 1
+        #
+        hello, world
+
+    -------------------------------------------------------------------
+    - 2.2 /var/
+    -
+      Variable assignment. A variable assignment is an action that
+      assigns some arbitrary value to a named key. Currently, there are
+      no restrictions on key names or values; meaning, you can use
+      whatever name you want as long as it conforms to XML standard(s).
+      All values are stored directly to the DataMap using the provided
+      key.
+
+      Assignment is triggered in the following ways, the first having
+      the highest precedence:
+        1. Via an argument (fromVar) provided in the XML element.
+        2. Using any child content for the XML element as the value.
+        3. Via an argument (value) provided in the XML element.
+
+      Varible retrieval is not allowed with the /var/ Action. The
+      intent with Helium is to provide one way to trigger one behavior.
+      Use the DataMap tag (#{}) to obtain values defined by the /var/
+      Action.
+
+      Supported arguments:
+
+        /name/ - The name/key for the variable. This same name will be
+          used for retrieval.
+
+        ?fromVar? - (Optional) Assigns the value of a variable to this
+          variable. This is a behind-the-scenes copy and is
+          by-reference, meaning, the two variables will now point to
+          the same portion of memory. If the source variable's value is
+          not a String, then the source and destination variables will
+          be sharing the same reference.
+
+        ?value? - (Optional) The String value being assigned to the
+          destination variable.
+
+      Example 1, assignment via /value/ argument:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="bar"/>
+        </article>
+
+      Example 2, assignment via /fromVar/ argument:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="bar"/>
+          <var name="baz" fromVar="foo"/>
+        </article>
+
+      Example 3, assignment via child content:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo">
+            this data will be parsed before it is assigned to the
+            variable
+            <include article="/tmp/some-article"/>
+          </var>
+        </article>
+
+      Example 4, retrieval:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="bar"/>
+          #{foo}
+        </article>
+
+        # Output of Example 4
+        #
+        bar
+
+      Example 5, retrieval in an argument:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="bar"/>
+          <var name="baz" value="#{foo}"/>
+          #{baz}
+        </article>
+
+        # Output of Example 5
+        #
+        bar
+
+      [...]
+  
+    -------------------------------------------------------------------
+    - 2.3 /list/
+    -
+      Treats an element of the DataMap as a List (/java.util.List/). If
+      the element does not yet exist, it is created. If it does exist,
+      elements are added to it. Currently, list Action only supports the
+      adding of elements.
+
+      Similar to the var Action, values can be added using the /value/
+      argument or the child content of the Article can be used as the
+      value; with child content taking precedence over the /value/
+      argument.
+
+      The only method for taking advantage of the list Action is to use
+      it in tandem with the iterate Action.
+
+      Supported arguments:
+
+        /name/ - The name of the DataMap element to operate on
+        ?value? - The value to add to the list
+      
+      Example 1, Creating 3-element list using value argument:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="bar"/>
+          <list name="myVar" value="first value"/>
+          <list name="myVar" value="second value"/>
+          <list name="myVar" value="#{foo}"/>
+        </article>
+
+      Example 2, Creating 3-element list using child content:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="bar"/>
+          <list name="myVar">first value</list>
+          <list name="myVar">second value</list>
+          <list name="myVar"><li>#{foo}</li></list>
+        </article>
+
+      The last entry actually contains HTML.
+
+    -------------------------------------------------------------------
+    - 2.4 /when/
+    -
+      The when Action is very much like a condition evaluator. Its
+      intention is to provide a mechanism for stating:
+
+        "when [some condition] is true, then parse the body content"
+
+      Where [some condition] is defined and evaluated by the /when/
+      Action.
+      
+      Condition 1, Equality: Compares the string value of the defined
+        DataMap variable to the value provided in the ?equals?
+        argument. If so, the body of the when Action is parsed; else,
+        it is bypassed.
+      Condition 2, Existence: Consider whether an entry exists in the
+        DataMap. If so, the body of the when Action is parsed; else,
+        it is bypassed.
+
+      Supported arguments:
+
+        /var/ - The name/key for the entry in the DataMap. This same
+          name will be used for retrieval.
+
+        ?equals? - (Optional) A value to compare /var/ to.
+        ?exists? - (Optional) True or false. Any value that is not
+          "true", is "false.
+
+      Example 1, Value equality:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="bar"/>
+          <when var="foo" equals="bar">
+            hello, world
+          </when>
+        </article>
+
+        # Output of Example 1
+        #
+        hello, world
+
+      Example 2, Value equality with in-place var:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="bar"/>
+          <var name="goo" value="bar"/>
+          <when var="foo" equals="#{goo}">
+            hello, world
+          </when>
+        </article>
+
+        # Output of Example 2
+        #
+        hello, world
+
+      Example 3, Value inequality:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="bar"/>
+          <when var="foo" equals="baz">
+            hello, world
+          </when>
+        </article>
+
+        # Output of Example 3
+        #
+
+      Example 4, Variable does exist:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="bar"/>
+          <when var="foo" exists="true">
+            hello, world
+          </when>
+        </article>
+
+        # Output of Example 4
+        #
+        hello, world
+
+      Example 5, Variable does not exist:
+
+        <?xml version="1.0"?>
+        <article>
+          <when var="foo" exists="true">
+            hello, world
+          </when>
+        </article>
+
+        # Output of Example 5
+        #
+
+      Example 6, Variable does not exist as expected:
+
+        <?xml version="1.0"?>
+        <article>
+          <when var="foo" exists="false">
+            hello, world
+          </when>
+        </article>
+
+        # Output of Example 6
+        #
+        hello, world
+
+      Example 7, Equality takes precedence over existence:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="bar"/>
+          <when var="foo" exists="false" equals="bar">
+            hello, world
+          </when>
+        </article>
+
+        # Output of Example 7
+        #
+        hello, world
+
+      Example 8, Inequality takes precedence over existence:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="bar"/>
+          <when var="foo" exists="true" equals="baz">
+            hello, world
+          </when>
+        </article>
+
+        # Output of Example 8
+        #
+
+    -------------------------------------------------------------------
+    - 2.5 /include/
+    -
+      Include another Article's contents directly into the calling
+      Article. The calling Action's tag is replaced with the parsed
+      contents of the called Article.
+      
+      NOTE: Vars defined in a sub-article are not accessible to the
+      calling article, by design.
+      
+      Supported arguments:
+
+        /article/ - The URI of the Article to include. The URI is
+                    relative the Article Source being used.
+      
+      Example 1:
+        # Article: /tmp/sub-article
+        #
+        <?xml version="1.0"?>
+        <article>
+          hello, world
+        </article>
+
+        # Article: /tmp/main-article
+        #
+        <?xml version="1.0"?>
+        <article>
+          <include article="/tmp/sub-article"/>
+        </article>
+
+        # Output of parsing /tmp/main-article
+        #
+        hello, world
+
+      It's is also possible to define var's inside of the Include
+      Action body, which will only be accessible to the
+      sub-article(s) being included. Any content not defined as a
+      Var will be ignored.
+
+      Example 2: Using internal Vars
+        # Article: /tmp/sub-article
+        #
+        <?xml version="1.0"?>
+        <article>
+          #{body}
+        </article>
+
+        # Article: /tmp/main-article
+        #
+        <?xml version="1.0"?>
+        <article>
+          hello, <include article="/tmp/sub-article">
+            <var name="body" value="world"/>
+          </include>
+        </article>
+
+        # Output of parsing /tmp/main-article
+        #
+        hello, world
+
+      [...]
+
+    -------------------------------------------------------------------
+    - 2.6 /iterate/
+    -
+      Provides a mechanism for iterating (looping) over a list/set of
+      aggragated items. The Iterate Action can operate on any variable,
+      but is most useful when the variable is of some list type. In
+      Java, these would be instances of /java.util.Collection/,
+      /java.util.Iterator/, or one-dimensional arrays; however,
+      support for /java.util.Map/ is forthcoming.
+      
+      The Iterate Action can also work with standard and null variable
+      instances, but will treat these somewhat differently. Standard
+      is hereby defined as a variable that does not support
+      /Collection/, /Iterator/, /Map/, or any other array type
+      functionality; these variables are typically strings where Helium
+      is concerned, but can be any other instance of /java.lang.Object/.
+      
+      For standard variables that are not null, iteration will occur
+      only once; meaning, any variable can be iterated over. For null
+      variables (those which return null when retrieved), nothing will
+      be iterated over. The result will be as if /iterate/ were never
+      called. String variables that contain a blank value are not
+      considered to be null and will be iterated over.
+      
+      Supported arguments:
+
+        /var/ - The variable containing the data that will be iterated
+          over.
+        /itemVar/ - The variable that will contain the value for each
+          iteration. This variable is temporary and will last for only
+          the life of the Action.
+
+      During iteration, the iterated value can be obtained as a
+      variable using a specific nomenclature; as follows:
+        
+        #{itemVar}
+      
+      Where /itemVar/ matches the value of the item variable name
+      passed to the Iterate action as an argument.
+
+      Example 1, null variable iteration (no output):
+
+        <?xml version="1.0"?>
+        <article>
+          <iterate var="varDoesNotExist" itemVar="tmpVar">
+            will not be parsed
+          </iterate>
+        </article>
+
+        # Output of Example 1 is empty
+
+      Example 2, standard variable iteration:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="myVar" value="test value"/>
+          <iterate var="myVar" itemVar="tmpVar">
+            temporary value = [#{tmpVar}]
+          </iterate>
+        </article>
+
+        # Output of Example 2
+        #
+        temporary value = [test value]
+
+      Example 3, Collection variable iteration:
+
+        <?xml version="1.0"?>
+        <article>
+          <list name="myVar" value="first value"/>
+          <list name="myVar" value="second value"/>
+          <list name="myVar" value="third value"/>
+          <iterate var="myVar" itemVar="tmpVar">
+            temporary value = [#{tmpVar}]
+          </iterate>
+        </article>
+
+        # Output of Example 3
+        #
+        temporary value = [first value]
+        temporary value = [second value]
+        temporary value = [third value]
+
+      [...]
+
+    -------------------------------------------------------------------
+    - 2.7 /action/
+    -
+      Defines a runtime Action for execution only within the process
+      space. This means that custom Actions can be defined inline and
+      are accessible only during the current process request.
+      
+      This functionality is very powerful and should be used with some
+      prejudice. The action Action allows the calling application to
+      create a bridge between the content and the underlying code.
+      
+      The action Action can also be used to extend Helium's built-in
+      action set by defining new actions.
+      
+      Supported arguments:
+
+        /name/ - The Action name (alias) that will used to initiate a
+          call to the Action.
+        /class/ - The implementing code that will be executed when
+          called upon.
+      
+      Example 1:
+        # Java class: my.actions.MyAction
+        # Implementation of an Action
+        #
+        package my.actions;
+        import com.thesleepless.helium.action.AbstractAction;
+        public class MyAction extends AbstractAction {
+          public MyAction(String actionName) {
+            super(actionName);
+          }
+          public void service(Article article, HeliumContext context)
+          throws HeliumException, IOException {
+            context.getWriter().println(
+              article.getName() + " called successfully");
+          }
+        }
+
+        # Article: my-article.he
+        #
+        <?xml version="1.0"?>
+        <article>
+          <action name="tmpAction" class="my.actions.MyAction"/>
+          <tmpAction/>
+        </article>
+
+        # Output of Example 1: parsing of my-article.he
+        #
+        tmpAction called successfully
+
+      [...]
+
+    -------------------------------------------------------------------
+    - 2.8 /actionset/
+    -
+      Provides the ability to load multiple Action definitions at one
+      time and provide a namespace prefix to append to each Action
+      name. Use of the /actionset/ Action is similar to calling the
+      /action/ Action multiple times to load a set of related Actions.
+
+      ActionSet is also useful when the implementation of an Action
+      needs to be changed, but the name (alias) is to remain the same.
+      Meaning, you do not have to do a global replace in your Articles
+      in order to change the Action class implementation for each call
+      to the /action/ Action. This is because ActionSet loads the
+      definitions from a properties file; a key/value file whereby the
+      key is the Action name/alias and the value is the Action class.
+      An example of an Action definition entry follows:
+
+        # Definition of myAction
+        myAction=my.actions.MyAction
+
+      The prefix is useful to make the Action names/aliases more
+      specific in the event that two Action names from two different
+      ActionSets collide.
+
+      Supported arguments:
+
+        /definition/ - The path to the definition file relative to the
+          classpath.
+        ?prefix? - (Optional) The prefix to be appended to each Action
+          name (alias) loaded from the definition file.
+
+        NOTE: The definition file should be modified to be able to load
+        the file using a URL or even a URI.
+
+      Below is an example Action that will be used in each of the
+      examples:
+
+        # Java class: my.actions.MyAction
+        # Implementation of an Action
+        #
+        package my.actions;
+        import com.thesleepless.helium.action.AbstractAction;
+        public class MyAction extends AbstractAction {
+          public MyAction(String actionName) {
+            super(actionName);
+          }
+          public void service(Article article, HeliumContext context)
+          throws HeliumException, IOException {
+            context.getWriter().println(
+              article.getName() + " called successfully");
+          }
+        }
+
+      Example 1, loading one Action:
+        # Definition file, relative to the classpath
+        # /my/actions/actionset.has
+        #
+        tmpAction=my.actions.MyAction
+
+        # Article: my-article.he
+        #
+        <?xml version="1.0"?>
+        <article>
+          <actionset prefix="my"
+            definition="/my/actions/actionset.has"/>
+          <my:tmpAction/>
+        </article>
+
+        # Output of Example 1: parsing of my-article.he
+        #
+        my:tmpAction called successfully
+
+      Example 2, loading multiple Actions:
+        While it would be silly to associate multiple aliases to the
+        same Action implementation, this example does so in the an
+        effort to save space and reading.
+
+        # Definition file, relative to the classpath
+        # /foo/actions/fooactions.has
+        #
+        bar=my.actions.MyAction
+        baz=my.actions.MyAction
+        bug=my.actions.MyAction
+
+        # Article: foo-article.he
+        #
+        <?xml version="1.0"?>
+        <article>
+          <actionset prefix="foo"
+            definition="/foo/actions/fooactions.has"/>
+          <foo:bar/>
+          <foo:baz/>
+          <foo:bug/>
+        </article>
+
+        # Output of Example 2: parsing of foo-article.he
+        #
+        foo:bar called successfully
+        foo:baz called successfully
+        foo:bug called successfully
+
+      Example 3, no prefix:
+        # Definition file, relative to the classpath
+        # /foo/actions/fooactions.has
+        #
+        bar=my.actions.MyAction
+        baz=my.actions.MyAction
+        bug=my.actions.MyAction
+
+        # Article: foo-article.he
+        #
+        <?xml version="1.0"?>
+        <article>
+          <actionset definition="/foo/actions/fooactions.has"/>
+          <bar/>
+          <baz/>
+          <foo:bug/>
+        </article>
+
+        # Output of Example 3: parsing of foo-article.he
+        #
+        bar called successfully
+        baz called successfully
+        <foo:bug/>
+
+        As you can see, the /prefix/ argument is not required and when
+        attempting to reference an Action using a prefix that was not
+        registered will simply echo the entire XML element.
+
+      Example 4, blank prefix:
+        # Definition file, relative to the classpath
+        # /foo/actions/fooactions.has
+        #
+        bar=my.actions.MyAction
+        baz=my.actions.MyAction
+        bug=my.actions.MyAction
+
+        # Article: foo-article.he
+        #
+        <?xml version="1.0"?>
+        <article>
+          <actionset prefix=""
+            definition="/foo/actions/fooactions.has"/>
+          <bar/>
+          <baz/>
+          <foo:bug/>
+        </article>
+
+        # Output of Example 4: parsing of foo-article.he
+        #
+        bar called successfully
+        baz called successfully
+        <foo:bug/>
+
+        Using a blank prefix is the same as not providing any prefix.
+
+      [...]
+
+    -------------------------------------------------------------------
+    - 2.9 /construct/
+    -
+      The /construct/ Action constructs (creates) a new instance of an
+      Object and assigns that Object to a variable. This is useful for
+      various reasons, one of which is illustrated in the /reflect/
+      Action definition.
+
+      Construction requires the fully-qualified class-name of a Class
+      that is accessible to the JVM running Helium and the name of a
+      variable to assign the new Object instance to.
+      
+      All Objects must provide at least one public Constructor that
+      expects zero arguments. The /construct/ Action does not currently
+      work with multi-argument constructors. The typical use for the
+      /construct/ Action is to create an instance of a Java Bean.
+
+      Supported arguments:
+        /class/ - The fully-qualified class-name of the Class to
+          construct
+        /toVar/ - The name of the variable to associate with the newly
+          created Object
+
+      Below is an example Bean that will be used in each of the
+      examples.
+
+        # Java class: my.beans.MyBean
+        # Implementation of example Bean
+        #
+        package my.beans;
+        public class MyBean extends Object {
+          private String data;
+          public String getData() {
+            return data;
+          }
+          public void setData(String newData) {
+            data = newData;
+          }
+          public String toString() {
+            return "MyBean is your Bean";
+          }
+        }
+
+      Example 1, Set/Get literal value
+
+        # Article: my-article.he
+        #
+        <?xml version="1.0"?>
+        <article>
+          <construct class="my.beans.MyBean" toVar="myBean"/>
+          #{myBean}
+        </article>
+
+        # Output of Example 1
+        #
+        MyBean is your Bean
+      
+      Notice that the output is produced when the /toString()/ method
+      of the MyBean Object is called due to "#{myBean}" being parsed.
+
+    -------------------------------------------------------------------
+    - 2.10 /reflect/
+    -
+      The /reflect/ Action provides the ability to use Reflection in
+      order to retrieve information from an Object and set information
+      to an Object.
+      
+      In Java, this is done by operating against a Java Bean. With
+      Beans, a Field is also referred to as a Property Descriptor and
+      is represented in the Object as "get-" and "set-" methods.
+      Together, these methods work to provide read and write access to
+      a specific attribute/property of the Object.
+
+      The Field is referenced by the Action using a single name, which
+      is the suffix of the get/set method minus the words "get" and
+      "set". Additionally, the first character of that Field name will
+      be lower-cased.
+
+      Setting or assigning values is triggered in the following ways,
+      the first having the highest precedence:
+        1. Via the argument [fromVar] provided in the XML element.
+        2. Using any child content for the XML element as the value.
+        3. Via the argument [value] provided in the XML element.
+
+      The referential value of a field (reference) can also be copied
+      to a Var via the [toVar] argument. The syntactical meaning of
+      using [toVar] would be, "Copy the reference returned from a Var's
+      Field to another Var." This is useful when the field of Var
+      contains some Object type other than a String, but the type
+      information should not be lost.
+
+      For more information on Beans, see the example(s) below and/or
+      refer to Sun's Java website
+      [http://java.sun.com/products/javabeans/].
+
+      Supported arguments (in order of precedence):
+
+        /var/ - The variable from the DataMap that will be reflected
+        /field/ - The field in Class referenced by the variable that
+          will be reflected
+        ?fromVar? - (Optional) Assigns the value of a variable to the
+          specified /field/. This is a behind-the-scenes copy and is
+          by-reference, meaning, the two variables will now point to
+          the same portion of memory. If the source variable's value is
+          not a String, then the source and destination variables will
+          be sharing the same reference.
+        ?value? - (Optional) The value that will be assigned to the
+          /field/
+        ?toVar? - (Optional) The Var name that the field reference will
+          be copied to.
+
+      Below is an example Bean that will be used in each of the
+      examples.
+
+        # Java class: my.beans.MyBean
+        # Implementation of example Bean
+        #
+        package my.beans;
+        public class MyBean extends Object {
+          private String data;
+          public String getData() {
+            return data;
+          }
+          public void setData(String newData) {
+            data = newData;
+          }
+        }
+
+      Example 1, Set/Get literal value
+
+        # Article: my-article.he
+        #
+        <?xml version="1.0"?>
+        <article>
+          <construct class="my.beans.MyBean" toVar="myBean"/>
+          <reflect var="myBean" field="data" value="bar"/>
+          <reflect var="myBean" field="data"/>
+        </article>
+
+        # Output of Example 1: parsing of my-article.he
+        #
+        bar
+
+      Example 2, Set/Get literal value using variable
+
+        # Article: my-article.he
+        #
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="buzz"/>
+          <construct class="my.beans.MyBean" toVar="myBean"/>
+          <reflect var="myBean" field="data" value="#{foo}"/>
+          <reflect var="myBean" field="data"/>
+        </article>
+
+        # Output of Example 2: parsing of my-article.he
+        #
+        buzz
+
+      Example 3, Set/Get referential value. Although the value being
+      set in this example is an instance of a String, if
+      /MyBean.setData()/ expected some other Object type, the value
+      referenced by variable [foo] would have to match that type.
+
+        # Article: my-article.he
+        #
+        <?xml version="1.0"?>
+        <article>
+          <var name="foo" value="baz"/>
+          <construct class="my.beans.MyBean" toVar="myBean"/>
+          <reflect var="myBean" field="data" fromVar="foo"/>
+          <reflect var="myBean" field="data"/>
+        </article>
+
+        # Output of Example 3: parsing of my-article.he
+        #
+        baz
+
+      Example 4, Set/Get dynamic value
+
+        # Article: my-article.he
+        #
+        <?xml version="1.0"?>
+        <article>
+          <var name="myName" value="gus"/>
+          <construct class="my.beans.MyBean" toVar="myBean"/>
+          <reflect var="myBean" field="data">
+            hello, world. my name is [#{myName}]
+          </reflect>
+          <reflect var="myBean" field="data"/>
+        </article>
+
+        # Output of Example 4: parsing of my-article.he
+        #
+        hello, world. my name is [gus]
+
+        As you can see, each assignment of the Field [data] is actually
+        calling the /setData()/ method of the MyBean instance and each
+        retrieval of the Field [data] is actually calling the /getData()/
+        method of the same instance. Also note that the [d] in [data] is,
+        and must be, lower-cased.
+
+      Example 5, Pass-by-reference. The following example assumes that
+      a Var has been added to the DataMap named "user", which is an
+      instance of a UserProfile. In this Object are several methods,
+      which return beans that contain assumed user data.
+
+        /*
+         * Java interface: UserProfile
+         */
+        public interface UserProfile {
+          public Address getAddress();
+          public Account getAccount();
+        }
+
+        /*
+         * Java interface: Address
+         */
+        public interface Address {
+          public String getStreet();
+          public String getCityStateAndZip();
+        }
+
+        /*
+         * Java interface: Account
+         */
+        public interface Account {
+          public String getId();
+          public Float getBalance();
+        }
+
+        # Article: my-article.he
+        #
+        <?xml version="1.0"?>
+        <article>
+          <reflect var="user" field="address" toVar="userAddress"/>
+          <reflect var="user" field="account" toVar="userAccount"/>
+          Address:
+            <reflect var="userAddress" field="street"/>
+            <reflect var="userAddress" field="cityStateAndZip"/>
+
+          Account [<reflect var="userAccount" field="id"/>]:
+            Balance (<reflect var="userAccount" field="balance"/>)
+        </article>
+
+        # Output of Example 5: parsing of my-article.he
+        #
+        Address:
+          123 Anywhere Lane
+          Somewhere, MT 12345
+        
+        Account [0123456789]:
+          Balance (-100.00)
+
+      [...]
+
+  =====================================================================
+  = 3. Command Line
+  =
+    To parse an Article via the command line, the following is all that
+    is needed:
+
+    > java -jar helium.jar <path-to-article> [[-Vkey=value] [-Pfilename]]
+    
+    The Main-Class for helium.jar is:
+    /com.thesleepless.helium.ui.text.Helium/.
+
+    Example 1, parsing the file at /tmp/my-article:
+      # Article: /tmp/my-article
+      #
+      <?xml version="1.0"?>
+      <article>
+        hello, world
+      </article>
+
+      # Command line input
+      #
+      > java -jar helium.jar /tmp/my-article
+
+      # Command line output
+      #
+      > hello, world
+    [...]
+
+  =====================================================================
+  = 4. Helium Servlet
+  =
+    o /attribute/
+    o /parameter/
+    o /cookie/
+    o /session/
+    o /redirect/
+    o /request-info/
+
+    All Heliumx Servlet Actions are predefined in a Helium Action Set
+    (HAS) labeled [/com/thesleepless/heliumx/servlet/servlet.has].
+
+    -------------------------------------------------------------------
+    - 4.1 Setting up web.xml
+    -
+    HeliumServlet looks at the path-info and attempts to load what that
+    value is as a resource from the /ServletContext.getResource()/
+    method. This means that an article can be placed in the document
+    root of the web-app or somewhere else in the class-path of the
+    web-app's class-loader, and the article will be picked up and
+    rendered.
+    
+    Figure 1, servlet definition and mapping in a web.xml that uses the
+    Helium Servlet:
+    
+      <servlet>
+        <servlet-name>Helium</servlet-name>
+        <servlet-class>
+          com.thesleepless.heliumx.servlet.HeliumServlet
+        </servlet-class>
+      </servlet>
+      <servlet-mapping>
+        <servlet-name>Helium</servlet-name>
+        <url-pattern>*.he</url-pattern>
+      </servlet-mapping>
+
+    This mapping will forward any request ending in /.he/ to the Helium
+    Servlet.
+
+    [...]
+    
+    -------------------------------------------------------------------
+    - 4.2 /attribute/
+    -
+      Servlet attributes that are normally obtained via
+      /ServletRequest.getAttribute()/
+        and defined via
+      /ServletRequest.setAttribute()/
+      are now accessible and assignable via the Attribute action. This
+      action is provided only by the Helium Servlet for use in the
+      context of a Servlet engine.
+      
+      Assignment is triggered in the following ways, the first having
+      the highest precedence:
+        1. Via an attribute (fromAttribute) whose name is provided as
+           an argument.
+        2. Via a variable (fromVar) whose name is provided as an
+           argument.
+        3. Using any child content for the XML element as the value.
+        4. Via text of an argument (value) provided in the XML
+           element.
+
+      Supported arguments:
+
+        /name/ - The name/key for the attribute. This same name will be
+          used for retrieval.
+
+        ?fromAttribute? - (Optional) Assigns the value of an attribute
+          to this attribute. This is a behind-the-scenes copy and is
+          by-reference, meaning, the two variables will now point to
+          the same portion of memory. If the source attributes's value
+          is not a String, then the source and destination variables
+          will be sharing the same reference to the same object.
+
+        ?fromVar? - (Optional) Assigns the value of a variable to this
+          attribute. This is a behind-the-scenes copy and is
+          by-reference, meaning, the two variables will now point to
+          the same portion of memory. If the source Var's value is
+          not a String, then the source and destination variables will
+          be sharing the same reference to the same object.
+
+        ?value? - (Optional) The literal value being assigned to the
+          destination attribute.
+
+      The following example assumes that an attribute named
+      "myAttribute" is available in the ServletRequest with the value
+      "my value". The second assumption is that the following example
+      is loaded via the Helium Servlet.
+
+      Example 1, attribute retrieval:
+
+        <?xml version="1.0"?>
+        <article>
+          <actionset prefix="servlet"
+            definition="/com/thesleepless/heliumx/servlet/servlet.has"/>
+          <servlet:attribute name="myAttribute"/>
+        </article>
+
+        # Output of Example 1
+        #
+        my value
+
+      Example 2, attribute definition:
+
+        <?xml version="1.0"?>
+        <article>
+          <actionset prefix="servlet"
+            definition="/com/thesleepless/heliumx/servlet/servlet.has"/>
+          <servlet:attribute name="myAttribute"
+            value="new attribute value"/>
+          <servlet:attribute name="myAttribute"/>
+        </article>
+
+        # Output of Example 2
+        #
+        new attribute value
+
+      Example 3, attribute copy:
+
+        <?xml version="1.0"?>
+        <article>
+          <actionset prefix="servlet"
+            definition="/com/thesleepless/heliumx/servlet/servlet.has"/>
+          <servlet:attribute name="inAttribute"
+            value="in attribute value"/>
+          <servlet:attribute name="myAttribute"
+            fromAttribute="inAttribute"/>
+          <servlet:attribute name="myAttribute"/>
+        </article>
+
+        # Output of Example 3
+        #
+        in attribute value
+
+      Example 4, attribute copy from variable:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="inVar" value="in var value"/>
+          <actionset prefix="servlet"
+            definition="/com/thesleepless/heliumx/servlet/servlet.has"/>
+          <servlet:attribute name="myAttribute" fromVar="inVar"/>
+          <servlet:attribute name="myAttribute"/>
+        </article>
+
+        # Output of Example 4
+        #
+        in var value
+
+      Example 5, attribute definition:
+
+        <?xml version="1.0"?>
+        <article>
+          <actionset prefix="servlet"
+            definition="/com/thesleepless/heliumx/servlet/servlet.has"/>
+          <servlet:attribute
+            name="myAttribute">value from body</attribute>
+          <servlet:attribute name="myAttribute"/>
+        </article>
+
+        # Output of Example 5
+        #
+        value from body
+
+      In Examples 2, 3, 4, and 5, the attribute named "myAttribute"
+      will be available to the /ServletRequest/ instance immediately.
+
+    -------------------------------------------------------------------
+    - 4.3 /parameter/
+    -
+      Servlet parmeters that are normally obtained via
+      /ServletRequest.getParameter()/
+      are now accessible via the Parameter action.
+      
+      Supported arguments:
+
+        /name/ - The name/key for the parameter. This same name will be
+          used for retrieval.
+
+      The following example assumes that an parameter named
+      "myParameter" is available in the ServletRequest with the value
+      "my value". The second assumption is that the following example
+      is loaded via the Helium Servlet.
+
+      Example 1, parameter retrieval:
+
+        <?xml version="1.0"?>
+        <article>
+          <actionset prefix="servlet"
+            definition="/com/thesleepless/heliumx/servlet/servlet.has"/>
+          <servlet:parameter name="myParameter"/>
+        </article>
+
+        # Output of Example 1
+        #
+        my value
+
+      Parameters are read-only per the Servlet specification.
+
+    -------------------------------------------------------------------
+    - 4.4 /cookie/
+    -
+      Cookies can be obtained and set via the Cookie Action. Obtaining
+      a Cookie is defined simply as obtaining the value of the Cookie.
+
+      Setting a Cookie can be done by providing just the name and value
+      or you can optionally define any and all the following: domain,
+      path, max-age, and secureness.
+      
+      Supported arguments:
+
+        /name/ - The name of the cookie. This same name will be used
+          for retrieval and assignments.
+
+        ?value? - (Optional) The String value associated with the
+          Cookie.
+
+        ?domain? - (Optional:value) Defines the domain the Cookie is to
+          be set under. Used only with value argument.
+
+        ?path? - (Optional:value) Defines the path the Cookie is to
+          be set under. Used only with value argument.
+
+        ?maxAge? - (Optional:value) Defines the number of seconds from
+          now that the Cookie is to last for (per the Servlet spec).
+          Used only with value argument.
+
+        ?secure? - (Optional:value) [Default: false] Boolean value that
+          specifies whether the Cookie is being sent over a secure
+          protocol. Unless the string value of "true" is provided as
+          the value for this argument, false will be ascribed (via the
+          java.lang.Boolean implementation). Used only with value
+          argument.
+
+      Example 1, Cookie retrieval. Assumes the value of the Cookie is
+      "my cookie value":
+
+        <?xml version="1.0"?>
+        <article>
+          <actionset prefix="servlet"
+            definition="/com/thesleepless/heliumx/servlet/servlet.has"/>
+          <servlet:cookie name="myCookie"/>
+        </article>
+
+        # Output of Example 1
+        #
+        my cookie value
+
+      Example 2, Simple Cookie setting; a session cookie.
+
+        <?xml version="1.0"?>
+        <article>
+          <actionset prefix="servlet"
+            definition="/com/thesleepless/heliumx/servlet/servlet.has"/>
+          <servlet:cookie name="myCookie" value="my cookie value"/>
+        </article>
+
+        # Portion of HTTP Output from Example 2 (using Curl)
+        #
+        Set-Cookie: myCookie=my cookie value
+
+      Example 3, Cookie setting; a session cookie with domain
+      and path.
+
+        <?xml version="1.0"?>
+        <article>
+          <actionset prefix="servlet"
+            definition="/com/thesleepless/heliumx/servlet/servlet.has"/>
+          <servlet:cookie name="myCookie" value="my cookie value"
+                  domain="localhost" path="/"/>
+        </article>
+
+        # Portion of HTTP Output from Example 3 (using Curl)
+        #
+        Set-Cookie: myCookie=my cookie value; Domain=localhost; Path=/
+
+      Example 4, Cookie setting with expiration date. Assumes current
+      time is midnight GMT (Election night, 2004 :) Remember that
+      max-age is defined as the number of seconds from the current time
+      that Cookie is to expire.
+
+        <?xml version="1.0"?>
+        <article>
+          <actionset prefix="servlet"
+            definition="/com/thesleepless/heliumx/servlet/servlet.has"/>
+          <servlet:cookie name="myCookie" value="my cookie value"
+                  maxAge="3600"/>
+        </article>
+
+        # Portion of HTTP Output from Example 4 (using Curl)
+        #
+        Set-Cookie: myCookie=my cookie value; Expires=Wed, 03-Nov-2004 01:00:00 GMT
+
+     For all of the above examples:
+       1. The /secure/ argument can be added to tell the Servlet
+          engine that the cookie can be sent over a secure connection
+          as well.
+       2. Any of the arguments for setting a Cookie can be used
+          together (or not at all).
+
+    -------------------------------------------------------------------
+    - 4.5 /request-info/
+    -
+      [...]
+    -------------------------------------------------------------------
+    - 4.6 /session/
+    -
+      [...]
+    -------------------------------------------------------------------
+    - 4.7 /redirect/
+    -
+      [...]
+
+  =====================================================================
+  = 5. Heliumx Net
+  =
+    Heliumx Net is a collection of Actions designed to address generic
+    network related issues.
+
+    o /encode/
+
+    All Heliumx Net Actions are predefined in a Helium Action Set
+    (HAS) labeled [/com/thesleepless/heliumx/net/net.has].
+
+    -------------------------------------------------------------------
+    - 5.1 /encode/
+    -
+      Provides the ability to URL encode a string. Via one of the
+      various input mechanisms, you provide an input that is a decoded
+      string and the output of the Action will be the same string, but
+      URL encoded.
+      
+      By default, /encode/ uses UTF-8 encoding, but allows for the
+      encoding schema alias (name) to be provided.
+      
+      Generally, executing /encode/ will be part of a Variable
+      assignment or part of the treatment of an HTML Anchor Tag (<a/>).
+
+      Values to be encoded can be provided in one of three ways, with
+      the following ordinality of precedence:
+        1. Via a variable (fromVar) whose name is provided as an
+           argument.
+        2. Using any child content for the XML element as the value.
+        3. Via text of an argument (value) provided in the XML
+           element.
+
+      Supported arguments:
+
+        /value/ - The value to encode. Required only if one of the
+          other input mechanisms is not used.
+
+        ?fromVar? - (Optional) The name of the Variable containing the
+          value to encode
+
+        ?charset? - (Optional) [Default: UTF-8] The name of the
+          encoding character-set to use. Other sets include, but are
+          not limited to: UTF-16, US-ASCII, etc.
+
+      Example 1, Encoding using value argument:
+
+        <?xml version="1.0"?>
+        <article>
+          <encode value="hello, world"/>
+        </article>
+
+        # Output of Example 1
+        #
+        hello%2C+world
+
+      Example 2, Encoding using fromVar argument:
+
+        <?xml version="1.0"?>
+        <article>
+          <var name="myVar">how are you?</var>
+          <encode fromVar="myVar"/>
+        </article>
+
+        # Output of Example 2
+        #
+        how+are+you%3F
+
+      Example 3, Encoding using child content:
+
+        <?xml version="1.0"?>
+        <article>
+          <encode>doing well. and you?</encode>
+        </article>
+
+        # Output of Example 3
+        #
+        doing+well.+and+you%3F
+
+      Example 4, Encoding with different character-set:
+
+        <?xml version="1.0"?>
+        <article>
+          <encode charset="UTF-16">hello, world</encode>
+        </article>
+
+        # Output of Example 4
+        #
+        hello%FE%FF%00%2C+world

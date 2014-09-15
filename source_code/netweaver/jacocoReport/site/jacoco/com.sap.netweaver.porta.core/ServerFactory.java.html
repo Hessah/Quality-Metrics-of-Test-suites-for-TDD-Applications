@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ServerFactory.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">netweaver</a> &gt; <a href="index.source.html" class="el_package">com.sap.netweaver.porta.core</a> &gt; <span class="el_source">ServerFactory.java</span></div><h1>ServerFactory.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2009, 2010 SAP AG.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *    Kaloyan Raev (SAP AG) - initial API and implementation
+ *******************************************************************************/
+package com.sap.netweaver.porta.core;
+
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+
+/**
+ * The &lt;code&gt;ServerFactory&lt;/code&gt; is used to create instances of the 
+ * &lt;code&gt;Server&lt;/code&gt; interface that represent physical SAP NetWeaver Application
+ * Server systems.
+ * 
+ * &lt;p&gt;
+ * The factory requires a set of &lt;code&gt;Properties&lt;/code&gt; to create a
+ * &lt;code&gt;Server&lt;/code&gt; instance. These properties determine the correct
+ * implementation object that will be created. The &lt;code&gt;Server&lt;/code&gt;
+ * interface hides the specifics of the implementation and provides only an
+ * abstract interface to operate with the physical system.
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * Another goal of the &lt;code&gt;ServerFactory&lt;/code&gt; is to optimize the creation
+ * of &lt;code&gt;Server&lt;/code&gt; instances. The factory remembers all created
+ * &lt;code&gt;Server&lt;/code&gt; instances with their corresponding properties. If, on a
+ * further call to create a &lt;code&gt;Server&lt;/code&gt; instance, the same properties
+ * are given, then the factory returns the &lt;code&gt;Server&lt;/code&gt; instance that
+ * has already been created. This way duplicate instances to one and the same
+ * physical system are avoided. Users of the factory do not need to persist
+ * the &lt;code&gt;Server&lt;/code&gt; instances created from the factory, because they
+ * can be obtained again from the factory using the same set of properties.
+ * &lt;/p&gt;
+ * 
+ * @see Server
+ */
+<span class="nc" id="L48">public class ServerFactory {</span>
+
+	/**
+	 * Constant for the &lt;b&gt;server.type&lt;/b&gt; property used for creating a
+	 * &lt;/code&gt;Server&lt;/code&gt; instance.
+	 * 
+	 * &lt;p&gt;
+	 * The &lt;b&gt;server.type&lt;/b&gt; property specifies the version of the SAP
+	 * NetWeaver Application Server system.
+	 * &lt;/p&gt;
+	 */
+	public static final String SERVER_TYPE = &quot;server.type&quot;;
+
+	/*
+	 * A map where discovered server types and their factory classes are
+	 * registered.
+	 */
+<span class="nc" id="L65">	private final static Map&lt;String, String&gt; map = new HashMap&lt;String, String&gt;();</span>
+
+	/*
+	 * Browse through the JARs in the classpath to discover server types.
+	 */
+	static {
+		try {
+			// Retrieve a list of all porta.properties files in the default
+			// package of the JARs in the classpath
+<span class="nc" id="L74">			Enumeration&lt;URL&gt; resources = ServerFactory.class.getClassLoader().getResources(&quot;porta.properties&quot;);</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">			while (resources.hasMoreElements()) {</span>
+<span class="nc" id="L76">				URL url = resources.nextElement();</span>
+				
+				// load the porta.properties file
+<span class="nc" id="L79">				Properties props = new Properties();</span>
+<span class="nc" id="L80">				props.load(url.openStream());</span>
+				
+				// retrieve the server.type property
+<span class="nc" id="L83">				String type = props.getProperty(SERVER_TYPE);</span>
+				
+				// retrieve the server.factory property
+<span class="nc" id="L86">				String factory = props.getProperty(&quot;server.factory&quot;);</span>
+				
+				// register the discovered server type in the map
+<span class="nc bnc" id="L89" title="All 4 branches missed.">				if (type != null &amp;&amp; factory != null) {</span>
+<span class="nc" id="L90">					map.put(type, factory);</span>
+				}
+<span class="nc" id="L92">			}</span>
+<span class="nc" id="L93">		} catch (IOException e) {</span>
+<span class="nc" id="L94">			e.printStackTrace();</span>
+<span class="nc" id="L95">		}</span>
+<span class="nc" id="L96">	}</span>
+
+	/**
+	 * Creates an instance of the &lt;code&gt;Server&lt;/code&gt; interface that represents
+	 * a physical SAP NetWeaver Application Server system.
+	 * 
+	 * &lt;p&gt;
+	 * It is mandatory to specify the &lt;code&gt;ServerType&lt;/code&gt; property. It
+	 * determines the type of the implementation type that will be created for
+	 * the &lt;code&gt;Server&lt;/code&gt; interface. The valid property value for a
+	 * specific implementation type could be obtained from the
+	 * &lt;/code&gt;porta.properties&lt;/code&gt; file in the implementation JAR.
+	 * &lt;/p&gt;
+	 * 
+	 * &lt;/p&gt; Other required properties are specific to the selected server type.
+	 * Consult the java doc of the server factory class in the implementation
+	 * JAR. &lt;/p&gt;
+	 * 
+	 * @param props
+	 *            - a set of properties that determines the implementation
+	 *            object that will be returned as instance of the
+	 *            &lt;code&gt;Server&lt;/code&gt; interface
+	 * 
+	 * @return instance of the &lt;code&gt;Server&lt;/code&gt; interface.
+	 * 
+	 * @throws IllegalArgumentException
+	 *             - if a required property is missing, or a property value is
+	 *             invalid or not supported
+	 * @throws CoreException
+	 *             - if a problem happens while creating the &lt;code&gt;Server&lt;/code&gt;
+	 *             instance
+	 * 
+	 * @see #SERVER_TYPE
+	 */
+	public static Server createServer(Properties properties) throws CoreException {
+<span class="nc bnc" id="L131" title="All 2 branches missed.">		if (properties == null) {</span>
+<span class="nc" id="L132">			throw new NullPointerException(&quot;properties cannot be null&quot;);</span>
+		}
+		
+<span class="nc" id="L135">		String type = properties.getProperty(SERVER_TYPE);</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">		if (type == null) {</span>
+<span class="nc" id="L137">			throw new IllegalArgumentException(String.format(&quot;%s property missing&quot;, SERVER_TYPE));</span>
+		}
+		
+<span class="nc" id="L140">		String factory = map.get(type);</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">		if (factory == null) {</span>
+<span class="nc" id="L142">			throw new IllegalArgumentException(String.format(&quot;%s is not supported server type. Supported types are: %s. &quot;, type, map.keySet()));</span>
+		}
+		
+		try {
+<span class="nc" id="L146">			Class&lt;?&gt; factoryClass = Class.forName(factory);</span>
+<span class="nc" id="L147">			Method method = factoryClass.getMethod(&quot;createServer&quot;, new Class[] { Properties.class });</span>
+<span class="nc" id="L148">			return (Server) method.invoke(null, properties);</span>
+<span class="nc" id="L149">		} catch (Exception e) {</span>
+<span class="nc" id="L150">			throw new CoreException(e);</span>
+		}
+	}
+	
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

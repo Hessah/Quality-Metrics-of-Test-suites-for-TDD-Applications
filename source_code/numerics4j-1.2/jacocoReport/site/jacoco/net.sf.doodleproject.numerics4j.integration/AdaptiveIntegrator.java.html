@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>AdaptiveIntegrator.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">numerics4j</a> &gt; <a href="index.source.html" class="el_package">net.sf.doodleproject.numerics4j.integration</a> &gt; <span class="el_source">AdaptiveIntegrator.java</span></div><h1>AdaptiveIntegrator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2005, DoodleProject
+ * All rights reserved.
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 
+ * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ * 
+ * Redistributions in binary form must reproduce the above copyright
+ * notice, this list of conditions and the following disclaimer in
+ * the documentation and/or other materials provided with the
+ * distribution.
+ * 
+ * Neither the name of DoodleProject nor the names of its
+ * contributors may be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+ * CONTRIBUTORS &quot;AS IS&quot; AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+ * TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ * ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+ * TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
+ * THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+package net.sf.doodleproject.numerics4j.integration;
+
+import net.sf.doodleproject.numerics4j.IterativeMethod;
+import net.sf.doodleproject.numerics4j.exception.ConvergenceException;
+import net.sf.doodleproject.numerics4j.exception.NumericException;
+import net.sf.doodleproject.numerics4j.function.Function;
+
+/**
+ * &lt;p&gt;
+ * An implementation of adaptive quadrature.
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * For example, to evaluate definite integrals for sine, first a
+ * {@link net.sf.doodleproject.numerics4j.function.Function} is defined:
+ * &lt;pre&gt;Function sine = new Function() {
+ *    public double evaluate(double x) {
+ *        return Math.sin(x);
+ *    }}
+ * };&lt;/pre&gt;
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * Then, an adaptive integrator is created with the above function:
+ * &lt;pre&gt;AdaptiveIntegrator integrator = new AdaptiveIntegrator(sine);&lt;/pre&gt;
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * Lastly, evaluating definite integrals is accomplished using the
+ * {@link #integrate(double, double)} method:
+ * &lt;pre&gt;// integrate sine from 0 to Pi.
+ * double two = integrator.integrate(0.0, Math.PI);
+ * 
+ * // integrate sine from Pi/2 to 2 Pi.
+ * double one = integrator.integrate(Math.PI / 2.0, Math.PI);&lt;/pre&gt;
+ * &lt;/p&gt;
+
+ * &lt;p&gt;
+ * References:
+ * &lt;ol&gt;
+ * &lt;li&gt;
+ *   &quot;Adaptive Quadrature.&quot;
+ *   &lt;a target=&quot;_blank&quot;
+ *     href=&quot;http://www.cse.uiuc.edu/eot/modules/integration/adaptivq/&quot;&gt;
+ *   http://www.cse.uiuc.edu/eot/modules/integration/adaptivq/&lt;/a&gt;
+ * &lt;/li&gt;
+ * &lt;/ol&gt;
+ * &lt;/p&gt;
+ * 
+ * @version $Revision: 1.2 $ $Date: 2005/06/24 15:39:15 $
+ * @since 1.1
+ */
+public class AdaptiveIntegrator extends IterativeMethod {
+    
+    /** the target function. */ 
+    private Function function;
+
+    /**
+     * Create an integrator for the given function.
+     * @param f the target function.
+     */
+    public AdaptiveIntegrator(Function f) {
+<span class="fc" id="L97">        this(f, 100, 1.0e-10);</span>
+<span class="fc" id="L98">    }</span>
+
+    /**
+     * Create an integrator for the given function.
+     * @param f the target function.
+     * @param iterations maximum number of iterations.
+     * @param error maximum relative error.
+     */
+    public AdaptiveIntegrator(Function f, int iterations, double error) {
+<span class="fc" id="L107">        super(iterations, error);</span>
+<span class="fc" id="L108">        setFunction(f);</span>
+<span class="fc" id="L109">    }</span>
+
+    /**
+     * Access the target function.
+     * @return the target function.
+     */
+    public Function getFunction() {
+<span class="fc" id="L116">        return function;</span>
+    }
+
+    /**
+     * Recursively integrate the target function from &lt;tt&gt;a&lt;/tt&gt; to &lt;tt&gt;b&lt;/tt&gt;
+     * by subdividing that interval into smaller intervals.
+     * @param a the lower limit of integration.
+     * @param b the upper limit of integration.
+     * @param fa the value of the function evaluated at &lt;tt&gt;a&lt;/tt&gt;.
+     * @param fb the value of the function evaluated at &lt;tt&gt;b&lt;/tt&gt;.
+     * @param fc the value of the function evaluated at the midpoint between
+     *        &lt;tt&gt;a&lt;/tt&gt; and &lt;tt&gt;b&lt;/tt&gt;.
+     * @param h the current interval size.
+     * @param error the maximum relative error.
+     * @param s the current integral value.
+     * @param level the current level of interval division.
+     * @return the definite integral from &lt;tt&gt;a&lt;/tt&gt; to &lt;tt&gt;b&lt;/tt&gt;.
+     * @throws NumericException if the integral can not be evaluated.
+     */
+    private double integrate(double a, double b, double fa, double fb,
+        double fc, double h, double error, double s, int level)
+        throws NumericException
+    {
+<span class="fc" id="L139">        double ret = s;</span>
+        
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">        if (level &lt; getMaximumIterations()) {</span>
+            double fd, fe, s1, s2;
+
+<span class="fc" id="L144">            fd = function.evaluate(a + h / 2.0);</span>
+<span class="fc" id="L145">            fe = function.evaluate(a + 3.0 * h / 2.0);</span>
+<span class="fc" id="L146">            s1 = h * (fa + (4.0 * fd) + fc) / 6.0;</span>
+<span class="fc" id="L147">            s2 = h * (fc + (4.0 * fe) + fb) / 6.0;</span>
+<span class="fc" id="L148">            double sn = s1 + s2;</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (Math.abs(sn / s - 1.0) &lt;= error) {</span>
+<span class="fc" id="L150">                ret = sn;</span>
+            } else {
+<span class="fc" id="L152">                double hn = h / 2.0;</span>
+<span class="fc" id="L153">                double e = error / 2;</span>
+<span class="fc" id="L154">                double pivot = a + h;</span>
+<span class="fc" id="L155">                int n = level + 1;</span>
+<span class="fc" id="L156">                ret = integrate(a, pivot, fa, fc, fd, hn, e, s1, n) +</span>
+                    integrate(pivot, b, fc, fb, fe, hn, e, s2, n);
+            }
+<span class="fc" id="L159">        } else {</span>
+<span class="nc" id="L160">            throw new ConvergenceException(</span>
+                &quot;Adaptive quadrature failed to converge.&quot;);
+        }
+        
+<span class="fc" id="L164">        return ret;</span>
+    }
+
+    /**
+     * Evaluate the definite integral from &lt;tt&gt;a&lt;/tt&gt; to &lt;tt&gt;b&lt;/tt&gt;.
+     * @param a the lower limit of integration.
+     * @param b the upper limit of integration.
+     * @return the definite integral from &lt;tt&gt;a&lt;/tt&gt; to &lt;tt&gt;b&lt;/tt&gt;.
+     * @throws NumericException if the integral can not be evaluated.
+     */
+    public double integrate(double a, double b) throws NumericException {
+        double ret;
+        
+<span class="fc bfc" id="L177" title="All 4 branches covered.">        if (Double.isNaN(a) || Double.isNaN(b)) {</span>
+<span class="fc" id="L178">            ret = Double.NaN;</span>
+        } else {
+<span class="fc" id="L180">            double h = (b - a) / 2.0;</span>
+<span class="fc" id="L181">            double fa = function.evaluate(a);</span>
+<span class="fc" id="L182">            double fm = function.evaluate(a + h);</span>
+<span class="fc" id="L183">            double fb = function.evaluate(b);</span>
+<span class="fc" id="L184">            double s = h * (fa + 4.0 * fm + fb) / 3.0;</span>
+<span class="fc" id="L185">            ret = integrate(a, b, fa, fb, fm, h,</span>
+                getMaximumRelativeError(), s, 1);
+        }
+        
+<span class="fc" id="L189">        return ret;</span>
+    }
+    
+    /**
+     * Modify the target function.
+     * @param f the new target function.
+     */
+    public void setFunction(Function f) {
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (f == null) {</span>
+<span class="fc" id="L198">            throw new IllegalArgumentException(&quot;Function can not be null.&quot;);</span>
+        }
+<span class="fc" id="L200">        this.function = f;</span>
+<span class="fc" id="L201">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

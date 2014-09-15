@@ -1,0 +1,129 @@
+<project name="helium" default="coverage" basedir=".">
+
+  <property file="build.properties" />
+
+  <!-- Coverage -->
+  <property name="coverage.lib" location="lib/test" />
+  <property name="build.coverage" location="${build.home}/coverage" />
+  <property name="build.coverage.src" location="${build.coverage}/src" />
+  <property name="build.coverage.tests" location="${build.coverage}/tests" />
+  <property name="build.coverage.classes"
+            location="${build.coverage}/classes" />
+  <property name="build.coverage.instrument"
+            location="${build.coverage}/instrumented-classes" />
+  <property name="build.coverage.reports"
+            location="${build.coverage}/reports" />
+
+  <path id="junit.cp">
+    <pathelement location="${jcoverage.lib}/junit/3.8.1/junit.jar" />
+  </path>
+
+  <path id="compile.cp">
+    <fileset dir="./lib" />
+  </path>
+
+  <path id="coverage.cp">
+    <fileset dir="${coverage.lib}" />
+  </path>
+
+  <taskdef classpathref="coverage.cp" resource="emma_ant.properties" />
+
+  <target name="clean">
+    <delete dir="${build.home}" />
+  </target>
+
+  <target name="prepare"
+          description="Prepare for Coverage">
+    <tstamp />
+    <mkdir dir="${build.home}" />
+    <mkdir dir="${build.coverage}" />
+    <mkdir dir="${build.coverage.src}" />
+    <mkdir dir="${build.coverage.tests}" />
+    <mkdir dir="${build.coverage.classes}" />
+    <mkdir dir="${build.coverage.instrument}" />
+    <mkdir dir="${build.coverage.reports}" />
+    <copy todir="${build.coverage.src}">
+      <fileset dir="${src.api}" />
+      <fileset dir="${src.impl}" />
+      <fileset dir="${src.heliumx}" />
+    </copy>
+    <copy todir="${build.coverage.tests}">
+      <fileset dir="${src.test}" />
+      <fileset dir="${src.impl}">
+        <include name="**/*.has"/>
+      </fileset>
+      <fileset dir="${src.heliumx}">
+        <include name="**/*.has"/>
+      </fileset>
+    </copy>
+  </target>
+
+  <target name="compile"
+          depends="prepare"
+          description="Compile for Coverage">
+    <echo level="warning" message="Debugging: on" />
+    <javac srcdir="${build.coverage.src}"
+           destdir="${build.coverage.classes}"
+           nowarn="on"
+           debug="yes">
+      <classpath refid="compile.cp" />
+    </javac>
+    <javac srcdir="${build.coverage.tests}" nowarn="on" debug="yes">
+      <classpath refid="junit.cp" />
+      <classpath refid="compile.cp" />
+      <classpath location="${build.coverage.classes}" />
+    </javac>
+  </target>
+
+  <target name="instrument"
+          depends="compile"
+          description="Add Coverage instrumentation">
+    <path id="build.coverage.classes.cp">
+      <pathelement location="${build.coverage.classes}" />
+    </path>
+    <emma enabled="true">
+      <instr instrpathref="build.coverage.classes.cp"
+             destdir="${build.coverage.instrument}"
+             metadatafile="${build.coverage}/metadata.emma"
+             merge="true" />
+    </emma>
+  </target>
+
+  <target name="test"
+          depends="instrument"
+          description="Unit test the application with Coverage">
+    <junit fork="yes" printsummary="on" dir="${basedir}">
+      <classpath>
+        <pathelement location="${build.coverage.instrument}" />
+        <pathelement location="${build.coverage.classes}" />
+        <pathelement location="${build.coverage.tests}" />
+        <path refid="coverage.cp" />
+        <path refid="compile.cp" />
+      </classpath>
+      <jvmarg value="-Demma.coverage.out.file=${build.coverage}/coverage.emma" />
+      <jvmarg value="-Demma.coverage.out.merge=false" />
+      <formatter type="xml" usefile="false" />
+
+      <test name="${test-suite}" />
+    </junit>
+  </target>
+
+  <target name="coverage"
+          depends="clean,test"
+          description="Run Coverage">
+    <emma enabled="true">
+      <report sourcepath="${build.coverage.src}">
+        <fileset dir="${build.coverage}">
+          <include name="*.emma" />
+        </fileset>
+        <txt outfile="${build.coverage.reports}/coverage.txt" />
+        <html outfile="${build.coverage.reports}/coverage.html" />
+      </report>
+    </emma>
+
+    <jar jarfile="${build.home}/${ant.project.name}-coverage.jar"
+         basedir="${build.coverage.reports}" />
+    <echo>Coverage: Reports built and found in ${build.home}</echo>
+  </target>
+
+</project>

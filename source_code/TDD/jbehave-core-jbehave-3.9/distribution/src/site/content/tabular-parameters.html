@@ -1,0 +1,329 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html>
+<head>
+<title>Tabular Parameters</title>
+</head>
+
+<body>
+
+<h2>Tabular Parameters</h2>
+
+<p>Scenario writers may want to express parameters in a tabular
+structure. For example:</p>
+
+<pre class="brush: bdd">
+Given the traders: 
+|name|rank|
+|Larry|Stooge 3|
+|Moe|Stooge 1|
+|Curly|Stooge 2|
+When Traders are subset to ".*y" by name
+Then the traders returned are:
+|name|rank|
+|Larry|Stooge 3|
+|Curly|Stooge 2|
+</pre>
+
+<p>JBehave supports multi-line parameters out-of-the-box and the
+user only needs to declare the parameter type as <a
+    href="javadoc/core/org/jbehave/core/model/ExamplesTable.html">ExamplesTable</a>
+for it to be automatically parsed as a tabular structure:</p>
+
+<script type="syntaxhighlighter" class="brush: java">
+<![CDATA[
+    @Given("the traders ranks are: $ranksTable")
+    public void theTraders(ExamplesTable ranksTable) {
+        this.ranksTable = ranksTable;
+        this.traders = toTraders(ranksTable);
+    }
+
+    private List toTraders(ExamplesTable table) {
+        List traders = new ArrayList();
+        for (Map<String,String> row : table.getRows()) {
+            String name = row.get("name");
+            String rank = row.get("rank");
+            traders.add(new Trader(name, rank));
+        }
+        return traders;
+    }
+]]>
+</script>
+
+<h2>Parametrised tables</h2>
+
+<p>Sometimes, you may want to parametrise the table row values and replace them with named parameters, 
+e.g. as specified in the Examples table and changing for each parametrised scenario:
+</p>
+<script type="syntaxhighlighter" class="brush: bdd">
+<![CDATA[
+Given that Larry has done <trades> trades
+Then the traders activity is: 
+|name|trades|
+|Larry|<trades>|
+|Moe|1000|
+|Curly|2000|
+
+Examples:
+|<trades>|
+|3000|
+|5000|
+]]>
+</script>
+
+<p>The <a
+    href="javadoc/core/org/jbehave/core/model/ExamplesTable.html">ExamplesTable</a> provide an option to specify whether the
+named parameters should be replaced in the values when retrieving the rows as parameters:</p>
+
+<script type="syntaxhighlighter" class="brush: java">
+<![CDATA[
+    @Then("the traders activity is: $table")
+    public void theTraderActivityIs(ExamplesTable table) {
+        boolean replaceNamedParameters = true;
+        int trades = table.getRowAsParameters(0, replaceNamedParameters).valueAs("trades", int.class);
+        // expect 3000 
+    }
+]]>
+</script>
+
+<h2>Row values as converted parameters</h2>
+
+<p>Besides retrieveing the row values as String name-value pairs,
+the user retrieve them as <a
+    href="javadoc/core/org/jbehave/core/steps/Parameters.html">Parameters</a>,
+which allow the values to converted to the desidered type, using the
+same <a
+    href="javadoc/core/org/jbehave/core/steps/ParameterConverters.html">ParameterConverters</a>
+defined in the stories configuration:</p>
+
+<pre class="brush: bdd">
+Then the traders activity is: 
+|name|trades|
+|Larry|3000|
+|Moe|1000|
+|Curly|2000|
+</pre>
+
+<script type="syntaxhighlighter" class="brush: java">
+<![CDATA[
+    @Then("the traders activity is: $activityTable")
+    public void theTradersActivity(ExamplesTable activityTable) {
+        for (Parameters row : rows.getRowsAsParameters()) {
+            Trader trader = row.valueAs("name", Trader.class);
+            int trades = row.valueAs("trades", Integer.class);
+            System.out.println(trader.getName() + " has done " + trades + " trades");
+        }
+    }
+]]>
+</script>
+
+<p>In order not to repeat values in tabular structures, defaults are supported that allow re-use of previous defined tables: </p>
+
+<script type="syntaxhighlighter" class="brush: java">
+<![CDATA[
+    @Then("the current trader activity is: $activityTable")
+    public void theTradersActivityIs(ExamplesTable activityTable) {
+        for (int i = 0; i < activityTable.getRowCount(); i++) {
+            Parameters row = activityTable.withDefaults(this.ranksTable.getRowAsParameters(i)).getRowAsParameters(i);
+            System.out.println(row.valueAs("name", Trader.class).getName() + " ("+row.valueAs("rank", String.class, "N/A")+") has done " + row.valueAs("trades", Integer.class) + " trades");            
+        }
+    }
+]]>
+</script>
+
+<p>In this example, the row parameters are the union (for the corresponding row number) of the ranks and activity tables.  Note
+that any existing value in the row map of data will not be overridden.</p>
+
+<p>Finally, the Parameters facade also allows for specification of a default value if the parameter name is not found:</p>
+
+<script type="syntaxhighlighter" class="brush: java">
+<![CDATA[
+    @Then("the current trader activity is: $activityTable")
+    public void theTradersActivityIs(ExamplesTable activityTable) {
+        Parameters row = activityTable.getRowAsParameters(0);
+        String name = row.valueAs("name", String.class);
+        String organisation = row.valueAs("organisation", String.class, "N/A");
+        System.out.println(name + " is part of organisation: " + organisation);
+    }
+]]>
+</script>
+
+<h2>Mapping parameters to custom types</h2>
+
+<p>It may sometime be useful to map the table row parameters to a custom object. This can be done by annotating the type with the <a
+    href="javadoc/core/org/jbehave/core/annotations/AsParameters.html">AsParameters</a> annotation:</p>
+<script type="syntaxhighlighter" class="brush: java">
+<![CDATA[
+    @AsParameters
+    public static class MyParameters {
+        @Parameter(name = "aString")
+        private String string;
+        @Parameter(name = "anInteger")
+        private Integer integer;
+        @Parameter(name = "aBigDecimal")
+        private BigDecimal bigDecimal;
+    }
+ ]]>
+</script>
+<p>The fields can be optionally mapped to the parameter names via the <a
+    href="javadoc/core/org/jbehave/core/annotations/Parameter.html">Parameter</a> annotation.</p>  If not present, the default mapping will use the name of fields to match the name of the parameters.
+
+<p>Once we've defined our custom parameters type, we can inject it in a method requiring one or more of these types:</p> 
+<script type="syntaxhighlighter" class="brush: java">
+    @Given("the parameters mapped via names to custom types: %table")
+    public void givenTheNamedParametersList(List<MyParameters> list) {
+        System.out.println("List named: "+list);
+    }
+
+    @Given("the parameters mapped via names to custom type: %table")
+    public void givenTheNamedParametersType(MyParameters single) {
+        System.out.println("Single named: "+single);
+    }
+</script>
+<p>If we cannot control the custom type, e.g. we want to map to a type contained in a third-party library, we can still achieve the mapping programmatically:</p>
+<script type="syntaxhighlighter" class="brush: java">
+    @Given("the parameters mapped via names to custom types: %table")
+    public void givenTheNamedParametersList(ExamplesTable table) {
+        Map<String, String> nameMapping = new HashMap<String, String>();
+        nameMapping.put("aString", "string");
+        nameMapping.put("anInteger", "integer");        
+        List<ThirdPartyParameters> parameters = examplesTable.getRowsAs(ThirdPartyParameters.class, nameMapping);
+        ...
+    }
+</script>
+
+<h2>Preserving whitespace</h2>
+
+<p>By default, value in the table are trimmed, i.e. any preceding
+and trailing whitespace is removed. This is the most useful and common
+usecase. If, for some reason, you need to preserve the whitespace, you
+can specify an optional parsing property:</p>
+
+<pre class="brush: plain">
+{trim=false}
+|name |rank    |
+|Larry|Stooge 3|
+|Moe  |Stooge 1|
+|Curly|Stooge 2|
+</pre>
+
+<h2>Specifying inlined separators</h2>
+
+<p>
+ The separators are also configurable via inlined properties: 
+<pre class="brush: plain">
+{ignorableSeparator=!--,headerSeparator=!,valueSeparator=!,commentSeparator=#}
+!header 1!header 2! .... !header n!
+!-- An ignored row --!
+!value 11#comment in value!value 12! .... !value 1n!
+...
+!-- Another ignored row --!
+!value m1!value m2! .... !value mn!
+</pre>
+</p>
+
+<h2>Using table transformers</h2>
+
+<p>
+Table transformers allow the table to be transformed via an inlined property.  E.g. to transform from a landscape table form we can to use the pre-registered transformer:
+<pre class="brush: plain">
+{transformer=FROM_LANDSCAPE}
+|header 1|value 11| ... | value m1|
+...
+|header n|value 1n| .... !value mn!
+</pre>
+Or one can define our own custom transformer
+<pre class="brush: plain">
+{transformer=FROM_MY_FORMAT}
+...
+</pre>
+In this case the custom transformer needs to be registered by name with the <a
+    href="javadoc/core/org/jbehave/core/model/TableTransformers.html">TableTransformers</a> via the <a
+    href="javadoc/core/org/jbehave/core/model/ExamplesTableFactory.html">ExamplesTableFactory</a>:
+</p>
+<script type="syntaxhighlighter" class="brush: java">
+<![CDATA[
+        TableTransformers tableTransformers = new TableTransformers();
+        tableTransformers.useTransformer("FROM_MY_FORMAT", new TableTransformer(){
+
+            public String transform(String tableAsString, Properties properties) {
+                return ...; // transform as required
+            }
+            
+        });
+        ExamplesTableFactory tableFactory = new ExamplesTableFactory(tableTransformers);
+]]>
+</script>
+<p>The custom table factory then needs to be configured to used by the parameter converters and the story parser:</p>
+<script type="syntaxhighlighter" class="brush: java">
+<![CDATA[
+        new MostUsefulConfiguration()
+                .useParameterConverters(new ParameterConverters().addConverters(new ExamplesTableConverter(tableFactory)))
+                .useStoryParser(new RegexStoryParser(tableFactory))
+]]>
+</script>
+
+<h2>Loading tabular parameter from an external resource</h2>
+
+<p>The tabular parameter can also be loaded from an external
+resource, be it a classpath resource or a URL.</p>
+<script type="syntaxhighlighter" class="brush: bdd">
+<![CDATA[
+Given the traders: org/jbehave/examples/trader/stories/traders.table    
+]]>
+</script>
+
+<p>We need to enable theExamplesTable parameter converter to find
+the resource with the appropriate resource loader configured via the <a
+    href="javadoc/core/org/jbehave/core/model/ExamplesTableFactory.html">ExamplesTableFactory</a></p>:
+<script type="syntaxhighlighter" class="brush: java">
+<![CDATA[
+    new ParameterConverters().addConverters(new ExamplesTableConverter(new ExamplesTableFactory(new LoadFromClasspath(this.getClass()))))
+]]>
+</script>
+
+<h2>Modifying content of tabular parameter</h2>
+
+<p>When using ExamplesTable to process tabular parameter data, it may be useful to allow additions of columns to the table for a given row, e.g. to express a result value for given row.  
+The non-affected rows would then be given default blank values for the new column.</p>
+<script type="syntaxhighlighter" class="brush: java">
+<![CDATA[
+ExamplesTable table = ... // provided as parameter
+int row = 0;
+Map<String,String> rowValues = ... // a map holding the new or updated values
+table.withRowValues(row, rowValues);
+]]>
+</script>
+<p>Equally, we may want to start from the content data (list of maps) and create a new table with modified content.</p>
+<script type="syntaxhighlighter" class="brush: java">
+<![CDATA[
+ExamplesTable table = ... // provided as parameter
+List<Map<String,String>> content = table.getRows();
+// modify content as necessary
+ExamplesTable updatedTable = table.withRows(content);
+]]>
+</script>
+<p>Once modified, the table can be written to an output:</p>
+<script type="syntaxhighlighter" class="brush: java">
+<![CDATA[
+ExamplesTable table = ... // provided or modified
+table.outputTo(new PrintStream(new FileOutputStream(new File("output.table))));
+]]>
+</script>
+
+<p>In other words, ExamplesTable can be used for both the string->content and the content->string transformations when implementing a step with tabular parameters.</p>
+
+<span class="followup">Under the hood, JBehave users the same table parsing
+functionality of the <a href="parametrised-scenarios.html">parametrised
+scenarios</a>, but there is a fundamental difference between these two use
+cases: with parametrised scenarios, the scenario is run for each line of
+the table (using in each execution the parameter values of the given
+row), while in using tabular parameters we are simply using the tabular
+structure as a parameter, and how this structure is interpreted is up to
+the scenario writer. The difference is in the <b>Examples:</b> keyword,
+which is only present for parametrised scenarios.</span>
+
+<div class="clear">
+<hr />
+</div>
+</body>
+</html>

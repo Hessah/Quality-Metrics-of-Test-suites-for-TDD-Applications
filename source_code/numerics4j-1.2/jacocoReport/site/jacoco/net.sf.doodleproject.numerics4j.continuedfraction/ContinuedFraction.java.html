@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ContinuedFraction.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">numerics4j</a> &gt; <a href="index.source.html" class="el_package">net.sf.doodleproject.numerics4j.continuedfraction</a> &gt; <span class="el_source">ContinuedFraction.java</span></div><h1>ContinuedFraction.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2004, DoodleProject
+ * All rights reserved.
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 
+ * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ * 
+ * Redistributions in binary form must reproduce the above copyright
+ * notice, this list of conditions and the following disclaimer in
+ * the documentation and/or other materials provided with the
+ * distribution.
+ * 
+ * Neither the name of DoodleProject nor the names of its
+ * contributors may be used to endorse or promote products derived
+ * from this software without specific prior written permission.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+ * CONTRIBUTORS &quot;AS IS&quot; AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+ * TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ * ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+ * TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
+ * THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+package net.sf.doodleproject.numerics4j.continuedfraction;
+
+import net.sf.doodleproject.numerics4j.IterativeMethod;
+import net.sf.doodleproject.numerics4j.exception.NumericException;
+
+/**
+ * &lt;p&gt;
+ * This class provides the means to evaluate continued fractions (1).
+ * To create a continued fraction, authors subclass this class and provided
+ * concrete a and b coefficient methods.
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * For example, this is the continued fraction for the exponential function
+ * defined by (2):
+ * &lt;pre&gt;ContinuedFraction exponential = new ContinuedFraction() {
+ *     public double getA(int n, double x) {
+ *         if (n == 0) {
+ *             return 1.0;
+ *         } else if (n % 2 == 0) { // even
+ *             return 2.0;
+ *         } else { // odd
+ *             return n;
+ *         }
+ *     }
+ *    
+ *     public double getB(int n, double x) {
+ *         if (n % 2 == 0) { // even
+ *             return x;
+ *         } else { // odd
+ *             return -x;
+ *         }
+ * }&lt;/pre&gt;
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * References:
+ * &lt;ol&gt;
+ * &lt;li&gt;
+ *   Eric W. Weisstein. &quot;Continued Fraction.&quot; From MathWorld--A Wolfram Web
+ *   Resource. &lt;a target=&quot;_blank&quot;
+ *   href=&quot;http://mathworld.wolfram.com/ContinuedFraction.html&quot;&gt;
+ *   http://mathworld.wolfram.com/ContinuedFraction.html&lt;/a&gt;
+ * &lt;/li&gt;
+ * &lt;li&gt;
+ *   Exponential Function: Continued Fraction Representation. &lt;a
+ *   target=&quot;_blank&quot; href=&quot;http://functions.wolfram.com/01.03.10.0001.01&quot;&gt;
+ *   http://functions.wolfram.com/01.03.10.0001.01&lt;/a&gt;
+ * &lt;/li&gt;
+ * &lt;/ol&gt;
+ * &lt;/p&gt;
+ * 
+ * @version $Revision: 1.10 $ $Date: 2005/06/24 15:39:19 $
+ */
+public abstract class ContinuedFraction extends IterativeMethod {
+
+    /**
+     * The internal state used during continued fraction evaluation. 
+     */
+    class IterativeState implements IterativeMethod.IterativeState {
+
+        /** A very small number used as a replacement for zero. */
+        private static final double TINY = 1.0e-100;
+        
+        /** The numerator of the current convergent. */
+        private double c;
+        
+        /** The denominator of the current convergent. */
+        private double d;
+        
+        /** The current change in consecutive convergents. */
+        private double delta;
+        
+        /** The current convergent. */
+        private double f;
+        
+        /** The current iteration. */
+        private int n;
+        
+        /** The evaluation point. */
+        private double x;
+        
+        /**
+         * Create a state object for the given evaluation point.
+         * @param t the point of evaluation.
+         */
+<span class="fc" id="L121">        IterativeState(double t) {</span>
+<span class="fc" id="L122">            super();</span>
+<span class="fc" id="L123">            x = t;</span>
+<span class="fc" id="L124">        }</span>
+
+        /**
+         * Access the current iteration.
+         * @return the current iteration.
+         */
+        public int getIterations() {
+<span class="fc" id="L131">            return n;</span>
+        }
+
+        /**
+         * Access the current relative error in the evaluation.
+         * @return the current relative error.
+         */
+        public double getRelativeError() {
+<span class="fc" id="L139">            return delta - 1.0;</span>
+        }
+
+        /**
+         * Initialize the state to begin a continued fraction evaluation.
+         */
+        public void initialize() {
+<span class="fc" id="L146">            f = zeroToTiny(getA(0, x));</span>
+<span class="fc" id="L147">            c = f;</span>
+<span class="fc" id="L148">            d = 0.0;</span>
+<span class="fc" id="L149">            n = 0;</span>
+<span class="fc" id="L150">        }</span>
+        
+        /**
+         * 
+         * Perform the next iteration of the continued fraction evaluation.
+         * The current state is updated with the newly compuated convergent
+         * data.  This method is based on the modified Lentz's method (1).
+         * 
+         * 
+         * References:
+         * Lentz, W.J. 1976, Applied Optics, vol. 15, pp. 668�671.
+         * 
+         */
+        public void iterate() {
+<span class="fc" id="L164">            ++n;</span>
+<span class="fc" id="L165">            double a = getA(n, x);</span>
+<span class="fc" id="L166">            double b = getB(n, x);</span>
+<span class="fc" id="L167">            d = zeroToTiny(a + b * d);</span>
+<span class="fc" id="L168">            c = zeroToTiny(a + b / c);</span>
+<span class="fc" id="L169">            d = 1.0 / d;</span>
+<span class="fc" id="L170">            delta = c * d;</span>
+<span class="fc" id="L171">            f = f * delta;</span>
+<span class="fc" id="L172">        }</span>
+
+        /**
+         * Access the result of this evaluation.
+         * @return the continued fraction evaluated at &lt;tt&gt;x&lt;/tt&gt;
+         */
+        double getResult() {
+<span class="fc" id="L179">            iterate();</span>
+<span class="fc" id="L180">            return f;</span>
+        }
+
+        /**
+         * Utility method to shift zeros by a small amount (1E-100).
+         * @param t the value to shift.
+         * @return if &lt;tt&gt;t&lt;/tt&gt; is zero, 1E-100. Otherwise, &lt;tt&gt;t&lt;/tt&gt;
+         */
+        private double zeroToTiny(double t) {
+<span class="fc" id="L189">            double ret = t;</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">            if (t == 0) {</span>
+<span class="fc" id="L191">                ret = TINY;</span>
+            }
+<span class="fc" id="L193">            return ret;</span>
+        }
+    }
+
+    /**
+     * Default constructor.
+     */
+    protected ContinuedFraction() {
+<span class="fc" id="L201">        this(100, 1.0e-15);</span>
+<span class="fc" id="L202">    }</span>
+
+    /**
+     * Create a continued fraction with the given number of maximum iterations
+     * and maximum relative error.
+     * @param iterations maximum number of iterations.
+     * @param error maximum relative error.
+     */
+    protected ContinuedFraction(int iterations, double error) {
+<span class="fc" id="L211">        super(iterations, error);</span>
+<span class="fc" id="L212">    }</span>
+
+    /**
+     * Evaluate this continued fraction at the given value. 
+     * @param x the point of evalutation.
+     * @return the value of this continued fraction evaluated at &lt;tt&gt;x&lt;/tt&gt;.
+     * @throws NumericException if the continued fraction could not be
+     *         evaluated.
+     */
+    public double evaluate(double x) throws NumericException {
+<span class="fc" id="L222">        IterativeState state = new IterativeState(x);</span>
+<span class="fc" id="L223">        iterate(state);</span>
+<span class="fc" id="L224">        return state.getResult();</span>
+    }
+
+    /**
+     * Access the &lt;tt&gt;n&lt;/tt&gt;-th a coefficient.
+     * @param n the coefficient index.
+     * @param x the continued fraction evaluation point.
+     * @return the &lt;tt&gt;n&lt;/tt&gt;-th a coefficient.
+     */
+    protected abstract double getA(int n, double x);
+
+    /**
+     * Access the &lt;tt&gt;n&lt;/tt&gt;-th b coefficient.
+     * @param n the coefficient index.
+     * @param x the continued fraction evaluation point.
+     * @return the &lt;tt&gt;n&lt;/tt&gt;-th b coefficient.
+     */
+    protected abstract double getB(int n, double x);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>
