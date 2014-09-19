@@ -1,6 +1,6 @@
 #!/bin/bash 
 # Written by: Hessah Alkaoud
-# it will go through all the benchmarks and redo the experiment to generate the mutation analysisi metric.
+# it will go through all the benchmarks and redo the experiment to generate the mutation analysis metric.
 
 # trove
 for i in 1
