@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>NullReader.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-io</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.io.input</a> &gt; <span class="el_source">NullReader.java</span></div><h1>NullReader.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ * 
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.io.input;
+
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.Reader;
+
+/**
+ * A functional, light weight {@link Reader} that emulates
+ * a reader of a specified size.
+ * &lt;p&gt;
+ * This implementation provides a light weight
+ * object for testing with an {@link Reader}
+ * where the contents don't matter.
+ * &lt;p&gt;
+ * One use case would be for testing the handling of
+ * large {@link Reader} as it can emulate that
+ * scenario without the overhead of actually processing
+ * large numbers of characters - significantly speeding up
+ * test execution times.
+ * &lt;p&gt;
+ * This implementation returns a space from the method that
+ * reads a character and leaves the array unchanged in the read
+ * methods that are passed a character array.
+ * If alternative data is required the &lt;code&gt;processChar()&lt;/code&gt; and
+ * &lt;code&gt;processChars()&lt;/code&gt; methods can be implemented to generate
+ * data, for example:
+ *
+ * &lt;pre&gt;
+ *  public class TestReader extends NullReader {
+ *      public TestReader(int size) {
+ *          super(size);
+ *      }
+ *      protected char processChar() {
+ *          return ... // return required value here
+ *      }
+ *      protected void processChars(char[] chars, int offset, int length) {
+ *          for (int i = offset; i &lt; length; i++) {
+ *              chars[i] = ... // set array value here
+ *          }
+ *      }
+ *  }
+ * &lt;/pre&gt;
+ *
+ * @since 1.3
+ * @version $Id: NullReader.java 1307462 2012-03-30 15:13:11Z ggregory $
+ */
+public class NullReader extends Reader {
+
+    private final long size;
+    private long position;
+<span class="fc" id="L67">    private long mark = -1;</span>
+    private long readlimit;
+    private boolean eof;
+    private final boolean throwEofException;
+    private final boolean markSupported;
+
+    /**
+     * Create a {@link Reader} that emulates a specified size
+     * which supports marking and does not throw EOFException.
+     *
+     * @param size The size of the reader to emulate.
+     */
+    public NullReader(long size) {
+<span class="fc" id="L80">       this(size, true, false);</span>
+<span class="fc" id="L81">    }</span>
+
+    /**
+     * Create a {@link Reader} that emulates a specified
+     * size with option settings.
+     *
+     * @param size The size of the reader to emulate.
+     * @param markSupported Whether this instance will support
+     * the &lt;code&gt;mark()&lt;/code&gt; functionality.
+     * @param throwEofException Whether this implementation
+     * will throw an {@link EOFException} or return -1 when the
+     * end of file is reached.
+     */
+<span class="fc" id="L94">    public NullReader(long size, boolean markSupported, boolean throwEofException) {</span>
+<span class="fc" id="L95">       this.size = size;</span>
+<span class="fc" id="L96">       this.markSupported = markSupported;</span>
+<span class="fc" id="L97">       this.throwEofException = throwEofException;</span>
+<span class="fc" id="L98">    }</span>
+
+    /**
+     * Return the current position.
+     *
+     * @return the current position.
+     */
+    public long getPosition() {
+<span class="fc" id="L106">        return position;</span>
+    }
+
+    /**
+     * Return the size this {@link Reader} emulates.
+     *
+     * @return The size of the reader to emulate.
+     */
+    public long getSize() {
+<span class="nc" id="L115">        return size;</span>
+    }
+
+    /**
+     * Close this Reader - resets the internal state to
+     * the initial values.
+     *
+     * @throws IOException If an error occurs.
+     */
+    @Override
+    public void close() throws IOException {
+<span class="fc" id="L126">        eof = false;</span>
+<span class="fc" id="L127">        position = 0;</span>
+<span class="fc" id="L128">        mark = -1;</span>
+<span class="fc" id="L129">    }</span>
+
+    /**
+     * Mark the current position.
+     *
+     * @param readlimit The number of characters before this marked position
+     * is invalid.
+     * @throws UnsupportedOperationException if mark is not supported.
+     */
+    @Override
+    public synchronized void mark(int readlimit) {
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (!markSupported) {</span>
+<span class="fc" id="L141">            throw new UnsupportedOperationException(&quot;Mark not supported&quot;);</span>
+        }
+<span class="fc" id="L143">        mark = position;</span>
+<span class="fc" id="L144">        this.readlimit = readlimit;</span>
+<span class="fc" id="L145">    }</span>
+
+    /**
+     * Indicates whether &lt;i&gt;mark&lt;/i&gt; is supported.
+     *
+     * @return Whether &lt;i&gt;mark&lt;/i&gt; is supported or not.
+     */
+    @Override
+    public boolean markSupported() {
+<span class="fc" id="L154">        return markSupported;</span>
+    }
+
+    /**
+     * Read a character.
+     *
+     * @return Either The character value returned by &lt;code&gt;processChar()&lt;/code&gt;
+     * or &lt;code&gt;-1&lt;/code&gt; if the end of file has been reached and
+     * &lt;code&gt;throwEofException&lt;/code&gt; is set to {@code false}.
+     * @throws EOFException if the end of file is reached and
+     * &lt;code&gt;throwEofException&lt;/code&gt; is set to {@code true}.
+     * @throws IOException if trying to read past the end of file.
+     */
+    @Override
+    public int read() throws IOException {
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        if (eof) {</span>
+<span class="fc" id="L170">            throw new IOException(&quot;Read after end of file&quot;);</span>
+        }
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (position == size) {</span>
+<span class="fc" id="L173">            return doEndOfFile();</span>
+        }
+<span class="fc" id="L175">        position++;</span>
+<span class="fc" id="L176">        return processChar();</span>
+    }
+
+    /**
+     * Read some characters into the specified array.
+     *
+     * @param chars The character array to read into
+     * @return The number of characters read or &lt;code&gt;-1&lt;/code&gt;
+     * if the end of file has been reached and
+     * &lt;code&gt;throwEofException&lt;/code&gt; is set to {@code false}.
+     * @throws EOFException if the end of file is reached and
+     * &lt;code&gt;throwEofException&lt;/code&gt; is set to {@code true}.
+     * @throws IOException if trying to read past the end of file.
+     */
+    @Override
+    public int read(char[] chars) throws IOException {
+<span class="fc" id="L192">        return read(chars, 0, chars.length);</span>
+    }
+
+    /**
+     * Read the specified number characters into an array.
+     *
+     * @param chars The character array to read into.
+     * @param offset The offset to start reading characters into.
+     * @param length The number of characters to read.
+     * @return The number of characters read or &lt;code&gt;-1&lt;/code&gt;
+     * if the end of file has been reached and
+     * &lt;code&gt;throwEofException&lt;/code&gt; is set to {@code false}.
+     * @throws EOFException if the end of file is reached and
+     * &lt;code&gt;throwEofException&lt;/code&gt; is set to {@code true}.
+     * @throws IOException if trying to read past the end of file.
+     */
+    @Override
+    public int read(char[] chars, int offset, int length) throws IOException {
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        if (eof) {</span>
+<span class="fc" id="L211">            throw new IOException(&quot;Read after end of file&quot;);</span>
+        }
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        if (position == size) {</span>
+<span class="fc" id="L214">            return doEndOfFile();</span>
+        }
+<span class="fc" id="L216">        position += length;</span>
+<span class="fc" id="L217">        int returnLength = length;</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        if (position &gt; size) {</span>
+<span class="fc" id="L219">            returnLength = length - (int)(position - size);</span>
+<span class="fc" id="L220">            position = size;</span>
+        }
+<span class="fc" id="L222">        processChars(chars, offset, returnLength);</span>
+<span class="fc" id="L223">        return returnLength;</span>
+    }
+
+    /**
+     * Reset the stream to the point when mark was last called.
+     *
+     * @throws UnsupportedOperationException if mark is not supported.
+     * @throws IOException If no position has been marked
+     * or the read limit has been exceed since the last position was
+     * marked.
+     */
+    @Override
+    public synchronized void reset() throws IOException {
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        if (!markSupported) {</span>
+<span class="fc" id="L237">            throw new UnsupportedOperationException(&quot;Mark not supported&quot;);</span>
+        }
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (mark &lt; 0) {</span>
+<span class="fc" id="L240">            throw new IOException(&quot;No position has been marked&quot;);</span>
+        }
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        if (position &gt; mark + readlimit) {</span>
+<span class="fc" id="L243">            throw new IOException(&quot;Marked position [&quot; + mark +</span>
+                    &quot;] is no longer valid - passed the read limit [&quot; +
+                    readlimit + &quot;]&quot;);
+        }
+<span class="fc" id="L247">        position = mark;</span>
+<span class="fc" id="L248">        eof = false;</span>
+<span class="fc" id="L249">    }</span>
+
+    /**
+     * Skip a specified number of characters.
+     *
+     * @param numberOfChars The number of characters to skip.
+     * @return The number of characters skipped or &lt;code&gt;-1&lt;/code&gt;
+     * if the end of file has been reached and
+     * &lt;code&gt;throwEofException&lt;/code&gt; is set to {@code false}.
+     * @throws EOFException if the end of file is reached and
+     * &lt;code&gt;throwEofException&lt;/code&gt; is set to {@code true}.
+     * @throws IOException if trying to read past the end of file.
+     */
+    @Override
+    public long skip(long numberOfChars) throws IOException {
+<span class="fc bfc" id="L264" title="All 2 branches covered.">        if (eof) {</span>
+<span class="fc" id="L265">            throw new IOException(&quot;Skip after end of file&quot;);</span>
+        }
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        if (position == size) {</span>
+<span class="fc" id="L268">            return doEndOfFile();</span>
+        }
+<span class="fc" id="L270">        position += numberOfChars;</span>
+<span class="fc" id="L271">        long returnLength = numberOfChars;</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        if (position &gt; size) {</span>
+<span class="fc" id="L273">            returnLength = numberOfChars - (position - size);</span>
+<span class="fc" id="L274">            position = size;</span>
+        }
+<span class="fc" id="L276">        return returnLength;</span>
+    }
+
+    /**
+     * Return a character value for the  &lt;code&gt;read()&lt;/code&gt; method.
+     * &lt;p&gt;
+     * This implementation returns zero.
+     *
+     * @return This implementation always returns zero.
+     */
+    protected int processChar() {
+        // do nothing - overridable by subclass
+<span class="nc" id="L288">        return 0;</span>
+    }
+
+    /**
+     * Process the characters for the &lt;code&gt;read(char[], offset, length)&lt;/code&gt;
+     * method.
+     * &lt;p&gt;
+     * This implementation leaves the character array unchanged.
+     *
+     * @param chars The character array
+     * @param offset The offset to start at.
+     * @param length The number of characters.
+     */
+    protected void processChars(char[] chars, int offset, int length) {
+        // do nothing - overridable by subclass
+<span class="fc" id="L303">    }</span>
+
+    /**
+     * Handle End of File.
+     *
+     * @return &lt;code&gt;-1&lt;/code&gt; if &lt;code&gt;throwEofException&lt;/code&gt; is
+     * set to {@code false}
+     * @throws EOFException if &lt;code&gt;throwEofException&lt;/code&gt; is set
+     * to {@code true}.
+     */
+    private int doEndOfFile() throws EOFException {
+<span class="fc" id="L314">        eof = true;</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">        if (throwEofException) {</span>
+<span class="fc" id="L316">            throw new EOFException();</span>
+        }
+<span class="fc" id="L318">        return -1;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

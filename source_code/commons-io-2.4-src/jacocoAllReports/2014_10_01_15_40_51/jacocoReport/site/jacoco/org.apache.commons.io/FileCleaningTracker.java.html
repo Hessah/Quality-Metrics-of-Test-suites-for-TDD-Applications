@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>FileCleaningTracker.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-io</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.io</a> &gt; <span class="el_source">FileCleaningTracker.java</span></div><h1>FileCleaningTracker.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ * 
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.io;
+
+import java.io.File;
+import java.lang.ref.PhantomReference;
+import java.lang.ref.ReferenceQueue;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+
+/**
+ * Keeps track of files awaiting deletion, and deletes them when an associated
+ * marker object is reclaimed by the garbage collector.
+ * &lt;p&gt;
+ * This utility creates a background thread to handle file deletion.
+ * Each file to be deleted is registered with a handler object.
+ * When the handler object is garbage collected, the file is deleted.
+ * &lt;p&gt;
+ * In an environment with multiple class loaders (a servlet container, for
+ * example), you should consider stopping the background thread if it is no
+ * longer needed. This is done by invoking the method
+ * {@link #exitWhenFinished}, typically in
+ * {@link javax.servlet.ServletContextListener#contextDestroyed} or similar.
+ *
+ * @version $Id: FileCleaningTracker.java 1307462 2012-03-30 15:13:11Z ggregory $
+ */
+<span class="fc" id="L44">public class FileCleaningTracker {</span>
+    /**
+     * Queue of &lt;code&gt;Tracker&lt;/code&gt; instances being watched.
+     */
+<span class="fc" id="L48">    ReferenceQueue&lt;Object&gt; q = new ReferenceQueue&lt;Object&gt;();</span>
+    /**
+     * Collection of &lt;code&gt;Tracker&lt;/code&gt; instances in existence.
+     */
+<span class="fc" id="L52">    final Collection&lt;Tracker&gt; trackers = Collections.synchronizedSet(new HashSet&lt;Tracker&gt;()); // synchronized</span>
+    /**
+     * Collection of File paths that failed to delete.
+     */
+<span class="fc" id="L56">    final List&lt;String&gt; deleteFailures = Collections.synchronizedList(new ArrayList&lt;String&gt;());</span>
+    /**
+     * Whether to terminate the thread when the tracking is complete.
+     */
+<span class="fc" id="L60">    volatile boolean exitWhenFinished = false;</span>
+    /**
+     * The thread that will clean up registered files.
+     */
+    Thread reaper;
+
+    //-----------------------------------------------------------------------
+    /**
+     * Track the specified file, using the provided marker, deleting the file
+     * when the marker instance is garbage collected.
+     * The {@link FileDeleteStrategy#NORMAL normal} deletion strategy will be used.
+     *
+     * @param file  the file to be tracked, not null
+     * @param marker  the marker object used to track the file, not null
+     * @throws NullPointerException if the file is null
+     */
+    public void track(File file, Object marker) {
+<span class="fc" id="L77">        track(file, marker, (FileDeleteStrategy) null);</span>
+<span class="fc" id="L78">    }</span>
+
+    /**
+     * Track the specified file, using the provided marker, deleting the file
+     * when the marker instance is garbage collected.
+     * The speified deletion strategy is used.
+     *
+     * @param file  the file to be tracked, not null
+     * @param marker  the marker object used to track the file, not null
+     * @param deleteStrategy  the strategy to delete the file, null means normal
+     * @throws NullPointerException if the file is null
+     */
+    public void track(File file, Object marker, FileDeleteStrategy deleteStrategy) {
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (file == null) {</span>
+<span class="fc" id="L92">            throw new NullPointerException(&quot;The file must not be null&quot;);</span>
+        }
+<span class="fc" id="L94">        addTracker(file.getPath(), marker, deleteStrategy);</span>
+<span class="fc" id="L95">    }</span>
+
+    /**
+     * Track the specified file, using the provided marker, deleting the file
+     * when the marker instance is garbage collected.
+     * The {@link FileDeleteStrategy#NORMAL normal} deletion strategy will be used.
+     *
+     * @param path  the full path to the file to be tracked, not null
+     * @param marker  the marker object used to track the file, not null
+     * @throws NullPointerException if the path is null
+     */
+    public void track(String path, Object marker) {
+<span class="fc" id="L107">        track(path, marker, (FileDeleteStrategy) null);</span>
+<span class="fc" id="L108">    }</span>
+
+    /**
+     * Track the specified file, using the provided marker, deleting the file
+     * when the marker instance is garbage collected.
+     * The speified deletion strategy is used.
+     *
+     * @param path  the full path to the file to be tracked, not null
+     * @param marker  the marker object used to track the file, not null
+     * @param deleteStrategy  the strategy to delete the file, null means normal
+     * @throws NullPointerException if the path is null
+     */
+    public void track(String path, Object marker, FileDeleteStrategy deleteStrategy) {
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (path == null) {</span>
+<span class="fc" id="L122">            throw new NullPointerException(&quot;The path must not be null&quot;);</span>
+        }
+<span class="fc" id="L124">        addTracker(path, marker, deleteStrategy);</span>
+<span class="fc" id="L125">    }</span>
+
+    /**
+     * Adds a tracker to the list of trackers.
+     * 
+     * @param path  the full path to the file to be tracked, not null
+     * @param marker  the marker object used to track the file, not null
+     * @param deleteStrategy  the strategy to delete the file, null means normal
+     */
+    private synchronized void addTracker(String path, Object marker, FileDeleteStrategy deleteStrategy) {
+        // synchronized block protects reaper
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (exitWhenFinished) {</span>
+<span class="fc" id="L137">            throw new IllegalStateException(&quot;No new trackers can be added once exitWhenFinished() is called&quot;);</span>
+        }
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">        if (reaper == null) {</span>
+<span class="fc" id="L140">            reaper = new Reaper();</span>
+<span class="fc" id="L141">            reaper.start();</span>
+        }
+<span class="fc" id="L143">        trackers.add(new Tracker(path, deleteStrategy, marker, q));</span>
+<span class="fc" id="L144">    }</span>
+
+    //-----------------------------------------------------------------------
+    /**
+     * Retrieve the number of files currently being tracked, and therefore
+     * awaiting deletion.
+     *
+     * @return the number of files being tracked
+     */
+    public int getTrackCount() {
+<span class="fc" id="L154">        return trackers.size();</span>
+    }
+
+    /**
+     * Return the file paths that failed to delete.
+     *
+     * @return the file paths that failed to delete
+     * @since 2.0
+     */
+    public List&lt;String&gt; getDeleteFailures() {
+<span class="nc" id="L164">        return deleteFailures;</span>
+    }
+
+    /**
+     * Call this method to cause the file cleaner thread to terminate when
+     * there are no more objects being tracked for deletion.
+     * &lt;p&gt;
+     * In a simple environment, you don't need this method as the file cleaner
+     * thread will simply exit when the JVM exits. In a more complex environment,
+     * with multiple class loaders (such as an application server), you should be
+     * aware that the file cleaner thread will continue running even if the class
+     * loader it was started from terminates. This can consitute a memory leak.
+     * &lt;p&gt;
+     * For example, suppose that you have developed a web application, which
+     * contains the commons-io jar file in your WEB-INF/lib directory. In other
+     * words, the FileCleaner class is loaded through the class loader of your
+     * web application. If the web application is terminated, but the servlet
+     * container is still running, then the file cleaner thread will still exist,
+     * posing a memory leak.
+     * &lt;p&gt;
+     * This method allows the thread to be terminated. Simply call this method
+     * in the resource cleanup code, such as {@link javax.servlet.ServletContextListener#contextDestroyed}.
+     * Once called, no new objects can be tracked by the file cleaner.
+     */
+    public synchronized void exitWhenFinished() {
+        // synchronized block protects reaper
+<span class="fc" id="L190">        exitWhenFinished = true;</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (reaper != null) {</span>
+<span class="fc" id="L192">            synchronized (reaper) {</span>
+<span class="fc" id="L193">                reaper.interrupt();</span>
+<span class="pc" id="L194">            }</span>
+        }
+<span class="fc" id="L196">    }</span>
+
+    //-----------------------------------------------------------------------
+    /**
+     * The reaper thread.
+     */
+    private final class Reaper extends Thread {
+        /** Construct a new Reaper */
+<span class="fc" id="L204">        Reaper() {</span>
+<span class="fc" id="L205">            super(&quot;File Reaper&quot;);</span>
+<span class="fc" id="L206">            setPriority(Thread.MAX_PRIORITY);</span>
+<span class="fc" id="L207">            setDaemon(true);</span>
+<span class="fc" id="L208">        }</span>
+
+        /**
+         * Run the reaper thread that will delete files as their associated
+         * marker objects are reclaimed by the garbage collector.
+         */
+        @Override
+        public void run() {
+            // thread exits when exitWhenFinished is true and there are no more tracked objects
+<span class="fc bfc" id="L217" title="All 4 branches covered.">            while (exitWhenFinished == false || trackers.size() &gt; 0) {</span>
+                try {
+                    // Wait for a tracker to remove.
+<span class="fc" id="L220">                    Tracker tracker = (Tracker) q.remove(); // cannot return null</span>
+<span class="fc" id="L221">                    trackers.remove(tracker);</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">                    if (!tracker.delete()) {</span>
+<span class="fc" id="L223">                        deleteFailures.add(tracker.getPath());</span>
+                    }
+<span class="fc" id="L225">                    tracker.clear();</span>
+<span class="fc" id="L226">                } catch (InterruptedException e) {</span>
+<span class="fc" id="L227">                    continue;</span>
+<span class="fc" id="L228">                }</span>
+            }
+<span class="fc" id="L230">        }</span>
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * Inner class which acts as the reference for a file pending deletion.
+     */
+<span class="fc" id="L237">    private static final class Tracker extends PhantomReference&lt;Object&gt; {</span>
+
+        /**
+         * The full path to the file being tracked.
+         */
+        private final String path;
+        /**
+         * The strategy for deleting files.
+         */
+        private final FileDeleteStrategy deleteStrategy;
+
+        /**
+         * Constructs an instance of this class from the supplied parameters.
+         *
+         * @param path  the full path to the file to be tracked, not null
+         * @param deleteStrategy  the strategy to delete the file, null means normal
+         * @param marker  the marker object used to track the file, not null
+         * @param queue  the queue on to which the tracker will be pushed, not null
+         */
+        Tracker(String path, FileDeleteStrategy deleteStrategy, Object marker, ReferenceQueue&lt;? super Object&gt; queue) {
+<span class="fc" id="L257">            super(marker, queue);</span>
+<span class="fc" id="L258">            this.path = path;</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">            this.deleteStrategy = deleteStrategy == null ? FileDeleteStrategy.NORMAL : deleteStrategy;</span>
+<span class="fc" id="L260">        }</span>
+
+        /**
+         * Return the path.
+         *
+         * @return the path
+         */
+        public String getPath() {
+<span class="fc" id="L268">            return path;</span>
+        }
+
+        /**
+         * Deletes the file associated with this tracker instance.
+         *
+         * @return {@code true} if the file was deleted successfully;
+         *         {@code false} otherwise.
+         */
+        public boolean delete() {
+<span class="fc" id="L278">            return deleteStrategy.deleteQuietly(new File(path));</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

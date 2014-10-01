@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>FileAlterationMonitor.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-io</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.io.monitor</a> &gt; <span class="el_source">FileAlterationMonitor.java</span></div><h1>FileAlterationMonitor.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.io.monitor;
+
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ThreadFactory;
+
+/**
+ * A runnable that spawns a monitoring thread triggering any
+ * registered {@link FileAlterationObserver} at a specified interval.
+ * 
+ * @see FileAlterationObserver
+ * @version $Id: FileAlterationMonitor.java 1304052 2012-03-22 20:55:29Z ggregory $
+ * @since 2.0
+ */
+public final class FileAlterationMonitor implements Runnable {
+
+    private final long interval;
+<span class="fc" id="L34">    private final List&lt;FileAlterationObserver&gt; observers = new CopyOnWriteArrayList&lt;FileAlterationObserver&gt;();</span>
+<span class="fc" id="L35">    private Thread thread = null;</span>
+    private ThreadFactory threadFactory;
+<span class="fc" id="L37">    private volatile boolean running = false;</span>
+
+    /**
+     * Construct a monitor with a default interval of 10 seconds.
+     */
+    public FileAlterationMonitor() {
+<span class="fc" id="L43">        this(10000);</span>
+<span class="fc" id="L44">    }</span>
+
+    /**
+     * Construct a monitor with the specified interval.
+     *
+     * @param interval The amount of time in miliseconds to wait between
+     * checks of the file system
+     */
+<span class="fc" id="L52">    public FileAlterationMonitor(long interval) {</span>
+<span class="fc" id="L53">        this.interval = interval;</span>
+<span class="fc" id="L54">    }</span>
+
+    /**
+     * Construct a monitor with the specified interval and set of observers.
+     *
+     * @param interval The amount of time in miliseconds to wait between
+     * checks of the file system
+     * @param observers The set of observers to add to the monitor.
+     */
+    public FileAlterationMonitor(long interval, FileAlterationObserver... observers) {
+<span class="fc" id="L64">        this(interval);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (observers != null) {</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            for (FileAlterationObserver observer : observers) {</span>
+<span class="fc" id="L67">                addObserver(observer);</span>
+            }
+        }
+<span class="fc" id="L70">    }</span>
+
+    /**
+     * Return the interval.
+     *
+     * @return the interval
+     */
+    public long getInterval() {
+<span class="fc" id="L78">        return interval;</span>
+    }
+
+    /**
+     * Set the thread factory.
+     *
+     * @param threadFactory the thread factory
+     */
+    public synchronized void setThreadFactory(ThreadFactory threadFactory) {
+<span class="fc" id="L87">        this.threadFactory = threadFactory;</span>
+<span class="fc" id="L88">    }</span>
+
+    /**
+     * Add a file system observer to this monitor.
+     *
+     * @param observer The file system observer to add
+     */
+    public void addObserver(final FileAlterationObserver observer) {
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (observer != null) {</span>
+<span class="fc" id="L97">            observers.add(observer);</span>
+        }
+<span class="fc" id="L99">    }</span>
+
+    /**
+     * Remove a file system observer from this monitor.
+     *
+     * @param observer The file system observer to remove
+     */
+    public void removeObserver(final FileAlterationObserver observer) {
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (observer != null) {</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            while (observers.remove(observer)) {</span>
+            }
+        }
+<span class="fc" id="L111">    }</span>
+
+    /**
+     * Returns the set of {@link FileAlterationObserver} registered with
+     * this monitor. 
+     *
+     * @return The set of {@link FileAlterationObserver}
+     */
+    public Iterable&lt;FileAlterationObserver&gt; getObservers() {
+<span class="fc" id="L120">        return observers;</span>
+    }
+
+    /**
+     * Start monitoring.
+     *
+     * @throws Exception if an error occurs initializing the observer
+     */
+    public synchronized void start() throws Exception {
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (running) {</span>
+<span class="fc" id="L130">            throw new IllegalStateException(&quot;Monitor is already running&quot;);</span>
+        }
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        for (FileAlterationObserver observer : observers) {</span>
+<span class="fc" id="L133">            observer.initialize();</span>
+<span class="fc" id="L134">        }</span>
+<span class="fc" id="L135">        running = true;</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (threadFactory != null) {</span>
+<span class="fc" id="L137">            thread = threadFactory.newThread(this);</span>
+        } else {
+<span class="fc" id="L139">            thread = new Thread(this);</span>
+        }
+<span class="fc" id="L141">        thread.start();</span>
+<span class="fc" id="L142">    }</span>
+
+    /**
+     * Stop monitoring.
+     *
+     * @throws Exception if an error occurs initializing the observer
+     */
+    public synchronized void stop() throws Exception {
+<span class="fc" id="L150">        stop(interval);</span>
+<span class="fc" id="L151">    }</span>
+
+    /**
+     * Stop monitoring.
+     *
+     * @param stopInterval the amount of time in milliseconds to wait for the thread to finish.
+     * A value of zero will wait until the thread is finished (see {@link Thread#join(long)}).
+     * @throws Exception if an error occurs initializing the observer
+     * @since 2.1
+     */
+    public synchronized void stop(long stopInterval) throws Exception {
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        if (running == false) {</span>
+<span class="fc" id="L163">            throw new IllegalStateException(&quot;Monitor is not running&quot;);</span>
+        }
+<span class="fc" id="L165">        running = false;</span>
+        try {
+<span class="fc" id="L167">            thread.join(stopInterval);</span>
+<span class="nc" id="L168">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L169">            Thread.currentThread().interrupt();</span>
+<span class="fc" id="L170">        }</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        for (FileAlterationObserver observer : observers) {</span>
+<span class="fc" id="L172">            observer.destroy();</span>
+<span class="fc" id="L173">        }</span>
+<span class="fc" id="L174">    }</span>
+
+    /**
+     * Run.
+     */
+    public void run() {
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        while (running) {</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            for (FileAlterationObserver observer : observers) {</span>
+<span class="fc" id="L182">                observer.checkAndNotify();</span>
+<span class="fc" id="L183">            }</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">            if (!running) {</span>
+<span class="nc" id="L185">                break;</span>
+            }
+            try {
+<span class="fc" id="L188">                Thread.sleep(interval);</span>
+<span class="nc" id="L189">            } catch (final InterruptedException ignored) {</span>
+<span class="pc" id="L190">            }</span>
+        }
+<span class="fc" id="L192">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

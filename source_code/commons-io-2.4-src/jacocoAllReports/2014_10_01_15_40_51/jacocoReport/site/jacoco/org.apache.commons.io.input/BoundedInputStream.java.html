@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>BoundedInputStream.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-io</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.io.input</a> &gt; <span class="el_source">BoundedInputStream.java</span></div><h1>BoundedInputStream.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.io.input;
+
+import java.io.IOException;
+import java.io.InputStream;
+
+/**
+ * This is a stream that will only supply bytes up to a certain length - if its
+ * position goes above that, it will stop.
+ * &lt;p&gt;
+ * This is useful to wrap ServletInputStreams. The ServletInputStream will block
+ * if you try to read content from it that isn't there, because it doesn't know
+ * whether the content hasn't arrived yet or whether the content has finished.
+ * So, one of these, initialized with the Content-length sent in the
+ * ServletInputStream's header, will stop it blocking, providing it's been sent
+ * with a correct content length.
+ *
+ * @version $Id: BoundedInputStream.java 1307462 2012-03-30 15:13:11Z ggregory $
+ * @since 2.0
+ */
+public class BoundedInputStream extends InputStream {
+
+    /** the wrapped input stream */
+    private final InputStream in;
+
+    /** the max length to provide */
+    private final long max;
+
+    /** the number of bytes already returned */
+<span class="fc" id="L45">    private long pos = 0;</span>
+
+    /** the marked position */
+<span class="fc" id="L48">    private long mark = -1;</span>
+
+    /** flag if close shoud be propagated */
+<span class="fc" id="L51">    private boolean propagateClose = true;</span>
+
+    /**
+     * Creates a new &lt;code&gt;BoundedInputStream&lt;/code&gt; that wraps the given input
+     * stream and limits it to a certain size.
+     *
+     * @param in The wrapped input stream
+     * @param size The maximum number of bytes to return
+     */
+<span class="fc" id="L60">    public BoundedInputStream(InputStream in, long size) {</span>
+        // Some badly designed methods - eg the servlet API - overload length
+        // such that &quot;-1&quot; means stream finished
+<span class="fc" id="L63">        this.max = size;</span>
+<span class="fc" id="L64">        this.in = in;</span>
+<span class="fc" id="L65">    }</span>
+
+    /**
+     * Creates a new &lt;code&gt;BoundedInputStream&lt;/code&gt; that wraps the given input
+     * stream and is unlimited.
+     *
+     * @param in The wrapped input stream
+     */
+    public BoundedInputStream(InputStream in) {
+<span class="fc" id="L74">        this(in, -1);</span>
+<span class="fc" id="L75">    }</span>
+
+    /**
+     * Invokes the delegate's &lt;code&gt;read()&lt;/code&gt; method if
+     * the current position is less than the limit.
+     * @return the byte read or -1 if the end of stream or
+     * the limit has been reached.
+     * @throws IOException if an I/O error occurs
+     */
+    @Override
+    public int read() throws IOException {
+<span class="pc bpc" id="L86" title="1 of 4 branches missed.">        if (max &gt;= 0 &amp;&amp; pos &gt;= max) {</span>
+<span class="fc" id="L87">            return -1;</span>
+        }
+<span class="fc" id="L89">        int result = in.read();</span>
+<span class="fc" id="L90">        pos++;</span>
+<span class="fc" id="L91">        return result;</span>
+    }
+
+    /**
+     * Invokes the delegate's &lt;code&gt;read(byte[])&lt;/code&gt; method.
+     * @param b the buffer to read the bytes into
+     * @return the number of bytes read or -1 if the end of stream or
+     * the limit has been reached.
+     * @throws IOException if an I/O error occurs
+     */
+    @Override
+    public int read(byte[] b) throws IOException {
+<span class="fc" id="L103">        return this.read(b, 0, b.length);</span>
+    }
+
+    /**
+     * Invokes the delegate's &lt;code&gt;read(byte[], int, int)&lt;/code&gt; method.
+     * @param b the buffer to read the bytes into
+     * @param off The start offset
+     * @param len The number of bytes to read
+     * @return the number of bytes read or -1 if the end of stream or
+     * the limit has been reached.
+     * @throws IOException if an I/O error occurs
+     */
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+<span class="fc bfc" id="L117" title="All 4 branches covered.">        if (max&gt;=0 &amp;&amp; pos&gt;=max) {</span>
+<span class="fc" id="L118">            return -1;</span>
+        }
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        long maxRead = max&gt;=0 ? Math.min(len, max-pos) : len;</span>
+<span class="fc" id="L121">        int bytesRead = in.read(b, off, (int)maxRead);</span>
+
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (bytesRead==-1) {</span>
+<span class="fc" id="L124">            return -1;</span>
+        }
+
+<span class="fc" id="L127">        pos+=bytesRead;</span>
+<span class="fc" id="L128">        return bytesRead;</span>
+    }
+
+    /**
+     * Invokes the delegate's &lt;code&gt;skip(long)&lt;/code&gt; method.
+     * @param n the number of bytes to skip
+     * @return the actual number of bytes skipped
+     * @throws IOException if an I/O error occurs
+     */
+    @Override
+    public long skip(long n) throws IOException {
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        long toSkip = max&gt;=0 ? Math.min(n, max-pos) : n;</span>
+<span class="nc" id="L140">        long skippedBytes = in.skip(toSkip);</span>
+<span class="nc" id="L141">        pos+=skippedBytes;</span>
+<span class="nc" id="L142">        return skippedBytes;</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int available() throws IOException {
+<span class="nc bnc" id="L150" title="All 4 branches missed.">        if (max&gt;=0 &amp;&amp; pos&gt;=max) {</span>
+<span class="nc" id="L151">            return 0;</span>
+        }
+<span class="nc" id="L153">        return in.available();</span>
+    }
+
+    /**
+     * Invokes the delegate's &lt;code&gt;toString()&lt;/code&gt; method.
+     * @return the delegate's &lt;code&gt;toString()&lt;/code&gt;
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L162">        return in.toString();</span>
+    }
+
+    /**
+     * Invokes the delegate's &lt;code&gt;close()&lt;/code&gt; method
+     * if {@link #isPropagateClose()} is {@code true}.
+     * @throws IOException if an I/O error occurs
+     */
+    @Override
+    public void close() throws IOException {
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        if (propagateClose) {</span>
+<span class="nc" id="L173">            in.close();</span>
+        }
+<span class="nc" id="L175">    }</span>
+
+    /**
+     * Invokes the delegate's &lt;code&gt;reset()&lt;/code&gt; method.
+     * @throws IOException if an I/O error occurs
+     */
+    @Override
+    public synchronized void reset() throws IOException {
+<span class="nc" id="L183">        in.reset();</span>
+<span class="nc" id="L184">        pos = mark;</span>
+<span class="nc" id="L185">    }</span>
+
+    /**
+     * Invokes the delegate's &lt;code&gt;mark(int)&lt;/code&gt; method.
+     * @param readlimit read ahead limit
+     */
+    @Override
+    public synchronized void mark(int readlimit) {
+<span class="nc" id="L193">        in.mark(readlimit);</span>
+<span class="nc" id="L194">        mark = pos;</span>
+<span class="nc" id="L195">    }</span>
+
+    /**
+     * Invokes the delegate's &lt;code&gt;markSupported()&lt;/code&gt; method.
+     * @return true if mark is supported, otherwise false
+     */
+    @Override
+    public boolean markSupported() {
+<span class="nc" id="L203">        return in.markSupported();</span>
+    }
+
+    /**
+     * Indicates whether the {@link #close()} method
+     * should propagate to the underling {@link InputStream}.
+     *
+     * @return {@code true} if calling {@link #close()}
+     * propagates to the &lt;code&gt;close()&lt;/code&gt; method of the
+     * underlying stream or {@code false} if it does not.
+     */
+    public boolean isPropagateClose() {
+<span class="nc" id="L215">        return propagateClose;</span>
+    }
+
+    /**
+     * Set whether the {@link #close()} method
+     * should propagate to the underling {@link InputStream}.
+     *
+     * @param propagateClose {@code true} if calling
+     * {@link #close()} propagates to the &lt;code&gt;close()&lt;/code&gt;
+     * method of the underlying stream or
+     * {@code false} if it does not.
+     */
+    public void setPropagateClose(boolean propagateClose) {
+<span class="nc" id="L228">        this.propagateClose = propagateClose;</span>
+<span class="nc" id="L229">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

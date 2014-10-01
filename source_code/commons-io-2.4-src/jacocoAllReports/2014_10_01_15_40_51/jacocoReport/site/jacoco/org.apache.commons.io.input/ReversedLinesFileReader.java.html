@@ -1,0 +1,345 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ReversedLinesFileReader.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-io</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.io.input</a> &gt; <span class="el_source">ReversedLinesFileReader.java</span></div><h1>ReversedLinesFileReader.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.io.input;
+
+import java.io.Closeable;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.UnsupportedCharsetException;
+
+import org.apache.commons.io.Charsets;
+
+/**
+ * Reads lines in a file reversely (similar to a BufferedReader, but starting at
+ * the last line). Useful for e.g. searching in log files.
+ *
+ * @since 2.2
+ */
+public class ReversedLinesFileReader implements Closeable {
+
+    private final int blockSize;
+    private final Charset encoding;
+
+    private final RandomAccessFile randomAccessFile;
+
+    private final long totalByteLength;
+    private final long totalBlockCount;
+
+    private final byte[][] newLineSequences;
+    private final int avoidNewlineSplitBufferSize;
+    private final int byteDecrement;
+
+    private FilePart currentFilePart;
+
+<span class="fc" id="L52">    private boolean trailingNewlineOfFileSkipped = false;</span>
+
+    /**
+     * Creates a ReversedLinesFileReader with default block size of 4KB and the
+     * platform's default encoding.
+     *
+     * @param file
+     *            the file to be read
+     * @throws IOException  if an I/O error occurs
+     */
+    public ReversedLinesFileReader(final File file) throws IOException {
+<span class="nc" id="L63">        this(file, 4096, Charset.defaultCharset().toString());</span>
+<span class="nc" id="L64">    }</span>
+
+    /**
+     * Creates a ReversedLinesFileReader with the given block size and encoding.
+     *
+     * @param file
+     *            the file to be read
+     * @param blockSize
+     *            size of the internal buffer (for ideal performance this should
+     *            match with the block size of the underlying file system).
+     * @param encoding
+     *            the encoding of the file
+     * @throws IOException  if an I/O error occurs
+     * @since 2.3
+     */
+<span class="fc" id="L79">    public ReversedLinesFileReader(final File file, final int blockSize, final Charset encoding) throws IOException {</span>
+<span class="fc" id="L80">        this.blockSize = blockSize;</span>
+<span class="fc" id="L81">        this.encoding = encoding;</span>
+
+<span class="fc" id="L83">        randomAccessFile = new RandomAccessFile(file, &quot;r&quot;);</span>
+<span class="fc" id="L84">        totalByteLength = randomAccessFile.length();</span>
+<span class="fc" id="L85">        int lastBlockLength = (int) (totalByteLength % blockSize);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (lastBlockLength &gt; 0) {</span>
+<span class="fc" id="L87">            totalBlockCount = totalByteLength / blockSize + 1;</span>
+        } else {
+<span class="fc" id="L89">            totalBlockCount = totalByteLength / blockSize;</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">            if (totalByteLength &gt; 0) {</span>
+<span class="fc" id="L91">                lastBlockLength = blockSize;</span>
+            }
+        }
+<span class="fc" id="L94">        currentFilePart = new FilePart(totalBlockCount, lastBlockLength, null);</span>
+
+        // --- check &amp; prepare encoding ---
+<span class="fc" id="L97">        Charset charset = Charsets.toCharset(encoding);</span>
+<span class="fc" id="L98">        CharsetEncoder charsetEncoder = charset.newEncoder();</span>
+<span class="fc" id="L99">        float maxBytesPerChar = charsetEncoder.maxBytesPerChar();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if(maxBytesPerChar==1f) {</span>
+            // all one byte encodings are no problem
+<span class="fc" id="L102">            byteDecrement = 1;</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        } else if(charset == Charset.forName(&quot;UTF-8&quot;)) {</span>
+            // UTF-8 works fine out of the box, for multibyte sequences a second UTF-8 byte can never be a newline byte
+            // http://en.wikipedia.org/wiki/UTF-8
+<span class="fc" id="L106">            byteDecrement = 1;</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        } else if(charset == Charset.forName(&quot;Shift_JIS&quot;)) {</span>
+            // Same as for UTF-8
+            // http://www.herongyang.com/Unicode/JIS-Shift-JIS-Encoding.html
+<span class="fc" id="L110">            byteDecrement = 1;</span>
+<span class="fc bfc" id="L111" title="All 4 branches covered.">        } else if(charset == Charset.forName(&quot;UTF-16BE&quot;) || charset == Charset.forName(&quot;UTF-16LE&quot;)) {</span>
+            // UTF-16 new line sequences are not allowed as second tuple of four byte sequences,
+            // however byte order has to be specified
+<span class="fc" id="L114">            byteDecrement = 2;</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        } else if(charset == Charset.forName(&quot;UTF-16&quot;)) {</span>
+<span class="fc" id="L116">            throw new UnsupportedEncodingException(</span>
+                    &quot;For UTF-16, you need to specify the byte order (use UTF-16BE or UTF-16LE)&quot;);
+        } else {
+<span class="fc" id="L119">            throw new UnsupportedEncodingException(</span>
+                    &quot;Encoding &quot;+encoding+&quot; is not supported yet (feel free to submit a patch)&quot;);
+        }
+        // NOTE: The new line sequences are matched in the order given, so it is important that \r\n is BEFORE \n
+<span class="fc" id="L123">        newLineSequences = new byte[][] { &quot;\r\n&quot;.getBytes(encoding), &quot;\n&quot;.getBytes(encoding), &quot;\r&quot;.getBytes(encoding) };</span>
+
+<span class="fc" id="L125">        avoidNewlineSplitBufferSize = newLineSequences[0].length;</span>
+<span class="fc" id="L126">    }</span>
+
+    /**
+     * Creates a ReversedLinesFileReader with the given block size and encoding.
+     *
+     * @param file
+     *            the file to be read
+     * @param blockSize
+     *            size of the internal buffer (for ideal performance this should
+     *            match with the block size of the underlying file system).
+     * @param encoding
+     *            the encoding of the file
+     * @throws IOException  if an I/O error occurs
+     * @throws UnsupportedCharsetException
+     *             thrown instead of {@link UnsupportedEncodingException} in version 2.2 if the encoding is not
+     *             supported.
+     */
+    public ReversedLinesFileReader(final File file, final int blockSize, final String encoding) throws IOException {
+<span class="fc" id="L144">        this(file, blockSize, Charsets.toCharset(encoding));</span>
+<span class="fc" id="L145">    }</span>
+
+    /**
+     * Returns the lines of the file from bottom to top.
+     *
+     * @return the next line or null if the start of the file is reached
+     * @throws IOException  if an I/O error occurs
+     */
+    public String readLine() throws IOException {
+
+<span class="fc" id="L155">        String line = currentFilePart.readLine();</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        while (line == null) {</span>
+<span class="fc" id="L157">            currentFilePart = currentFilePart.rollOver();</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            if (currentFilePart != null) {</span>
+<span class="fc" id="L159">                line = currentFilePart.readLine();</span>
+            } else {
+                // no more fileparts: we're done, leave line set to null
+                break;
+            }
+        }
+
+        // aligned behaviour wiht BufferedReader that doesn't return a last, emtpy line
+<span class="fc bfc" id="L167" title="All 4 branches covered.">        if(&quot;&quot;.equals(line) &amp;&amp; !trailingNewlineOfFileSkipped) {</span>
+<span class="fc" id="L168">            trailingNewlineOfFileSkipped = true;</span>
+<span class="fc" id="L169">            line = readLine();</span>
+        }
+
+<span class="fc" id="L172">        return line;</span>
+    }
+
+    /**
+     * Closes underlying resources.
+     *
+     * @throws IOException  if an I/O error occurs
+     */
+    public void close() throws IOException {
+<span class="fc" id="L181">        randomAccessFile.close();</span>
+<span class="fc" id="L182">    }</span>
+
+    private class FilePart {
+        private final long no;
+
+        private final byte[] data;
+
+        private byte[] leftOver;
+
+        private int currentLastBytePos;
+
+        /**
+         * ctor
+         * @param no the part number
+         * @param length its length
+         * @param leftOverOfLastFilePart remainder
+         * @throws IOException if there is a problem reading the file
+         */
+<span class="fc" id="L200">        private FilePart(final long no, final int length, final byte[] leftOverOfLastFilePart) throws IOException {</span>
+<span class="fc" id="L201">            this.no = no;</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">            int dataLength = length + (leftOverOfLastFilePart != null ? leftOverOfLastFilePart.length : 0);</span>
+<span class="fc" id="L203">            this.data = new byte[dataLength];</span>
+<span class="fc" id="L204">            final long off = (no - 1) * blockSize;</span>
+
+            // read data
+<span class="fc bfc" id="L207" title="All 2 branches covered.">            if (no &gt; 0 /* file not empty */) {</span>
+<span class="fc" id="L208">                randomAccessFile.seek(off);</span>
+<span class="fc" id="L209">                final int countRead = randomAccessFile.read(data, 0, length);</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">                if (countRead != length) {</span>
+<span class="nc" id="L211">                    throw new IllegalStateException(&quot;Count of requested bytes and actually read bytes don't match&quot;);</span>
+                }
+            }
+            // copy left over part into data arr
+<span class="fc bfc" id="L215" title="All 2 branches covered.">            if (leftOverOfLastFilePart != null) {</span>
+<span class="fc" id="L216">                System.arraycopy(leftOverOfLastFilePart, 0, data, length, leftOverOfLastFilePart.length);</span>
+            }
+<span class="fc" id="L218">            this.currentLastBytePos = data.length - 1;</span>
+<span class="fc" id="L219">            this.leftOver = null;</span>
+<span class="fc" id="L220">        }</span>
+
+        /**
+         * Handles block rollover
+         * 
+         * @return the new FilePart or null
+         * @throws IOException if there was a problem reading the file
+         */
+        private FilePart rollOver() throws IOException {
+
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">            if (currentLastBytePos &gt; -1) {</span>
+<span class="nc" id="L231">                throw new IllegalStateException(&quot;Current currentLastCharPos unexpectedly positive... &quot;</span>
+                        + &quot;last readLine() should have returned something! currentLastCharPos=&quot; + currentLastBytePos);
+            }
+
+<span class="fc bfc" id="L235" title="All 2 branches covered.">            if (no &gt; 1) {</span>
+<span class="fc" id="L236">                return new FilePart(no - 1, blockSize, leftOver);</span>
+            } else {
+                // NO 1 was the last FilePart, we're finished
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">                if (leftOver != null) {</span>
+<span class="nc" id="L240">                    throw new IllegalStateException(&quot;Unexpected leftover of the last block: leftOverOfThisFilePart=&quot;</span>
+                            + new String(leftOver, encoding));
+                }
+<span class="fc" id="L243">                return null;</span>
+            }
+        }
+
+        /**
+         * Reads a line.
+         * 
+         * @return the line or null
+         * @throws IOException if there is an error reading from the file
+         */
+        private String readLine() throws IOException {
+
+<span class="fc" id="L255">            String line = null;</span>
+            int newLineMatchByteCount;
+
+<span class="fc bfc" id="L258" title="All 2 branches covered.">            boolean isLastFilePart = no == 1;</span>
+
+<span class="fc" id="L260">            int i = currentLastBytePos;</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">            while (i &gt; -1) {</span>
+
+<span class="fc bfc" id="L263" title="All 4 branches covered.">                if (!isLastFilePart &amp;&amp; i &lt; avoidNewlineSplitBufferSize) {</span>
+                    // avoidNewlineSplitBuffer: for all except the last file part we
+                    // take a few bytes to the next file part to avoid splitting of newlines
+<span class="fc" id="L266">                    createLeftOver();</span>
+<span class="fc" id="L267">                    break; // skip last few bytes and leave it to the next file part</span>
+                }
+
+                // --- check for newline ---
+<span class="fc bfc" id="L271" title="All 2 branches covered.">                if ((newLineMatchByteCount = getNewLineMatchByteCount(data, i)) &gt; 0 /* found newline */) {</span>
+<span class="fc" id="L272">                    final int lineStart = i + 1;</span>
+<span class="fc" id="L273">                    int lineLengthBytes = currentLastBytePos - lineStart + 1;</span>
+
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">                    if (lineLengthBytes &lt; 0) {</span>
+<span class="nc" id="L276">                        throw new IllegalStateException(&quot;Unexpected negative line length=&quot;+lineLengthBytes);</span>
+                    }
+<span class="fc" id="L278">                    byte[] lineData = new byte[lineLengthBytes];</span>
+<span class="fc" id="L279">                    System.arraycopy(data, lineStart, lineData, 0, lineLengthBytes);</span>
+
+<span class="fc" id="L281">                    line = new String(lineData, encoding);</span>
+
+<span class="fc" id="L283">                    currentLastBytePos = i - newLineMatchByteCount;</span>
+<span class="fc" id="L284">                    break; // found line</span>
+                }
+
+                // --- move cursor ---
+<span class="fc" id="L288">                i -= byteDecrement;</span>
+
+                // --- end of file part handling ---
+<span class="fc bfc" id="L291" title="All 2 branches covered.">                if (i &lt; 0) {</span>
+<span class="fc" id="L292">                    createLeftOver();</span>
+<span class="fc" id="L293">                    break; // end of file part</span>
+                }
+            }
+
+            // --- last file part handling ---
+<span class="fc bfc" id="L298" title="All 4 branches covered.">            if (isLastFilePart &amp;&amp; leftOver != null) {</span>
+                // there will be no line break anymore, this is the first line of the file
+<span class="fc" id="L300">                line = new String(leftOver, encoding);</span>
+<span class="fc" id="L301">                leftOver = null;</span>
+            }
+
+<span class="fc" id="L304">            return line;</span>
+        }
+
+        /**
+         * Creates the buffer containing any left over bytes.
+         */
+        private void createLeftOver() {
+<span class="fc" id="L311">            int lineLengthBytes = currentLastBytePos + 1;</span>
+<span class="pc bpc" id="L312" title="1 of 2 branches missed.">            if (lineLengthBytes &gt; 0) {</span>
+                // create left over for next block
+<span class="fc" id="L314">                leftOver = new byte[lineLengthBytes];</span>
+<span class="fc" id="L315">                System.arraycopy(data, 0, leftOver, 0, lineLengthBytes);</span>
+            } else {
+<span class="nc" id="L317">                leftOver = null;</span>
+            }
+<span class="fc" id="L319">            currentLastBytePos = -1;</span>
+<span class="fc" id="L320">        }</span>
+
+        /**
+         * Finds the new-line sequence and return its length.
+         * 
+         * @param data buffer to scan
+         * @param i start offset in buffer
+         * @return length of newline sequence or 0 if none found
+         */
+        private int getNewLineMatchByteCount(byte[] data, int i) {
+<span class="fc bfc" id="L330" title="All 2 branches covered.">            for (byte[] newLineSequence : newLineSequences) {</span>
+<span class="fc" id="L331">                boolean match = true;</span>
+<span class="fc bfc" id="L332" title="All 2 branches covered.">                for (int j = newLineSequence.length - 1; j &gt;= 0; j--) {</span>
+<span class="fc" id="L333">                    int k = i + j - (newLineSequence.length - 1);</span>
+<span class="fc bfc" id="L334" title="All 4 branches covered.">                    match &amp;= k &gt;= 0 &amp;&amp; data[k] == newLineSequence[j];</span>
+                }
+<span class="fc bfc" id="L336" title="All 2 branches covered.">                if (match) {</span>
+<span class="fc" id="L337">                    return newLineSequence.length;</span>
+                }
+            }
+<span class="fc" id="L340">            return 0;</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>
