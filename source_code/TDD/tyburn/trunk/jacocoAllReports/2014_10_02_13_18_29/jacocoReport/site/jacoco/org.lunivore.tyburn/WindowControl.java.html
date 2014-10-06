@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>WindowControl.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">tyburn</a> &gt; <a href="index.source.html" class="el_package">org.lunivore.tyburn</a> &gt; <span class="el_source">WindowControl.java</span></div><h1>WindowControl.java</h1><pre class="source lang-java linenums">package org.lunivore.tyburn;
+
+import java.awt.Component;
+import java.awt.TextComponent;
+import java.awt.Window;
+import java.awt.color.ColorSpace;
+import java.awt.image.BufferedImage;
+
+import javax.swing.AbstractButton;
+import javax.swing.text.JTextComponent;
+
+import org.lunivore.tyburn.actors.ButtonClicker;
+import org.lunivore.tyburn.actors.CharacterTyper;
+import org.lunivore.tyburn.actors.Focuser;
+import org.lunivore.tyburn.actors.Idler;
+import org.lunivore.tyburn.actors.MouseClicker;
+import org.lunivore.tyburn.actors.WindowGrabber;
+import org.lunivore.tyburn.threaded.TimeoutException;
+
+
+public class WindowControl {
+    public static final long DEFAULT_WINDOW_TIMEOUT = 30000;
+
+    // Use of the WindowWrapper starts it grabbing windows ASAP.
+<span class="fc" id="L25">    private static final WindowGrabber grabber = new WindowGrabber();</span>
+    
+    private final CharacterTyper typer;
+    private final ButtonClicker buttonClicker;
+    private final MouseClicker mouseClicker;
+    
+    private final String windowName;
+    private final ComponentFinder finder;
+    private Window window;
+
+    private Idler idler;
+
+    private Focuser focuser;
+
+	private final long timeout;
+
+    public WindowControl(String windowName) {
+<span class="fc" id="L42">        this(windowName, DEFAULT_WINDOW_TIMEOUT);</span>
+<span class="fc" id="L43">    }</span>
+
+    public WindowControl(String windowName, long timeout) {
+<span class="fc" id="L46">		this(windowName, new ComponentFinder(), new PropertyDrivenSpeed(), timeout);</span>
+<span class="fc" id="L47">	}</span>
+    
+<span class="fc" id="L49">    public WindowControl(String windowName, ComponentFinder finder, Speed speed, long timeout) {</span>
+<span class="fc" id="L50">		this.timeout = timeout;</span>
+<span class="fc" id="L51">		new HeadlessChecker().check();</span>
+<span class="fc" id="L52">        this.windowName = windowName;</span>
+<span class="fc" id="L53">        this.finder = finder;</span>
+<span class="fc" id="L54">        idler = new Idler();</span>
+<span class="fc" id="L55">        typer = new CharacterTyper(speed);</span>
+<span class="fc" id="L56">        buttonClicker = new ButtonClicker(speed);</span>
+<span class="fc" id="L57">        mouseClicker = new MouseClicker(speed);</span>
+<span class="fc" id="L58">        focuser = new Focuser(speed);</span>
+<span class="fc" id="L59">    }</span>
+
+	public void closeWindow() throws TimeoutException {
+<span class="fc" id="L62">        getOpenWindow().dispose();</span>
+<span class="fc" id="L63">        idler.waitForIdle();</span>
+<span class="fc" id="L64">    }</span>
+    
+    public void clickButton(String componentName) throws ComponentFinderException, TimeoutException {
+<span class="fc" id="L67">        AbstractButton button = (AbstractButton) finder.findExactComponent(</span>
+                getOpenWindow(), new NamedComponentFilter(componentName));
+<span class="fc" id="L69">        buttonClicker.click(button);</span>
+<span class="fc" id="L70">    }</span>
+
+	public void clickMouseOn(String componentName, int x, int y) throws ComponentFinderException, TimeoutException {
+<span class="fc" id="L73">		Component component = findComponent(componentName);</span>
+<span class="fc" id="L74">		mouseClicker.click(component, x, y);</span>
+<span class="fc" id="L75">	}</span>
+    
+    public void enterText(String componentName, String text) throws ComponentFinderException, TimeoutException {
+<span class="fc" id="L78">        Component component = findComponent(componentName);</span>
+<span class="fc" id="L79">        typer.typeIntoComponent(component, text);</span>
+<span class="fc" id="L80">    }</span>
+        
+
+    public void typeIntoTextComponent(TextComponent component, String text) {
+<span class="nc" id="L84">        typer.typeIntoComponent(component, text);</span>
+<span class="nc" id="L85">    }</span>
+    
+    public void typeIntoJTextComponent(JTextComponent component, String text) {
+<span class="nc" id="L88">        typer.typeIntoComponent(component, text);</span>
+<span class="nc" id="L89">    }   </span>
+    
+    /**
+     * Use this for any key which doesn't have a corresponding character (eg: directional keys).
+     * If the key has a character, listeners will not always detect this mimicry.
+     */
+    public void pressKeycode(int keycode) throws TimeoutException {
+<span class="fc" id="L96">        typer.pressKeycode(getOpenWindow(), keycode);</span>
+<span class="fc" id="L97">    }</span>
+
+    /**
+     * Use this for any key which has a valid character associated with it, when it is being pressed
+     * (eg: as a game control key) rather than being typed into a text component.
+     */
+    public void pressKeychar(char key) throws TimeoutException {
+<span class="fc" id="L104">        typer.pressKeychar(getOpenWindow(), key);</span>
+<span class="fc" id="L105">    }</span>
+    
+    public Component findComponent(String componentName) throws ComponentFinderException, TimeoutException {
+<span class="fc" id="L108">        return finder.findExactComponent(getOpenWindow(), new NamedComponentFilter(componentName));</span>
+    }
+    
+    public Window getOpenWindow() throws TimeoutException {
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if (window == null) {</span>
+<span class="fc" id="L113">            idler.waitForIdle();</span>
+<span class="fc" id="L114">            window = grabber.getWindow(windowName, timeout);</span>
+        }
+<span class="fc" id="L116">        return window;</span>
+    }
+    
+    public void requestWindowFocus() throws TimeoutException {
+<span class="nc" id="L120">        focuser.requestFocusOn(getOpenWindow());</span>
+<span class="nc" id="L121">        idler.waitForIdle();</span>
+<span class="nc" id="L122">    }</span>
+
+	public BufferedImage grabImageOf(String componentName) throws ComponentFinderException, TimeoutException {
+<span class="fc" id="L125">		Component component = findComponent(componentName);</span>
+<span class="fc" id="L126">		BufferedImage image = new BufferedImage(component.getWidth(), component.getHeight(), ColorSpace.TYPE_RGB);</span>
+<span class="fc" id="L127">		component.paint(image.createGraphics());</span>
+<span class="fc" id="L128">		return image;</span>
+	}
+
+	public boolean hasFoundOpenWindow() {
+<span class="fc" id="L132">		return grabber.hasFoundOpenWindow(windowName);</span>
+	}
+    
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

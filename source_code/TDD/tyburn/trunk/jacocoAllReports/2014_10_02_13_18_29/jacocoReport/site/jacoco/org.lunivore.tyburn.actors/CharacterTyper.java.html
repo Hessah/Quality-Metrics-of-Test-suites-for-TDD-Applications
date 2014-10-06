@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>CharacterTyper.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">tyburn</a> &gt; <a href="index.source.html" class="el_package">org.lunivore.tyburn.actors</a> &gt; <span class="el_source">CharacterTyper.java</span></div><h1>CharacterTyper.java</h1><pre class="source lang-java linenums">package org.lunivore.tyburn.actors;
+
+import java.awt.AWTEvent;
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.EventQueue;
+import java.awt.Toolkit;
+import java.awt.Window;
+import java.awt.event.KeyEvent;
+
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
+import javax.swing.JFrame;
+
+import org.lunivore.tyburn.Speed;
+import org.lunivore.tyburn.listeners.QueueingKeyAdapter;
+import org.lunivore.tyburn.threaded.TimeoutException;
+
+/**
+ * Used for pressing or typing all keys which have valid characters associated with them.
+ */
+public class CharacterTyper {
+
+    private EventQueue sysQueue;
+    private Idler idler;
+    private Focuser focuser;
+	private final Speed speed;
+
+<span class="fc" id="L29">    public CharacterTyper(Speed speed) {</span>
+<span class="fc" id="L30">        this.speed = speed;</span>
+<span class="fc" id="L31">		sysQueue = Toolkit.getDefaultToolkit().getSystemEventQueue();</span>
+<span class="fc" id="L32">        idler = new Idler();</span>
+<span class="fc" id="L33">        focuser = new Focuser(speed);</span>
+<span class="fc" id="L34">    }</span>
+    
+    public void typeIntoComponent(Component component, String text) {
+<span class="fc" id="L37">        focuser.requestFocusOn(component);</span>
+        QueueingKeyAdapter queuer;
+        
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        for (int i = 0; i &lt; text.length(); i++) {</span>
+<span class="fc bfc" id="L41" title="All 4 branches covered.">            if (component instanceof JComboBox &amp;&amp; ((JComboBox) component).isEditable()) {</span>
+<span class="fc" id="L42">                queuer = new QueueingKeyAdapter(((JComboBox) component).getEditor().getEditorComponent(), speed);</span>
+            } else {
+<span class="fc" id="L44">                queuer = new QueueingKeyAdapter(component, speed);</span>
+            }
+<span class="fc" id="L46">            postKeyEvent(component, text.charAt(i));</span>
+<span class="fc" id="L47">            queuer.waitForEvent();</span>
+        }
+<span class="fc" id="L49">    }</span>
+    
+    /**
+     * Use this for any key which has a valid character associated with it, when it is being pressed
+     * (eg: as a game control key) rather than being typed into a text component.
+     */
+    public void pressKeychar(Window window, char key) throws TimeoutException {
+<span class="fc" id="L56">        QueueingKeyAdapter queuer = null;</span>
+        
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        if(window instanceof JFrame) {</span>
+<span class="fc" id="L59">            Container contentPane = ((JFrame)window).getContentPane();</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">            if (contentPane instanceof JComponent) {</span>
+<span class="fc" id="L61">                queuer = new QueueingKeyAdapter(contentPane, speed);</span>
+<span class="fc" id="L62">                focuser.requestFocusOn(contentPane);</span>
+            }
+<span class="fc" id="L64">        } else {</span>
+<span class="nc" id="L65">            queuer = new QueueingKeyAdapter(window.getFocusOwner(), speed);</span>
+<span class="nc" id="L66">            focuser.requestFocusOn(window.getFocusOwner());</span>
+        }
+        
+<span class="fc" id="L69">        postKeyEvent(window, key);</span>
+<span class="fc" id="L70">        queuer.waitForEvent();</span>
+<span class="fc" id="L71">    }</span>
+
+    public void pressKeycode(Window window, int keycode) {
+<span class="fc" id="L74">        QueueingKeyAdapter queuer = null;</span>
+        
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        if(window instanceof JFrame) {</span>
+<span class="fc" id="L77">            Container contentPane = ((JFrame)window).getContentPane();</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">            if (contentPane instanceof JComponent) {</span>
+<span class="fc" id="L79">                queuer = new QueueingKeyAdapter(contentPane, speed);</span>
+<span class="fc" id="L80">                focuser.requestFocusOn(contentPane);</span>
+            }
+<span class="fc" id="L82">        } else {</span>
+<span class="nc" id="L83">            queuer = new QueueingKeyAdapter(window.getFocusOwner(), speed);</span>
+<span class="nc" id="L84">            focuser.requestFocusOn(window.getFocusOwner());</span>
+        }
+        
+<span class="fc" id="L87">        postKeycodeEvent(window, keycode);</span>
+<span class="fc" id="L88">        queuer.waitForEvent();</span>
+<span class="fc" id="L89">    }</span>
+
+    private void postKeycodeEvent(Window window, int keycode) {
+<span class="fc" id="L92">        sysQueue.postEvent(createKeyPressEvent(window, keycode, KeyEvent.KEY_PRESSED));</span>
+<span class="fc" id="L93">        sysQueue.postEvent(createKeyPressEvent(window, keycode, KeyEvent.KEY_RELEASED));  </span>
+<span class="fc" id="L94">        idler.waitForIdle();</span>
+<span class="fc" id="L95">    }</span>
+
+    private void postKeyEvent(final Component component, final char key) {
+<span class="fc" id="L98">        sysQueue.postEvent(createKeyPressEvent(component, key, KeyEvent.KEY_PRESSED));</span>
+<span class="fc" id="L99">        sysQueue.postEvent(createKeyPressEvent(component, key, KeyEvent.KEY_RELEASED));</span>
+<span class="fc" id="L100">        sysQueue.postEvent(createKeyPressEvent(component, key, KeyEvent.KEY_TYPED));    </span>
+<span class="fc" id="L101">        idler.waitForIdle();</span>
+<span class="fc" id="L102">    }</span>
+    
+    private AWTEvent createKeyPressEvent(Component component, char c, int id) {
+<span class="fc" id="L105">        return new KeyEvent(component, </span>
+                id, 
+                System.currentTimeMillis(),
+                0,
+                KeyEvent.VK_UNDEFINED,
+                c);
+    }
+    
+    private AWTEvent createKeyPressEvent(Component component, int keycode, int id) {
+<span class="fc" id="L114">        return new KeyEvent(component, </span>
+                id, 
+                System.currentTimeMillis(),
+                0,
+                keycode,
+                KeyEvent.CHAR_UNDEFINED);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>
