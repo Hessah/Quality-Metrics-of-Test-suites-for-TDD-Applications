@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>THashPrimitiveIterator.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">trove-3.0.3</a> &gt; <a href="index.source.html" class="el_package">gnu.trove.impl.hash</a> &gt; <span class="el_source">THashPrimitiveIterator.java</span></div><h1>THashPrimitiveIterator.java</h1><pre class="source lang-java linenums">// ////////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2009, Rob Eden All Rights Reserved.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this program; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+// ////////////////////////////////////////////////////////////////////////////
+
+package gnu.trove.impl.hash;
+
+import gnu.trove.iterator.TPrimitiveIterator;
+
+import java.util.ConcurrentModificationException;
+import java.util.NoSuchElementException;
+
+
+/**
+ * Implements all iterator functions for the hashed object set.
+ * Subclasses may override objectAtIndex to vary the object
+ * returned by calls to next() (e.g. for values, and Map.Entry
+ * objects).
+ * &lt;p/&gt;
+ * &lt;p&gt; Note that iteration is fastest if you forego the calls to
+ * &lt;tt&gt;hasNext&lt;/tt&gt; in favor of checking the size of the structure
+ * yourself and then call next() that many times:
+ * &lt;p/&gt;
+ * &lt;pre&gt;
+ * Iterator i = collection.iterator();
+ * for (int size = collection.size(); size-- &gt; 0;) {
+ *   Object o = i.next();
+ * }
+ * &lt;/pre&gt;
+ * &lt;p/&gt;
+ * &lt;p&gt;You may, of course, use the hasNext(), next() idiom too if
+ * you aren't in a performance critical spot.&lt;/p&gt;
+ */
+public abstract class THashPrimitiveIterator implements TPrimitiveIterator {
+
+    /** the data structure this iterator traverses */
+    protected final TPrimitiveHash _hash;
+    /**
+     * the number of elements this iterator believes are in the
+     * data structure it accesses.
+     */
+    protected int _expectedSize;
+    /** the index used for iteration. */
+    protected int _index;
+
+
+    /**
+     * Creates a &lt;tt&gt;TPrimitiveIterator&lt;/tt&gt; for the specified collection.
+     *
+     * @param hash the &lt;tt&gt;TPrimitiveHash&lt;/tt&gt; we want to iterate over.
+     */
+<span class="fc" id="L65">    public THashPrimitiveIterator( TPrimitiveHash hash ) {</span>
+<span class="fc" id="L66">        _hash = hash;</span>
+<span class="fc" id="L67">        _expectedSize = _hash.size();</span>
+<span class="fc" id="L68">        _index = _hash.capacity();</span>
+<span class="fc" id="L69">    }</span>
+
+
+    /**
+     * Returns the index of the next value in the data structure
+     * or a negative value if the iterator is exhausted.
+     *
+     * @return an &lt;code&gt;int&lt;/code&gt; value
+     * @throws java.util.ConcurrentModificationException
+     *          if the underlying collection's
+     *          size has been modified since the iterator was created.
+     */
+    protected final int nextIndex() {
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        if ( _expectedSize != _hash.size() ) {</span>
+<span class="fc" id="L83">            throw new ConcurrentModificationException();</span>
+        }
+
+<span class="fc" id="L86">        byte[] states = _hash._states;</span>
+<span class="fc" id="L87">        int i = _index;</span>
+<span class="fc bfc" id="L88" title="All 4 branches covered.">        while ( i-- &gt; 0 &amp;&amp; ( states[i] != TPrimitiveHash.FULL ) ) {</span>
+            ;
+        }
+<span class="fc" id="L91">        return i;</span>
+    }
+
+
+    /**
+     * Returns true if the iterator can be advanced past its current
+     * location.
+     *
+     * @return a &lt;code&gt;boolean&lt;/code&gt; value
+     */
+    public boolean hasNext() {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        return nextIndex() &gt;= 0;</span>
+    }
+
+
+    /**
+     * Removes the last entry returned by the iterator.
+     * Invoking this method more than once for a single entry
+     * will leave the underlying data structure in a confused
+     * state.
+     */
+    public void remove() {
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">        if (_expectedSize != _hash.size()) {</span>
+<span class="nc" id="L114">            throw new ConcurrentModificationException();</span>
+        }
+
+        // Disable auto compaction during the remove. This is a workaround for bug 1642768.
+        try {
+<span class="fc" id="L119">            _hash.tempDisableAutoCompaction();</span>
+<span class="fc" id="L120">            _hash.removeAt(_index);</span>
+        }
+        finally {
+<span class="pc" id="L123">            _hash.reenableAutoCompaction( false );</span>
+<span class="fc" id="L124">        }</span>
+
+<span class="fc" id="L126">        _expectedSize--;</span>
+<span class="fc" id="L127">    }</span>
+
+
+    /**
+     * Sets the internal &lt;tt&gt;index&lt;/tt&gt; so that the `next' object
+     * can be returned.
+     */
+    protected final void moveToNextIndex() {
+        // doing the assignment &amp;&amp; &lt; 0 in one line shaves
+        // 3 opcodes...
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if ( ( _index = nextIndex() ) &lt; 0 ) {</span>
+<span class="fc" id="L138">            throw new NoSuchElementException();</span>
+        }
+<span class="fc" id="L140">    }</span>
+
+
+} // TPrimitiveIterator
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

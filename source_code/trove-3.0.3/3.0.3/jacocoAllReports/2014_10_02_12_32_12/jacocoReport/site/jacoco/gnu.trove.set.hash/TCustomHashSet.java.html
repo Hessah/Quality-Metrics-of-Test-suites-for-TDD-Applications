@@ -1,0 +1,412 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>TCustomHashSet.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">trove-3.0.3</a> &gt; <a href="index.source.html" class="el_package">gnu.trove.set.hash</a> &gt; <span class="el_source">TCustomHashSet.java</span></div><h1>TCustomHashSet.java</h1><pre class="source lang-java linenums">///////////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2001, Eric D. Friedman All Rights Reserved.
+// Copyright (c) 2009, Rob Eden All Rights Reserved.
+// Copyright (c) 2009, Jeff Randall All Rights Reserved.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General Public
+// License along with this program; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+///////////////////////////////////////////////////////////////////////////////
+
+package gnu.trove.set.hash;
+
+import gnu.trove.strategy.HashingStrategy;
+import gnu.trove.impl.HashFunctions;
+import gnu.trove.impl.hash.TCustomObjectHash;
+import gnu.trove.iterator.hash.TObjectHashIterator;
+import gnu.trove.procedure.TObjectProcedure;
+import gnu.trove.procedure.array.ToObjectArrayProceedure;
+
+import java.io.Externalizable;
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
+import java.lang.reflect.Array;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.Set;
+
+
+/**
+ * An implementation of the &lt;tt&gt;Set&lt;/tt&gt; interface that uses an
+ * open-addressed hash table to store its contents.
+ *
+ * @author Rob Eden
+ */
+public class TCustomHashSet&lt;E&gt; extends TCustomObjectHash&lt;E&gt;
+	implements Set&lt;E&gt;, Iterable&lt;E&gt;, Externalizable {
+
+    static final long serialVersionUID = 1L;
+
+
+	/** FOR EXTERNALIZATION ONLY!!! */
+<span class="fc" id="L54">	public TCustomHashSet() {}</span>
+
+
+    /**
+     * Creates a new &lt;code&gt;THashSet&lt;/code&gt; instance with the default
+     * capacity and load factor.
+     */
+    public TCustomHashSet( HashingStrategy&lt;? super E&gt; strategy ) {
+<span class="fc" id="L62">        super( strategy );</span>
+<span class="fc" id="L63">    }</span>
+
+
+    /**
+     * Creates a new &lt;code&gt;THashSet&lt;/code&gt; instance with a prime
+     * capacity equal to or greater than &lt;tt&gt;initialCapacity&lt;/tt&gt; and
+     * with the default load factor.
+     *
+     * @param initialCapacity an &lt;code&gt;int&lt;/code&gt; value
+     */
+    public TCustomHashSet( HashingStrategy&lt;? super E&gt; strategy, int initialCapacity ) {
+<span class="nc" id="L74">        super( strategy, initialCapacity );</span>
+<span class="nc" id="L75">    }</span>
+
+
+    /**
+     * Creates a new &lt;code&gt;THashSet&lt;/code&gt; instance with a prime
+     * capacity equal to or greater than &lt;tt&gt;initialCapacity&lt;/tt&gt; and
+     * with the specified load factor.
+     *
+     * @param initialCapacity an &lt;code&gt;int&lt;/code&gt; value
+     * @param loadFactor      a &lt;code&gt;float&lt;/code&gt; value
+     */
+    public TCustomHashSet( HashingStrategy&lt;? super E&gt; strategy, int initialCapacity,
+	    float loadFactor ) {
+
+<span class="nc" id="L89">        super( strategy, initialCapacity, loadFactor );</span>
+<span class="nc" id="L90">    }</span>
+
+
+    /**
+     * Creates a new &lt;code&gt;THashSet&lt;/code&gt; instance containing the
+     * elements of &lt;tt&gt;collection&lt;/tt&gt;.
+     *
+     * @param collection a &lt;code&gt;Collection&lt;/code&gt; value
+     */
+    public TCustomHashSet( HashingStrategy&lt;? super E&gt; strategy,
+	    Collection&lt;? extends E&gt; collection ) {
+
+<span class="nc" id="L102">        this( strategy, collection.size() );</span>
+<span class="nc" id="L103">        addAll( collection );</span>
+<span class="nc" id="L104">    }</span>
+
+
+    /**
+     * Inserts a value into the set.
+     *
+     * @param obj an &lt;code&gt;Object&lt;/code&gt; value
+     * @return true if the set was modified by the add operation
+     */
+    public boolean add( E obj ) {
+<span class="fc" id="L114">        int index = insertKey( obj );</span>
+
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        if ( index &lt; 0 ) {</span>
+<span class="nc" id="L117">            return false;       // already present in set, nothing to add</span>
+        }
+
+<span class="fc" id="L120">        postInsertHook( consumeFreeSlot );</span>
+<span class="fc" id="L121">        return true;            // yes, we added something</span>
+    }
+
+
+    @SuppressWarnings({&quot;SimplifiableIfStatement&quot;})
+    public boolean equals( Object other ) {
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if ( !( other instanceof Set ) ) {</span>
+<span class="nc" id="L128">            return false;</span>
+        }
+<span class="nc" id="L130">        Set that = (Set) other;</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if ( that.size() != this.size() ) {</span>
+<span class="nc" id="L132">            return false;</span>
+        }
+<span class="nc" id="L134">        return containsAll( that );</span>
+    }
+
+
+    public int hashCode() {
+<span class="nc" id="L139">        HashProcedure p = new HashProcedure();</span>
+<span class="nc" id="L140">        forEach( p );</span>
+<span class="nc" id="L141">        return p.getHashCode();</span>
+    }
+
+
+<span class="nc" id="L145">    private final class HashProcedure implements TObjectProcedure&lt;E&gt; {</span>
+<span class="nc" id="L146">        private int h = 0;</span>
+
+        public int getHashCode() {
+<span class="nc" id="L149">            return h;</span>
+        }
+
+        public final boolean execute( E key ) {
+<span class="nc" id="L153">            h += HashFunctions.hash( key );</span>
+<span class="nc" id="L154">            return true;</span>
+        }
+    }
+
+
+    /**
+     * Expands the set to accommodate new values.
+     *
+     * @param newCapacity an &lt;code&gt;int&lt;/code&gt; value
+     */
+    @SuppressWarnings({&quot;unchecked&quot;})
+    protected void rehash( int newCapacity ) {
+<span class="fc" id="L166">        int oldCapacity = _set.length;</span>
+<span class="fc" id="L167">        int oldSize = size();</span>
+<span class="fc" id="L168">        Object oldSet[] = _set;</span>
+
+<span class="fc" id="L170">        _set = new Object[newCapacity];</span>
+<span class="fc" id="L171">        Arrays.fill( _set, FREE );</span>
+
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        for ( int i = oldCapacity; i-- &gt; 0; ) {</span>
+<span class="fc" id="L174">            E o = (E) oldSet[i];</span>
+<span class="pc bpc" id="L175" title="1 of 4 branches missed.">            if ( o != FREE &amp;&amp; o != REMOVED ) {</span>
+<span class="nc" id="L176">                int index = insertKey( o );</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">                if ( index &lt; 0 ) { // everyone pays for this because some people can't RTFM</span>
+<span class="nc" id="L178">                    throwObjectContractViolation( _set[( -index - 1 )], o, size(), oldSize, oldSet);</span>
+                }
+            }
+<span class="fc" id="L181">        }</span>
+<span class="fc" id="L182">    }</span>
+
+
+    /**
+     * Returns a new array containing the objects in the set.
+     *
+     * @return an &lt;code&gt;Object[]&lt;/code&gt; value
+     */
+    @SuppressWarnings({&quot;unchecked&quot;})
+    public Object[] toArray() {
+<span class="nc" id="L192">        Object[] result = new Object[size()];</span>
+<span class="nc" id="L193">        forEach( new ToObjectArrayProceedure( result ) );</span>
+<span class="nc" id="L194">        return result;</span>
+    }
+
+
+    /**
+     * Returns a typed array of the objects in the set.
+     *
+     * @param a an &lt;code&gt;Object[]&lt;/code&gt; value
+     * @return an &lt;code&gt;Object[]&lt;/code&gt; value
+     */
+    @SuppressWarnings({&quot;unchecked&quot;})
+    public &lt;T&gt; T[] toArray( T[] a ) {
+<span class="nc" id="L206">        int size = size();</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">        if ( a.length &lt; size ) {</span>
+<span class="nc" id="L208">            a = (T[]) Array.newInstance( a.getClass().getComponentType(), size );</span>
+        }
+
+<span class="nc" id="L211">        forEach( new ToObjectArrayProceedure( a ) );</span>
+
+        // If this collection fits in the specified array with room to
+        // spare (i.e., the array has more elements than this
+        // collection), the element in the array immediately following
+        // the end of the collection is set to null. This is useful in
+        // determining the length of this collection only if the
+        // caller knows that this collection does not contain any null
+        // elements.)
+
+<span class="nc bnc" id="L221" title="All 2 branches missed.">        if ( a.length &gt; size ) {</span>
+<span class="nc" id="L222">            a[size] = null;</span>
+        }
+
+<span class="nc" id="L225">        return a;</span>
+    }
+
+
+    /** Empties the set. */
+    public void clear() {
+<span class="nc" id="L231">        super.clear();</span>
+
+<span class="nc" id="L233">        Arrays.fill( _set, 0, _set.length, FREE );</span>
+<span class="nc" id="L234">    }</span>
+
+
+    /**
+     * Removes &lt;tt&gt;obj&lt;/tt&gt; from the set.
+     *
+     * @param obj an &lt;code&gt;Object&lt;/code&gt; value
+     * @return true if the set was modified by the remove operation.
+     */
+    @SuppressWarnings({&quot;unchecked&quot;})
+    public boolean remove( Object obj ) {
+<span class="fc" id="L245">        int index = index( obj );</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">        if ( index &gt;= 0 ) {</span>
+<span class="fc" id="L247">            removeAt( index );</span>
+<span class="fc" id="L248">            return true;</span>
+        }
+<span class="nc" id="L250">        return false;</span>
+    }
+
+
+    /**
+     * Creates an iterator over the values of the set.  The iterator
+     * supports element deletion.
+     *
+     * @return an &lt;code&gt;Iterator&lt;/code&gt; value
+     */
+    @SuppressWarnings({&quot;unchecked&quot;})
+    public TObjectHashIterator&lt;E&gt; iterator() {
+<span class="nc" id="L262">        return new TObjectHashIterator&lt;E&gt;( this );</span>
+    }
+
+
+    /**
+     * Tests the set to determine if all of the elements in
+     * &lt;tt&gt;collection&lt;/tt&gt; are present.
+     *
+     * @param collection a &lt;code&gt;Collection&lt;/code&gt; value
+     * @return true if all elements were present in the set.
+     */
+    @SuppressWarnings(&quot;ForLoopReplaceableByForEach&quot;)
+    public boolean containsAll( Collection&lt;?&gt; collection ) {
+<span class="nc bnc" id="L275" title="All 2 branches missed.">        for ( Iterator i = collection.iterator(); i.hasNext(); ) {</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">            if ( !contains( i.next() ) ) {</span>
+<span class="nc" id="L277">                return false;</span>
+            }
+        }
+<span class="nc" id="L280">        return true;</span>
+    }
+
+
+    /**
+     * Adds all of the elements in &lt;tt&gt;collection&lt;/tt&gt; to the set.
+     *
+     * @param collection a &lt;code&gt;Collection&lt;/code&gt; value
+     * @return true if the set was modified by the add all operation.
+     */
+    public boolean addAll( Collection&lt;? extends E&gt; collection ) {
+<span class="nc" id="L291">        boolean changed = false;</span>
+<span class="nc" id="L292">        int size = collection.size();</span>
+
+<span class="nc" id="L294">        ensureCapacity( size );</span>
+<span class="nc" id="L295">        Iterator&lt;? extends E&gt; it = collection.iterator();</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">        while ( size-- &gt; 0 ) {</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">            if ( add( it.next() ) ) {</span>
+<span class="nc" id="L298">                changed = true;</span>
+            }
+        }
+<span class="nc" id="L301">        return changed;</span>
+    }
+
+
+    /**
+     * Removes all of the elements in &lt;tt&gt;collection&lt;/tt&gt; from the set.
+     *
+     * @param collection a &lt;code&gt;Collection&lt;/code&gt; value
+     * @return true if the set was modified by the remove all operation.
+     */
+    public boolean removeAll( Collection&lt;?&gt; collection ) {
+<span class="nc" id="L312">        boolean changed = false;</span>
+<span class="nc" id="L313">        int size = collection.size();</span>
+        Iterator it;
+
+<span class="nc" id="L316">        it = collection.iterator();</span>
+<span class="nc bnc" id="L317" title="All 2 branches missed.">        while ( size-- &gt; 0 ) {</span>
+<span class="nc bnc" id="L318" title="All 2 branches missed.">            if ( remove( it.next() ) ) {</span>
+<span class="nc" id="L319">                changed = true;</span>
+            }
+        }
+<span class="nc" id="L322">        return changed;</span>
+    }
+
+
+    /**
+     * Removes any values in the set which are not contained in
+     * &lt;tt&gt;collection&lt;/tt&gt;.
+     *
+     * @param collection a &lt;code&gt;Collection&lt;/code&gt; value
+     * @return true if the set was modified by the retain all operation
+     */
+    @SuppressWarnings({&quot;SuspiciousMethodCalls&quot;})
+    public boolean retainAll( Collection&lt;?&gt; collection ) {
+<span class="nc" id="L335">        boolean changed = false;</span>
+<span class="nc" id="L336">        int size = size();</span>
+<span class="nc" id="L337">        Iterator&lt;E&gt; it = iterator();</span>
+<span class="nc bnc" id="L338" title="All 2 branches missed.">        while ( size-- &gt; 0 ) {</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">            if ( !collection.contains( it.next() ) ) {</span>
+<span class="nc" id="L340">                it.remove();</span>
+<span class="nc" id="L341">                changed = true;</span>
+            }
+        }
+<span class="nc" id="L344">        return changed;</span>
+    }
+
+
+    public String toString() {
+<span class="nc" id="L349">        final StringBuilder buf = new StringBuilder( &quot;{&quot; );</span>
+<span class="nc" id="L350">        forEach( new TObjectProcedure&lt;E&gt;() {</span>
+<span class="nc" id="L351">            private boolean first = true;</span>
+
+
+            public boolean execute( Object value ) {
+<span class="nc bnc" id="L355" title="All 2 branches missed.">                if ( first ) {</span>
+<span class="nc" id="L356">                    first = false;</span>
+                } else {
+<span class="nc" id="L358">                    buf.append( &quot;, &quot; );</span>
+                }
+
+<span class="nc" id="L361">                buf.append( value );</span>
+<span class="nc" id="L362">                return true;</span>
+            }
+        } );
+<span class="nc" id="L365">        buf.append( &quot;}&quot; );</span>
+<span class="nc" id="L366">        return buf.toString();</span>
+    }
+
+
+    public void writeExternal( ObjectOutput out ) throws IOException {
+        // VERSION
+<span class="fc" id="L372">        out.writeByte( 1 );</span>
+
+        // NOTE: Super was not written in version 0
+<span class="fc" id="L375">        super.writeExternal( out );</span>
+
+        // NUMBER OF ENTRIES
+<span class="fc" id="L378">        out.writeInt( _size );</span>
+
+        // ENTRIES
+<span class="fc bfc" id="L381" title="All 2 branches covered.">        for ( int i = _set.length; i-- &gt; 0; ) {</span>
+<span class="pc bpc" id="L382" title="1 of 4 branches missed.">            if ( _set[i] != REMOVED &amp;&amp; _set[i] != FREE ) {</span>
+<span class="fc" id="L383">                out.writeObject( _set[i] );</span>
+            }
+        }
+<span class="fc" id="L386">    }</span>
+
+
+    @SuppressWarnings({&quot;unchecked&quot;})
+    public void readExternal( ObjectInput in )
+            throws IOException, ClassNotFoundException {
+
+        // VERSION
+<span class="fc" id="L394">        byte version = in.readByte();</span>
+
+        // NOTE: super was not written in version 0
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">        if ( version != 0 ) {</span>
+<span class="fc" id="L398">            super.readExternal( in );</span>
+        }
+
+        // NUMBER OF ENTRIES
+<span class="fc" id="L402">        int size = in.readInt();</span>
+<span class="fc" id="L403">        setUp( size );</span>
+
+        // ENTRIES
+<span class="fc bfc" id="L406" title="All 2 branches covered.">        while ( size-- &gt; 0 ) {</span>
+<span class="fc" id="L407">            E val = (E) in.readObject();</span>
+<span class="fc" id="L408">            add( val );</span>
+<span class="fc" id="L409">        }</span>
+<span class="fc" id="L410">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>
