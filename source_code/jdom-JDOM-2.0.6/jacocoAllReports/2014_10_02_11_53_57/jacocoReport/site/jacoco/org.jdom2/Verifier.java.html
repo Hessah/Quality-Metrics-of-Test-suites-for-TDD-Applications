@@ -1,0 +1,1294 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Verifier.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2</a> &gt; <span class="el_source">Verifier.java</span></div><h1>Verifier.java</h1><pre class="source lang-java linenums">/*-- 
+
+ Copyright (C) 2000-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows 
+    these conditions in the documentation and/or other materials 
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the 
+ end-user documentation provided with the redistribution and/or in the 
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos 
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many 
+ individuals on behalf of the JDOM Project and was originally 
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2;
+
+import java.util.*;
+
+/**
+ * A utility class to handle well-formedness checks on names, data, and other
+ * verification tasks for JDOM. The class is final and may not be subclassed.
+ *
+ * @author  Brett McLaughlin
+ * @author  Elliotte Rusty Harold
+ * @author  Jason Hunter
+ * @author  Bradley S. Huffman
+ * @author  Rolf Lear
+ * @author  Wilfried Middleton
+ */
+final public class Verifier {
+	
+	/*
+	 * KEY TO UNDERSTANDING MASKS.
+	 * ===========================
+	 * 
+	 * This Verifier uses bitwise logic to perform fast validation on
+	 * XML characters. The concept is as follows...
+	 * 
+	 * There are 7 major tests for characters in JDOM and one special case.
+	 * Can the character be a regular character, can it be part of an XML Name
+	 * (element, attribute, entity-ref, etc.), does it represent a letter,
+	 * digit, or combining character. Finally can a character be the first
+	 * character in a name, or can the character be part of a URI. The special
+	 * case is that Attributes and Element names in JDOM do not include the
+	 * namespace prefix, thus, for Attribute and Elements, the name is the
+	 * identical test to other XML names, but excludes the ':'. For performance
+	 * reasons we only have the bitmask for the JDOM names, and then add the
+	 * ':' for the general case tests.
+	 * 
+	 * These 7 tests are often performed in very tight performance critical
+	 * loops. It is essential for them to be fast.
+	 * 
+	 * These 7 tests conveniently can be represented as 8 bits in a byte.
+	 * We can thus have a single byte that represents the possible roles for
+	 * each possible character. There are 64K characters... thus we need 64K
+	 * bytes to represent each character's possible roles.
+	 * 
+	 * We could use arrays of booleans to accomplish the same thing, but each
+	 * boolean is a byte of memory, and using a bitmask allows us to put the
+	 * 8 bitmask tests in the same memory space as just one boolean array.
+	 * 
+	 * The end solution is to have an array of these bytes, one per character,
+	 * and to then query each bit on the byte to see whether the corresponding
+	 * character is able to perform in the respective role.
+	 * 
+	 * The complicated part of this process is three-fold. The hardest part is
+	 * knowing what role each character can play. The next hard part is
+	 * converting this knowledge in to an array of bytes we can express in this
+	 * Verifier class. The final part is querying that array for each test.
+	 * 
+	 * Before this particular performance upgrade, the knowledge of what roles
+	 * each character can play was embedded in each of the isXML*() methods.
+	 * Those methods have been transferred in to the 'contrib' class
+	 * org.jdom2.contrib.verifier.VerifierBuilder. That VerifierBuilder class
+	 * has a main method which takes that knowledge, and converts it in to a
+	 * 'compressed' set of two arrays, the byte mask, and the number of
+	 * consecutive characters that have that mask, which are then copy/pasted
+	 * in to this file as the VALCONST and LENCONST arrays.
+	 * 
+	 * These two arrays are then 'decompressed' in to the CHARFLAGS array.
+	 * 
+	 * The CHARFLAGS array is then queried for each of the 8 critical tests
+	 * to determine which roles a character performs.
+	 * 
+	 * If you need to change the roles a character plays in XML (i.e. change
+	 * the return-value of one of the isXML...() methods, then you need to:
+	 * 
+	 *  - update the logic in org.jdom2.contrib.verifier.VerifierBuilder
+	 *  - run the VerifierBuilder
+	 *  - copy/paste the output to this file.
+	 *  - update the JUnit test harness TestVerifier
+	 */
+
+	/**
+	 * The seed array used with LENCONST to populate CHARFLAGS.
+	 */
+<span class="fc" id="L137">	private static final byte[] VALCONST = new byte[] {</span>
+        0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x41, 0x01, 
+        0x41, 0x49, 0x41, 0x59, 0x41, 0x01, 0x41, 0x01, 
+        0x41, 0x4f, 0x01, 0x4d, 0x01, 0x4f, 0x01, 0x41, 
+        0x01, 0x09, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 
+        0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 
+        0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 
+        0x01, 0x0f, 0x01, 0x09, 0x01, 0x29, 0x01, 0x29, 
+        0x01, 0x0f, 0x09, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 
+        0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 
+        0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 
+        0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x29, 
+        0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 
+        0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 
+        0x01, 0x0f, 0x01, 0x29, 0x01, 0x29, 0x01, 0x29, 
+        0x01, 0x29, 0x01, 0x29, 0x01, 0x29, 0x01, 0x0f, 
+        0x01, 0x0f, 0x01, 0x0f, 0x01, 0x09, 0x0f, 0x29, 
+        0x01, 0x19, 0x01, 0x29, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x29, 0x0f, 0x29, 
+        0x01, 0x29, 0x01, 0x19, 0x01, 0x29, 0x01, 0x0f, 
+        0x01, 0x29, 0x0f, 0x29, 0x01, 0x29, 0x01, 0x0f, 
+        0x29, 0x01, 0x19, 0x01, 0x29, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x29, 0x01, 0x29, 0x01, 0x29, 0x01, 
+        0x29, 0x01, 0x29, 0x01, 0x0f, 0x01, 0x0f, 0x29, 
+        0x01, 0x19, 0x0f, 0x01, 0x29, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x29, 0x01, 0x29, 0x01, 
+        0x29, 0x01, 0x29, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x19, 0x29, 0x0f, 0x01, 0x29, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x29, 0x0f, 0x29, 0x01, 
+        0x29, 0x01, 0x29, 0x01, 0x0f, 0x01, 0x19, 0x01, 
+        0x29, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x29, 0x0f, 
+        0x29, 0x01, 0x29, 0x01, 0x29, 0x01, 0x29, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x19, 0x01, 0x29, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x29, 0x01, 0x29, 0x01, 
+        0x29, 0x01, 0x29, 0x01, 0x19, 0x01, 0x29, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x29, 0x01, 0x29, 0x01, 0x29, 0x01, 
+        0x29, 0x01, 0x0f, 0x01, 0x19, 0x01, 0x29, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x29, 0x01, 0x29, 0x01, 0x29, 0x01, 
+        0x29, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x19, 0x01, 
+        0x29, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x29, 0x01, 0x29, 0x01, 0x29, 0x01, 
+        0x29, 0x01, 0x0f, 0x01, 0x19, 0x01, 0x0f, 0x01, 
+        0x0f, 0x29, 0x0f, 0x29, 0x01, 0x0f, 0x09, 0x29, 
+        0x01, 0x19, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 
+        0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 
+        0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 
+        0x01, 0x0f, 0x01, 0x0f, 0x29, 0x0f, 0x29, 0x01, 
+        0x29, 0x0f, 0x01, 0x0f, 0x01, 0x09, 0x01, 0x29, 
+        0x01, 0x19, 0x01, 0x29, 0x01, 0x19, 0x01, 0x29, 
+        0x01, 0x29, 0x01, 0x29, 0x01, 0x29, 0x0f, 0x01, 
+        0x0f, 0x01, 0x29, 0x01, 0x29, 0x01, 0x29, 0x01, 
+        0x29, 0x01, 0x29, 0x01, 0x29, 0x01, 0x29, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x29, 0x01, 
+        0x29, 0x01, 0x0f, 0x01, 0x0f, 0x01, 0x0f, 0x01, 
+        0x0f, 0x01, 0x09, 0x01, 0x0f, 0x01, 0x0f, 0x29, 
+        0x01, 0x09, 0x01, 0x0f, 0x01, 0x29, 0x01, 0x09, 
+        0x01, 0x0f, 0x01, 0x09, 0x01, 0x0f, 0x01, 0x0f, 
+        0x01, 0x0f, 0x01, 0x00, 0x01, 0x00};
+
+	/**
+	 * The seed array used with VALCONST to populate CHARFLAGS.
+	 */
+<span class="fc" id="L220">	private static final int [] LENCONST = new int [] {</span>
+        9,     2,     2,     1,    18,     1,     1,     2, 
+        9,     2,     1,    10,     1,     2,     1,     1, 
+        2,    26,     4,     1,     1,    26,     3,     1, 
+       56,     1,     8,    23,     1,    31,     1,    58, 
+        2,    11,     2,     8,     1,    53,     1,    68, 
+        9,    36,     3,     2,     4,    30,    56,    89, 
+       18,     7,    14,     2,    46,    70,    26,     2, 
+       36,     1,     1,     3,     1,     1,     1,    20, 
+        1,    44,     1,     7,     3,     1,     1,     1, 
+        1,     1,     1,     1,     1,    18,    13,    12, 
+        1,    66,     1,    12,     1,    36,     1,     4, 
+        9,    53,     2,     2,     2,     2,     3,    28, 
+        2,     8,     2,     2,    55,    38,     2,     1, 
+        7,    38,    10,    17,     1,    23,     1,     3, 
+        1,     1,     1,     2,     1,     1,    11,    27, 
+        5,     3,    46,    26,     5,     1,    10,     8, 
+       13,    10,     6,     1,    71,     2,     5,     1, 
+       15,     1,     4,     1,     1,    15,     2,     2, 
+        1,     4,     2,    10,   519,     3,     1,    53, 
+        2,     1,     1,    16,     3,     4,     3,    10, 
+        2,     2,    10,    17,     3,     1,     8,     2, 
+        2,     2,    22,     1,     7,     1,     1,     3, 
+        4,     2,     1,     1,     7,     2,     2,     2, 
+        3,     9,     1,     4,     2,     1,     3,     2, 
+        2,    10,     2,    16,     1,     2,     6,     4, 
+        2,     2,    22,     1,     7,     1,     2,     1, 
+        2,     1,     2,     2,     1,     1,     5,     4, 
+        2,     2,     3,    11,     4,     1,     1,     7, 
+       10,     2,     3,    12,     3,     1,     7,     1, 
+        1,     1,     3,     1,    22,     1,     7,     1, 
+        2,     1,     5,     2,     1,     1,     8,     1, 
+        3,     1,     3,    18,     1,     5,    10,    17, 
+        3,     1,     8,     2,     2,     2,    22,     1, 
+        7,     1,     2,     2,     4,     2,     1,     1, 
+        6,     3,     2,     2,     3,     8,     2,     4, 
+        2,     1,     3,     4,    10,    18,     2,     1, 
+        6,     3,     3,     1,     4,     3,     2,     1, 
+        1,     1,     2,     3,     2,     3,     3,     3, 
+        8,     1,     3,     4,     5,     3,     3,     1, 
+        4,     9,     1,    15,     9,    17,     3,     1, 
+        8,     1,     3,     1,    23,     1,    10,     1, 
+        5,     4,     7,     1,     3,     1,     4,     7, 
+        2,     9,     2,     4,    10,    18,     2,     1, 
+        8,     1,     3,     1,    23,     1,    10,     1, 
+        5,     4,     7,     1,     3,     1,     4,     7, 
+        2,     7,     1,     1,     2,     4,    10,    18, 
+        2,     1,     8,     1,     3,     1,    23,     1, 
+       16,     4,     6,     2,     3,     1,     4,     9, 
+        1,     8,     2,     4,    10,   145,    46,     1, 
+        1,     1,     2,     7,     5,     6,     1,     8, 
+        1,    10,    39,     2,     1,     1,     2,     2, 
+        1,     1,     2,     1,     6,     4,     1,     7, 
+        1,     3,     1,     1,     1,     1,     2,     2, 
+        1,     2,     1,     1,     1,     2,     6,     1, 
+        2,     1,     2,     5,     1,     1,     1,     6, 
+        2,    10,    62,     2,     6,    10,    11,     1, 
+        1,     1,     1,     1,     4,     2,     8,     1, 
+       33,     7,    20,     1,     6,     4,     6,     1, 
+        1,     1,    21,     3,     7,     1,     1,   230, 
+       38,    10,    39,     9,     1,     1,     2,     1, 
+        3,     1,     1,     1,     2,     1,     5,    41, 
+        1,     1,     1,     1,     1,    11,     1,     1, 
+        1,     1,     1,     3,     2,     3,     1,     5, 
+        3,     1,     1,     1,     1,     1,     1,     1, 
+        1,     3,     2,     3,     2,     1,     1,    40, 
+        1,     9,     1,     2,     1,     2,     2,     7, 
+        2,     1,     1,     1,     7,    40,     1,     4, 
+        1,     8,     1,  3078,   156,     4,    90,     6, 
+       22,     2,     6,     2,    38,     2,     6,     2, 
+        8,     1,     1,     1,     1,     1,     1,     1, 
+       31,     2,    53,     1,     7,     1,     1,     3, 
+        3,     1,     7,     3,     4,     2,     6,     4, 
+       13,     5,     3,     1,     7,   211,    13,     4, 
+        1,    68,     1,     3,     2,     2,     1,    81, 
+        3,  3714,     1,     1,     1,    25,     9,     6, 
+        1,     5,    11,    84,     4,     2,     2,     2, 
+        2,    90,     1,     3,     6,    40,  7379, 20902, 
+     3162, 11172,    92,  2048,  8190,     2};
+
+	/**
+	 * The number of characters in Java.
+	 */
+	private static final int  CHARCNT = Character.MAX_VALUE + 1;
+	
+	/**
+	 * An array of byte where each byte represents the roles that the
+	 * corresponding character can play. Use the bit mask values
+	 * to access each character's role.
+	 */
+<span class="fc" id="L310">	private static final byte[] CHARFLAGS = buildBitFlags();</span>
+
+	/**
+	 * Convert the two compressed arrays in to th CHARFLAGS array.
+	 * @return the CHARFLAGS array.
+	 */
+	private static final byte[] buildBitFlags() {
+<span class="fc" id="L317">		final byte[] ret = new byte[CHARCNT];</span>
+<span class="fc" id="L318">		int index = 0;</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">		for (int i = 0; i &lt; VALCONST.length; i++) {</span>
+			// v represents the roles a character can play.
+<span class="fc" id="L321">			final byte v = VALCONST[i];</span>
+			// l is the number of consecutive chars that have the same
+			// roles 'v'
+<span class="fc" id="L324">			int l = LENCONST[i];</span>
+			// we need to give the next 'l' chars the role bits 'v'
+<span class="fc bfc" id="L326" title="All 2 branches covered.">			while (--l &gt;= 0) {</span>
+<span class="fc" id="L327">				ret[index++] = v;</span>
+			}
+		}
+<span class="fc" id="L330">		return ret;</span>
+	}
+
+	/** Mask used to test for {@link #isXMLCharacter(int)} */
+	private static final byte MASKXMLCHARACTER  = 1 &lt;&lt; 0;
+	/** Mask used to test for {@link #isXMLLetter(char)} */
+	private static final byte MASKXMLLETTER     = 1 &lt;&lt; 1;
+	/** Mask used to test for {@link #isXMLNameStartCharacter(char)} */
+	private static final byte MASKXMLSTARTCHAR  = 1 &lt;&lt; 2;
+	/** Mask used to test for {@link #isXMLNameCharacter(char)} */
+	private static final byte MASKXMLNAMECHAR   = 1 &lt;&lt; 3;
+	/** Mask used to test for {@link #isXMLDigit(char)} */
+	private static final byte MASKXMLDIGIT      = 1 &lt;&lt; 4;
+	/** Mask used to test for {@link #isXMLCombiningChar(char)} */
+	private static final byte MASKXMLCOMBINING  = 1 &lt;&lt; 5;
+	/** Mask used to test for {@link #isURICharacter(char)} */
+	private static final byte MASKURICHAR       = 1 &lt;&lt; 6;
+	/** Mask used to test for {@link #isXMLLetterOrDigit(char)} */
+	private static final byte MASKXMLLETTERORDIGIT = MASKXMLLETTER | MASKXMLDIGIT;
+	
+	/**
+	 * Ensure instantation cannot occur.
+	 */
+<span class="nc" id="L353">	private Verifier() { }</span>
+	
+	private static final String checkJDOMName(final String name) {
+		// Check basic XML name rules first
+		// Cannot be empty or null
+<span class="fc bfc" id="L358" title="All 2 branches covered.">		if (name == null) {</span>
+<span class="fc" id="L359">			return &quot;XML names cannot be null&quot;;</span>
+		}
+		
+		//final int len = name.length();
+<span class="fc bfc" id="L363" title="All 2 branches covered.">		if (name.length() == 0) { </span>
+<span class="fc" id="L364">			return &quot;XML names cannot be empty&quot;;</span>
+		}
+
+		// Cannot start with a number
+<span class="fc bfc" id="L368" title="All 2 branches covered.">		if ((byte)0 == (CHARFLAGS[name.charAt(0)] &amp; MASKXMLSTARTCHAR)) {</span>
+<span class="fc" id="L369">			return &quot;XML name '&quot; + name + &quot;' cannot begin with the character \&quot;&quot; + </span>
+					name.charAt(0) + &quot;\&quot;&quot;;
+		}
+		// Ensure legal content for non-first chars
+		// also check char 0 to catch colon char ':'
+<span class="fc bfc" id="L374" title="All 2 branches covered.">		for (int i = name.length() - 1; i &gt;= 1; i--) {</span>
+<span class="fc bfc" id="L375" title="All 2 branches covered.">			if ((byte)0 == (byte)(CHARFLAGS[name.charAt(i)] &amp; MASKXMLNAMECHAR)) {</span>
+<span class="fc" id="L376">				return &quot;XML name '&quot; + name + &quot;' cannot contain the character \&quot;&quot;</span>
+						+ name.charAt(i) + &quot;\&quot;&quot;;
+			}
+		}
+
+		// If we got here, everything is OK
+<span class="fc" id="L382">		return null;</span>
+	}
+
+	/**
+	 * This will check the supplied name to see if it is legal for use as
+	 * a JDOM &lt;code&gt;{@link Element}&lt;/code&gt; name.
+	 *
+	 * @param name &lt;code&gt;String&lt;/code&gt; name to check.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason name is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; if name is OK.
+	 */
+	public static String checkElementName(final String name) {
+<span class="fc" id="L394">		return checkJDOMName(name);</span>
+	}
+
+	/**
+	 * This will check the supplied name to see if it is legal for use as
+	 * a JDOM &lt;code&gt;{@link Attribute}&lt;/code&gt; name.
+	 *
+	 * @param name &lt;code&gt;String&lt;/code&gt; name to check.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason name is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; if name is OK.
+	 */
+	public static String checkAttributeName(final String name) {
+		// Attribute names may not be xmlns since we do this internally too
+<span class="fc bfc" id="L407" title="All 2 branches covered.">		if (&quot;xmlns&quot;.equals(name)) {</span>
+<span class="fc" id="L408">			return &quot;An Attribute name may not be \&quot;xmlns\&quot;; &quot; +</span>
+					&quot;use the Namespace class to manage namespaces&quot;;
+		}
+
+<span class="fc" id="L412">		return checkJDOMName(name);</span>
+	}
+
+	/**
+	 * This will check the supplied string to see if it only contains
+	 * characters allowed by the XML 1.0 specification. The C0 controls
+	 * (e.g. null, vertical tab, form-feed, etc.) are specifically excluded
+	 * except for carriage return, line-feed, and the horizontal tab.
+	 * Surrogates are also excluded. 
+	 * &lt;p&gt;
+	 * This method is useful for checking element content and attribute
+	 * values. Note that characters 
+	 * like &quot; and &amp;lt; are allowed in attribute values and element content. 
+	 * They will simply be escaped as &amp;quot; or &amp;lt; 
+	 * when the value is serialized. 
+	 * &lt;/p&gt;
+	 *
+	 * @param text &lt;code&gt;String&lt;/code&gt; value to check.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason name is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; if name is OK.
+	 */
+	public static String checkCharacterData(final String text) {
+<span class="fc bfc" id="L434" title="All 2 branches covered.">		if (text == null) {</span>
+<span class="fc" id="L435">			return &quot;A null is not a legal XML value&quot;;</span>
+		}
+		
+<span class="fc" id="L438">		final int len = text.length();</span>
+<span class="fc bfc" id="L439" title="All 2 branches covered.">		for (int i = 0; i &lt; len; i++) {</span>
+			// we are expecting a normal char, but may be a surrogate.
+			// the isXMLCharacter method takes an int argument, but we have a char.
+			// we save a lot of time by doing the test directly here without
+			// doing the unnecessary cast-to-int and double-checking ranges
+			// for the char.
+			// Also, note that we only need to check for non-zero flags, instead
+			// of checking for an actual bit, because all the other
+			// character roles are a pure subset of CharacterData. Put another way,
+			// any character with any bit set, will always also have the
+			// CharacterData bit set.
+<span class="fc bfc" id="L450" title="All 2 branches covered.">			while (CHARFLAGS[text.charAt(i)] != (byte)0) {</span>
+				// fast-loop through the chars until we find something that's not.
+<span class="fc bfc" id="L452" title="All 2 branches covered.">				if (++i == len) {</span>
+					// we passed all the characters...
+<span class="fc" id="L454">					return null;</span>
+				}
+			}
+			// the character is not a normal character.
+			// we need to sort out what it is. Neither high nor low
+			// surrogate pairs are valid characters, so they will get here.
+			
+<span class="fc bfc" id="L461" title="All 2 branches covered.">			if (isHighSurrogate(text.charAt(i))) {</span>
+				// we have the valid high char of a pair.
+				// we will expect the low char on the next index,
+<span class="fc" id="L464">				i++;</span>
+<span class="fc bfc" id="L465" title="All 2 branches covered.">				if (i &gt;= len) {</span>
+<span class="fc" id="L466">					return String.format(&quot;Truncated Surrogate Pair 0x%04x????&quot;,</span>
+							(int)text.charAt(i - 1));
+				}
+<span class="fc bfc" id="L469" title="All 2 branches covered.">				if (isLowSurrogate(text.charAt(i))) {</span>
+					// we now have the low char of a pair, decode and validate
+<span class="pc bpc" id="L471" title="1 of 2 branches missed.">					if (!isXMLCharacter(decodeSurrogatePair(</span>
+							text.charAt(i - 1), text.charAt(i)))) {
+						// Likely this character can't be easily displayed
+						// because it's a control so we use it'd hexadecimal 
+						// representation in the reason.
+<span class="nc" id="L476">						return String.format(&quot;0x%06x is not a legal XML character&quot;,</span>
+								decodeSurrogatePair(
+										text.charAt(i - 1), text.charAt(i)));
+					}
+				} else {
+					// we got a normal character, but we wanted a low surrogate
+<span class="fc" id="L482">					return String.format(&quot;Illegal Surrogate Pair 0x%04x%04x&quot;,</span>
+							(int)text.charAt(i - 1), (int)text.charAt(i));
+				}
+			} else {
+				// Likely this character can't be easily displayed
+				// because it's a control so we use its hexadecimal 
+				// representation in the reason.
+<span class="fc" id="L489">				return String.format(&quot;0x%04x is not a legal XML character&quot;,</span>
+						(int)text.charAt(i));
+			}
+		}
+		
+		// If we got here, everything is OK
+<span class="fc" id="L495">		return null;</span>
+	}
+
+	/**
+	 * This will check the supplied data to see if it is legal for use as
+	 * JDOM &lt;code&gt;{@link CDATA}&lt;/code&gt;.
+	 *
+	 * @param data &lt;code&gt;String&lt;/code&gt; data to check.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason data is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; is name is OK.
+	 */
+	public static String checkCDATASection(final String data) {
+<span class="fc" id="L507">		String reason = null;</span>
+<span class="fc bfc" id="L508" title="All 2 branches covered.">		if ((reason = checkCharacterData(data)) != null) {</span>
+<span class="fc" id="L509">			return reason;</span>
+		}
+
+<span class="fc bfc" id="L512" title="All 2 branches covered.">		if (data.indexOf(&quot;]]&gt;&quot;) != -1) {</span>
+<span class="fc" id="L513">			return &quot;CDATA cannot internally contain a CDATA ending &quot; +</span>
+					&quot;delimiter (]]&gt;)&quot;;
+		}
+
+		// If we got here, everything is OK
+<span class="fc" id="L518">		return null;</span>
+	}
+
+	/**
+	 * This will check the supplied name to see if it is legal for use as
+	 * a JDOM &lt;code&gt;{@link Namespace}&lt;/code&gt; prefix.
+	 *
+	 * @param prefix &lt;code&gt;String&lt;/code&gt; prefix to check.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason name is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; if name is OK.
+	 */
+	public static String checkNamespacePrefix(final String prefix) {
+		// Manually do rules, since URIs can be null or empty
+<span class="fc bfc" id="L531" title="All 4 branches covered.">		if ((prefix == null) || (prefix.equals(&quot;&quot;))) {</span>
+<span class="fc" id="L532">			return null;</span>
+		}
+		
+<span class="fc bfc" id="L535" title="All 2 branches covered.">		if (checkJDOMName(prefix) != null) {</span>
+			// will double-check null and empty names, but that's OK
+			// since we have already checked them.
+<span class="fc" id="L538">			return checkJDOMName(prefix);</span>
+		}
+		
+		// Cannot start with &quot;xml&quot; in any character case
+		/* See Issue 126 - https://github.com/hunterhacker/jdom/issues/126
+		if (prefix.length() &gt;= 3) {
+			if (prefix.charAt(0) == 'x' || prefix.charAt(0) == 'X') {
+				if (prefix.charAt(1) == 'm' || prefix.charAt(1) == 'M') {
+					if (prefix.charAt(2) == 'l' || prefix.charAt(2) == 'L') {
+						return &quot;Namespace prefixes cannot begin with &quot; +
+								&quot;\&quot;xml\&quot; in any combination of case&quot;;
+					}
+				}
+			}
+		}
+		*/
+
+		// If we got here, everything is OK
+<span class="fc" id="L556">		return null;</span>
+	}
+
+	/**
+	 * This will check the supplied name to see if it is legal for use as
+	 * a JDOM &lt;code&gt;{@link Namespace}&lt;/code&gt; URI.
+	 * &lt;p&gt;
+	 * This is a 'light' test of URI's designed to filter out only the worst
+	 * illegal URIs. It tests only to ensure the first character is valid. A
+	 * comprehensive URI validation process would be impractical.
+	 *
+	 * @param uri &lt;code&gt;String&lt;/code&gt; URI to check.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason name is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; if name is OK.
+	 */
+	public static String checkNamespaceURI(final String uri) {
+		// Manually do rules, since URIs can be null or empty
+<span class="fc bfc" id="L573" title="All 4 branches covered.">		if ((uri == null) || (uri.equals(&quot;&quot;))) {</span>
+<span class="fc" id="L574">			return null;</span>
+		}
+
+		// Cannot start with a number
+<span class="fc" id="L578">		final char first = uri.charAt(0);</span>
+<span class="fc bfc" id="L579" title="All 2 branches covered.">		if (Character.isDigit(first)) {</span>
+<span class="fc" id="L580">			return &quot;Namespace URIs cannot begin with a number&quot;;</span>
+		}
+		// Cannot start with a $
+<span class="fc bfc" id="L583" title="All 2 branches covered.">		if (first == '$') {</span>
+<span class="fc" id="L584">			return &quot;Namespace URIs cannot begin with a dollar sign ($)&quot;;</span>
+		}
+		// Cannot start with a -
+<span class="fc bfc" id="L587" title="All 2 branches covered.">		if (first == '-') {</span>
+<span class="fc" id="L588">			return &quot;Namespace URIs cannot begin with a hyphen (-)&quot;;</span>
+		}
+
+		// Cannot start with space...
+<span class="fc bfc" id="L592" title="All 2 branches covered.">		if (isXMLWhitespace(first)) {</span>
+<span class="fc" id="L593">			return &quot;Namespace URIs cannot begin with white-space&quot;;</span>
+		}
+
+		// If we got here, everything is OK
+<span class="fc" id="L597">		return null;</span>
+	}
+
+	/**
+	 * Check if two namespaces collide.
+	 *
+	 * @param namespace &lt;code&gt;Namespace&lt;/code&gt; to check.
+	 * @param other &lt;code&gt;Namespace&lt;/code&gt; to check against.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason for collision, or
+	 *         &lt;code&gt;null&lt;/code&gt; if no collision.
+	 */
+	public static String checkNamespaceCollision(final Namespace namespace,
+			final Namespace other) {
+		String p1,p2,u1,u2,reason;
+
+<span class="fc" id="L612">		reason = null;</span>
+<span class="fc" id="L613">		p1 = namespace.getPrefix();</span>
+<span class="fc" id="L614">		u1 = namespace.getURI();</span>
+<span class="fc" id="L615">		p2 = other.getPrefix();</span>
+<span class="fc" id="L616">		u2 = other.getURI();</span>
+<span class="fc bfc" id="L617" title="All 4 branches covered.">		if (p1.equals(p2) &amp;&amp; !u1.equals(u2)) {</span>
+<span class="fc" id="L618">			reason = &quot;The namespace prefix \&quot;&quot; + p1 + &quot;\&quot; collides&quot;;</span>
+		}
+<span class="fc" id="L620">		return reason;</span>
+	}
+
+	/**
+	 * Check if &lt;code&gt;{@link Attribute}&lt;/code&gt;'s namespace collides with a 
+	 * &lt;code&gt;{@link Element}&lt;/code&gt;'s namespace.
+	 *
+	 * @param attribute &lt;code&gt;Attribute&lt;/code&gt; to check.
+	 * @param element &lt;code&gt;Element&lt;/code&gt; to check against.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason for collision, or
+	 *         &lt;code&gt;null&lt;/code&gt; if no collision.
+	 */
+	public static String checkNamespaceCollision(final Attribute attribute,
+			final Element element) {
+<span class="fc" id="L634">		return checkNamespaceCollision(attribute, element, -1);</span>
+	}
+
+	/**
+	 * Check if &lt;code&gt;{@link Attribute}&lt;/code&gt;'s namespace collides with a 
+	 * &lt;code&gt;{@link Element}&lt;/code&gt;'s namespace.
+	 *
+	 * @param attribute &lt;code&gt;Attribute&lt;/code&gt; to check.
+	 * @param element &lt;code&gt;Element&lt;/code&gt; to check against.
+	 * @param ignoreatt Ignore a specific Attribute (if it exists) when
+	 *        calculating any collisions (used when replacing one attribute
+	 *        with another).
+	 * @return &lt;code&gt;String&lt;/code&gt; reason for collision, or
+	 *         &lt;code&gt;null&lt;/code&gt; if no collision.
+	 */
+	public static String checkNamespaceCollision(final Attribute attribute,
+			final Element element, final int ignoreatt) {
+<span class="fc" id="L651">		final Namespace namespace = attribute.getNamespace();</span>
+<span class="fc" id="L652">		final String prefix = namespace.getPrefix();</span>
+<span class="fc bfc" id="L653" title="All 2 branches covered.">		if (&quot;&quot;.equals(prefix)) {</span>
+<span class="fc" id="L654">			return null;</span>
+		}
+
+<span class="fc" id="L657">		return checkNamespaceCollision(namespace, element, ignoreatt);</span>
+	}
+
+	/**
+	 * Check if a &lt;code&gt;{@link Namespace}&lt;/code&gt; collides with a
+	 * &lt;code&gt;{@link Element}&lt;/code&gt;'s namespace.
+	 *
+	 * @param namespace &lt;code&gt;Namespace&lt;/code&gt; to check.
+	 * @param element &lt;code&gt;Element&lt;/code&gt; to check against.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason for collision, or
+	 *         &lt;code&gt;null&lt;/code&gt; if no collision.
+	 */
+	public static String checkNamespaceCollision(final Namespace namespace,
+			final Element element) {
+<span class="fc" id="L671">		return checkNamespaceCollision(namespace, element, -1);</span>
+	}
+
+	/**
+	 * Check if a &lt;code&gt;{@link Namespace}&lt;/code&gt; collides with a
+	 * &lt;code&gt;{@link Element}&lt;/code&gt;'s namespace.
+	 *
+	 * @param namespace &lt;code&gt;Namespace&lt;/code&gt; to check.
+	 * @param element &lt;code&gt;Element&lt;/code&gt; to check against.
+	 * @param ignoreatt Ignore a specific Attribute (if it exists) when
+	 *        calculating any collisions (used when replacing one attribute
+	 *        with another).
+	 * @return &lt;code&gt;String&lt;/code&gt; reason for collision, or
+	 *         &lt;code&gt;null&lt;/code&gt; if no collision.
+	 */
+	public static String checkNamespaceCollision(final Namespace namespace,
+			final Element element, final int ignoreatt) {
+<span class="fc" id="L688">		String reason = checkNamespaceCollision(namespace,</span>
+				element.getNamespace());
+<span class="fc bfc" id="L690" title="All 2 branches covered.">		if (reason != null) {</span>
+<span class="fc" id="L691">			return reason + &quot; with the element namespace prefix&quot;;</span>
+		}
+
+<span class="fc bfc" id="L694" title="All 2 branches covered.">		if (element.hasAdditionalNamespaces()) {</span>
+<span class="fc" id="L695">			reason = checkNamespaceCollision(namespace,</span>
+					element.getAdditionalNamespaces());
+<span class="fc bfc" id="L697" title="All 2 branches covered.">			if (reason != null) {</span>
+<span class="fc" id="L698">				return reason;</span>
+			}
+		}
+
+<span class="fc bfc" id="L702" title="All 2 branches covered.">		if (element.hasAttributes()) {</span>
+<span class="fc" id="L703">			reason = checkNamespaceCollision(namespace, element.getAttributes(), ignoreatt);</span>
+<span class="fc bfc" id="L704" title="All 2 branches covered.">			if (reason != null) {</span>
+<span class="fc" id="L705">				return reason;</span>
+			}
+		}
+
+<span class="fc" id="L709">		return null;</span>
+	}
+
+	/**
+	 * Check if a &lt;code&gt;{@link Namespace}&lt;/code&gt; collides with a
+	 * &lt;code&gt;{@link Attribute}&lt;/code&gt;'s namespace.
+	 *
+	 * @param namespace &lt;code&gt;Namespace&lt;/code&gt; to check.
+	 * @param attribute &lt;code&gt;Attribute&lt;/code&gt; to check against.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason for collision, or
+	 *         &lt;code&gt;null&lt;/code&gt; if no collision.
+	 */
+	public static String checkNamespaceCollision(final Namespace namespace,
+			final Attribute attribute) {
+<span class="fc" id="L723">		String reason = null;</span>
+<span class="fc bfc" id="L724" title="All 2 branches covered.">		if (!attribute.getNamespace().equals(Namespace.NO_NAMESPACE)) {</span>
+<span class="fc" id="L725">			reason = checkNamespaceCollision(namespace,</span>
+					attribute.getNamespace());
+<span class="fc bfc" id="L727" title="All 2 branches covered.">			if (reason != null) {</span>
+<span class="fc" id="L728">				reason += &quot; with an attribute namespace prefix on the element&quot;;</span>
+			}
+		}
+<span class="fc" id="L731">		return reason;</span>
+	}
+
+	/**
+	 * Check if a &lt;code&gt;{@link Namespace}&lt;/code&gt; collides with any namespace
+	 * from a list of objects.
+	 *
+	 * @param namespace &lt;code&gt;Namespace&lt;/code&gt; to check.
+	 * @param list &lt;code&gt;List&lt;/code&gt; to check against.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason for collision, or
+	 *         &lt;code&gt;null&lt;/code&gt; if no collision.
+	 */
+	public static String checkNamespaceCollision(final Namespace namespace,
+			final List&lt;?&gt; list) {
+<span class="fc" id="L745">		return checkNamespaceCollision(namespace, list, -1);</span>
+	}
+
+	/**
+	 * Check if a &lt;code&gt;{@link Namespace}&lt;/code&gt; collides with any namespace
+	 * from a list of objects.
+	 *
+	 * @param namespace &lt;code&gt;Namespace&lt;/code&gt; to check.
+	 * @param list &lt;code&gt;List&lt;/code&gt; to check against.
+	 * @param ignoreatt Ignore a specific Attribute (if it exists) when
+	 *        calculating any collisions (used when replacing one attribute
+	 *        with another).
+	 * @return &lt;code&gt;String&lt;/code&gt; reason for collision, or
+	 *         &lt;code&gt;null&lt;/code&gt; if no collision.
+	 */
+	public static String checkNamespaceCollision(final Namespace namespace,
+			final List&lt;?&gt; list, final int ignoreatt) {
+<span class="fc bfc" id="L762" title="All 2 branches covered.">		if (list == null) {</span>
+<span class="fc" id="L763">			return null;</span>
+		}
+
+<span class="fc" id="L766">		String reason = null;</span>
+<span class="fc" id="L767">		final Iterator&lt;?&gt; i = list.iterator();</span>
+<span class="fc" id="L768">		int cnt = -1;</span>
+<span class="fc bfc" id="L769" title="All 4 branches covered.">		while ((reason == null) &amp;&amp; i.hasNext()) {</span>
+<span class="fc" id="L770">			final Object obj = i.next();</span>
+<span class="fc" id="L771">			cnt++;</span>
+<span class="fc bfc" id="L772" title="All 2 branches covered.">			if (obj instanceof Attribute) {</span>
+<span class="fc bfc" id="L773" title="All 2 branches covered.">				if (cnt == ignoreatt) {</span>
+<span class="fc" id="L774">					continue;</span>
+				}
+<span class="fc" id="L776">				reason = checkNamespaceCollision(namespace, (Attribute) obj);</span>
+			}
+<span class="fc bfc" id="L778" title="All 2 branches covered.">			else if (obj instanceof Element) {</span>
+<span class="fc" id="L779">				reason = checkNamespaceCollision(namespace, (Element) obj);</span>
+			}
+<span class="fc bfc" id="L781" title="All 2 branches covered.">			else if (obj instanceof Namespace) {</span>
+<span class="fc" id="L782">				reason = checkNamespaceCollision(namespace, (Namespace) obj);</span>
+<span class="fc bfc" id="L783" title="All 2 branches covered.">				if (reason != null) {</span>
+<span class="fc" id="L784">					reason += &quot; with an additional namespace declared&quot; +</span>
+							&quot; by the element&quot;;
+				}
+			}
+<span class="fc" id="L788">		}</span>
+<span class="fc" id="L789">		return reason;</span>
+	}
+
+	/**
+	 * This will check the supplied data to see if it is legal for use as
+	 * a JDOM &lt;code&gt;{@link ProcessingInstruction}&lt;/code&gt; target.
+	 *
+	 * @param target &lt;code&gt;String&lt;/code&gt; target to check.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason target is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; if target is OK.
+	 */
+	public static String checkProcessingInstructionTarget(final String target) {
+		// Check basic XML name rules first
+		String reason;
+<span class="fc bfc" id="L803" title="All 2 branches covered.">		if ((reason = checkXMLName(target)) != null) {</span>
+<span class="fc" id="L804">			return reason;</span>
+		}
+
+		// No colons allowed, per Namespace Specification Section 6
+<span class="fc bfc" id="L808" title="All 2 branches covered.">		if (target.indexOf(&quot;:&quot;) != -1) {</span>
+<span class="fc" id="L809">			return &quot;Processing instruction targets cannot contain colons&quot;;</span>
+		}
+
+		// Cannot begin with 'xml' in any case
+<span class="fc bfc" id="L813" title="All 2 branches covered.">		if (target.equalsIgnoreCase(&quot;xml&quot;)) {</span>
+<span class="fc" id="L814">			return &quot;Processing instructions cannot have a target of &quot; +</span>
+					&quot;\&quot;xml\&quot; in any combination of case. (Note that the &quot; +
+					&quot;\&quot;&lt;?xml ... ?&gt;\&quot; declaration at the beginning of a &quot; +
+					&quot;document is not a processing instruction and should not &quot; + 
+					&quot;be added as one; it is written automatically during &quot; +
+					&quot;output, e.g. by XMLOutputter.)&quot;;
+		}
+
+		// If we got here, everything is OK
+<span class="fc" id="L823">		return null;</span>
+	}
+
+	/**
+	 * This will check the supplied data to see if it is legal for use as
+	 * &lt;code&gt;{@link ProcessingInstruction}&lt;/code&gt; data. Besides checking that
+	 * all the characters are allowed in XML, this also checks
+	 * that the data does not contain the PI end-string &quot;?&amp;gt;&quot;.
+	 *
+	 * @param data &lt;code&gt;String&lt;/code&gt; data to check.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason data is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; if data is OK.
+	 */
+	public static String checkProcessingInstructionData(final String data) {
+		// Check basic XML name rules first
+<span class="fc" id="L838">		final String reason = checkCharacterData(data);</span>
+
+<span class="fc bfc" id="L840" title="All 2 branches covered.">		if (reason == null) {</span>
+<span class="fc bfc" id="L841" title="All 2 branches covered.">			if (data.indexOf(&quot;?&gt;&quot;) &gt;= 0) {</span>
+<span class="fc" id="L842">				return &quot;Processing instructions cannot contain &quot; +</span>
+						&quot;the string \&quot;?&gt;\&quot;&quot;;
+			}
+		}
+
+<span class="fc" id="L847">		return reason;</span>
+	}
+
+	/**
+	 * This will check the supplied data to see if it is legal for use as
+	 * JDOM &lt;code&gt;{@link Comment}&lt;/code&gt; data.
+	 *
+	 * @param data &lt;code&gt;String&lt;/code&gt; data to check.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason data is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; if data is OK.
+	 */
+	public static String checkCommentData(final String data) {
+<span class="fc" id="L859">		String reason = null;</span>
+<span class="fc bfc" id="L860" title="All 2 branches covered.">		if ((reason = checkCharacterData(data)) != null) {</span>
+<span class="fc" id="L861">			return reason;</span>
+		}
+
+<span class="fc bfc" id="L864" title="All 2 branches covered.">		if (data.indexOf(&quot;--&quot;) != -1) {</span>
+<span class="fc" id="L865">			return &quot;Comments cannot contain double hyphens (--)&quot;;</span>
+		}
+<span class="fc bfc" id="L867" title="All 2 branches covered.">		if (data.endsWith(&quot;-&quot;)) {</span>
+<span class="fc" id="L868">			return &quot;Comment data cannot end with a hyphen.&quot;;</span>
+		}
+
+		// If we got here, everything is OK
+<span class="fc" id="L872">		return null;</span>
+	}
+	/**
+	 * This is a utility function to decode a non-BMP 
+	 * UTF-16 surrogate pair.
+	 * @param high high 16 bits
+	 * @param low low 16 bits
+	 * @return decoded character
+	 */
+	public static int decodeSurrogatePair(final char high, final char low) {
+<span class="fc" id="L882">		return 0x10000 + (high - 0xD800) * 0x400 + (low - 0xDC00);</span>
+	}
+
+	/**
+	 * This will check the supplied data to see if it is legal for use as
+	 * PublicID (in a {@link DocType} or {@link EntityRef}).
+	 * 
+	 * @param c the character to validate
+	 * @return &lt;code&gt;String&lt;/code&gt; reason &lt;i&gt;c&lt;/i&gt; is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; if &lt;i&gt;c&lt;/i&gt; is OK.
+	 */
+	public static boolean isXMLPublicIDCharacter(final char c) {
+		// [13] PubidChar ::= #x20 | #xD | #xA | [a-zA-Z0-9] |
+		// [-'()+,./:=?;*#@$_%]
+
+<span class="fc bfc" id="L897" title="All 4 branches covered.">		if (c &gt;= 'a' &amp;&amp; c &lt;= 'z') return true;</span>
+<span class="fc bfc" id="L898" title="All 4 branches covered.">		if (c &gt;= '?' &amp;&amp; c &lt;= 'Z') return true;</span>
+<span class="fc bfc" id="L899" title="All 4 branches covered.">		if (c &gt;= '\'' &amp;&amp; c &lt;= ';') return true;</span>
+
+<span class="fc bfc" id="L901" title="All 2 branches covered.">		if (c == ' ') return true;</span>
+<span class="fc bfc" id="L902" title="All 2 branches covered.">		if (c == '!') return true;</span>
+<span class="fc bfc" id="L903" title="All 2 branches covered.">		if (c == '=') return true;</span>
+<span class="fc bfc" id="L904" title="All 2 branches covered.">		if (c == '#') return true;</span>
+<span class="fc bfc" id="L905" title="All 2 branches covered.">		if (c == '$') return true;</span>
+<span class="fc bfc" id="L906" title="All 2 branches covered.">		if (c == '_') return true;</span>
+<span class="fc bfc" id="L907" title="All 2 branches covered.">		if (c == '%') return true;</span>
+<span class="fc bfc" id="L908" title="All 2 branches covered.">		if (c == '\n') return true;</span>
+<span class="fc bfc" id="L909" title="All 2 branches covered.">		if (c == '\r') return true;</span>
+<span class="fc bfc" id="L910" title="All 2 branches covered.">		if (c == '\t') return true;</span>
+
+<span class="fc" id="L912">		return false;</span>
+	}
+
+	/**
+	 * This will ensure that the data for a public identifier
+	 * is legal.
+	 *
+	 * @param publicID &lt;code&gt;String&lt;/code&gt; public ID to check.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason public ID is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; if public ID is OK.
+	 */
+	public static String checkPublicID(final String publicID) {
+<span class="fc" id="L924">		String reason = null;</span>
+
+<span class="fc bfc" id="L926" title="All 2 branches covered.">		if (publicID == null) return null;</span>
+		// This indicates there is no public ID
+
+<span class="fc bfc" id="L929" title="All 2 branches covered.">		for (int i = 0; i &lt; publicID.length(); i++) {</span>
+<span class="fc" id="L930">			final char c = publicID.charAt(i);</span>
+<span class="fc bfc" id="L931" title="All 2 branches covered.">			if (!isXMLPublicIDCharacter(c)) {</span>
+<span class="fc" id="L932">				reason = c + &quot; is not a legal character in public IDs&quot;;</span>
+<span class="fc" id="L933">				break;</span>
+			}
+		}
+
+<span class="fc" id="L937">		return reason;</span>
+	}
+
+
+	/**
+	 * This will ensure that the data for a system literal
+	 * is legal.
+	 *
+	 * @param systemLiteral &lt;code&gt;String&lt;/code&gt; system literal to check.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason system literal is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; if system literal is OK.
+	 */
+	public static String checkSystemLiteral(final String systemLiteral) {
+<span class="fc" id="L950">		String reason = null;</span>
+
+<span class="fc bfc" id="L952" title="All 2 branches covered.">		if (systemLiteral == null) return null;</span>
+		// This indicates there is no system ID
+
+<span class="fc bfc" id="L955" title="All 4 branches covered.">		if (systemLiteral.indexOf('\'') != -1</span>
+				&amp;&amp; systemLiteral.indexOf('&quot;') != -1) {
+<span class="fc" id="L957">			reason =</span>
+					&quot;System literals cannot simultaneously contain both single and double quotes.&quot;;
+		}
+		else {
+<span class="fc" id="L961">			reason = checkCharacterData(systemLiteral);</span>
+		}
+
+<span class="fc" id="L964">		return reason;</span>
+	}
+
+	/**
+	 * This is a utility function for sharing the base process of checking
+	 * any XML name.
+	 *
+	 * @param name &lt;code&gt;String&lt;/code&gt; to check for XML name compliance.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason the name is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; if OK.
+	 */
+	public static String checkXMLName(final String name) {
+		// Cannot be empty or null
+<span class="fc bfc" id="L977" title="All 2 branches covered.">		if ((name == null)) {</span>
+<span class="fc" id="L978">			return &quot;XML names cannot be null&quot;;</span>
+		}
+		
+<span class="fc" id="L981">		final int len = name.length();</span>
+<span class="fc bfc" id="L982" title="All 2 branches covered.">		if (len == 0) { </span>
+<span class="fc" id="L983">			return &quot;XML names cannot be empty&quot;;</span>
+		}
+
+
+		// Cannot start with a number
+<span class="fc bfc" id="L988" title="All 2 branches covered.">		if (!isXMLNameStartCharacter(name.charAt(0))) {</span>
+<span class="fc" id="L989">			return &quot;XML names cannot begin with the character \&quot;&quot; + </span>
+					name.charAt(0) + &quot;\&quot;&quot;;
+		}
+		// Ensure legal content for non-first chars
+<span class="fc bfc" id="L993" title="All 2 branches covered.">		for (int i = 1; i &lt; len; i++) {</span>
+<span class="fc bfc" id="L994" title="All 2 branches covered.">			if (!isXMLNameCharacter(name.charAt(i))) {</span>
+<span class="fc" id="L995">				return &quot;XML names cannot contain the character \&quot;&quot; + name.charAt(i) + &quot;\&quot;&quot;;</span>
+			}
+		}
+
+		// We got here, so everything is OK
+<span class="fc" id="L1000">		return null;</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * Checks a string to see if it is a legal RFC 2396 URI.
+	 * Both absolute and relative URIs are supported.
+	 * &lt;/p&gt;
+	 *
+	 * @param uri &lt;code&gt;String&lt;/code&gt; to check.
+	 * @return &lt;code&gt;String&lt;/code&gt; reason the URI is illegal, or
+	 *         &lt;code&gt;null&lt;/code&gt; if OK.
+	 */
+	public static String checkURI(final String uri) {
+		// URIs can be null or empty
+<span class="fc bfc" id="L1015" title="All 4 branches covered.">		if ((uri == null) || (uri.equals(&quot;&quot;))) {</span>
+<span class="fc" id="L1016">			return null;</span>
+		}
+
+<span class="fc bfc" id="L1019" title="All 2 branches covered.">		for (int i = 0; i &lt; uri.length(); i++) {</span>
+<span class="fc" id="L1020">			final char test = uri.charAt(i);</span>
+<span class="fc bfc" id="L1021" title="All 2 branches covered.">			if (!isURICharacter(test)) {</span>
+<span class="fc" id="L1022">				String msgNumber = &quot;0x&quot; + Integer.toHexString(test);</span>
+<span class="fc bfc" id="L1023" title="All 2 branches covered.">				if (test &lt;= 0x09) msgNumber = &quot;0x0&quot; + Integer.toHexString(test);</span>
+<span class="fc" id="L1024">				return &quot;URIs cannot contain &quot; + msgNumber;</span>
+			} // end if
+<span class="fc bfc" id="L1026" title="All 2 branches covered.">			if (test == '%') { // must be followed by two hexadecimal digits</span>
+				try {
+<span class="fc" id="L1028">					final char firstDigit = uri.charAt(i+1);</span>
+<span class="fc" id="L1029">					final char secondDigit = uri.charAt(i+2);</span>
+<span class="fc bfc" id="L1030" title="All 4 branches covered.">					if (!isHexDigit(firstDigit) ||</span>
+							!isHexDigit(secondDigit)) {
+<span class="fc" id="L1032">						return &quot;Percent signs in URIs must be followed by &quot;</span>
+								+ &quot;exactly two hexadecimal digits.&quot;;
+					}
+
+				}
+<span class="fc" id="L1037">				catch (final StringIndexOutOfBoundsException e) {</span>
+<span class="fc" id="L1038">					return &quot;Percent signs in URIs must be followed by &quot;</span>
+							+ &quot;exactly two hexadecimal digits.&quot;;
+<span class="fc" id="L1040">				}</span>
+			}
+		} // end for
+
+		// If we got here, everything is OK
+<span class="fc" id="L1045">		return null;</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This is a utility function for determining whether a specified
+	 * Unicode character is a hexadecimal digit as defined in RFC 2396;
+	 * that is, one of the ASCII characters 0-9, a-f, or A-F.
+	 * &lt;/p&gt;
+	 *
+	 * @param c  to check for hex digit.
+	 * @return true if it's allowed, false otherwise.
+	 */
+	public static boolean isHexDigit(final char c) {
+
+		// I suspect most characters passed to this method will be
+		// correct hexadecimal digits, so I test for the true cases
+		// first. If this proves to be a performance bottleneck
+		// a switch statement or lookup table
+		// might optimize this.
+<span class="fc bfc" id="L1065" title="All 4 branches covered.">		if (c &gt;= '0' &amp;&amp; c &lt;= '9') return true;</span>
+<span class="fc bfc" id="L1066" title="All 4 branches covered.">		if (c &gt;= 'A' &amp;&amp; c &lt;= 'F') return true;</span>
+<span class="fc bfc" id="L1067" title="All 4 branches covered.">		if (c &gt;= 'a' &amp;&amp; c &lt;= 'f') return true;</span>
+
+<span class="fc" id="L1069">		return false;</span>
+	}
+
+	/**
+	 * This is a function for determining whether the
+	 * specified character is the high 16 bits in a 
+	 * UTF-16 surrogate pair.
+	 * @param ch character to check
+	 * @return true if the character is a high surrogate, false otherwise
+	 */
+	public static boolean isHighSurrogate(final char ch) {
+		// faster way to do it is with bit manipulation....
+		// return (ch &gt;= 0xD800 &amp;&amp; ch &lt;= 0xDBFF);
+		// A high surrogate has the bit pattern:
+		//    110110xx xxxxxxxx
+		// ch &amp; 0xFC00 does a bit-mask of the most significant 6 bits (110110)
+		// return 0xD800 == (ch &amp; 0xFC00);
+		// as it happens, it is faster to do a bit-shift,
+<span class="fc bfc" id="L1087" title="All 2 branches covered.">		return 0x36 == ch &gt;&gt;&gt; 10;</span>
+	}
+
+	/**
+	 * This is a function for determining whether the 
+	 * specified character is the low 16 bits in a 
+	 * UTF-16 surrogate pair.
+	 * @param ch character to check
+	 * @return true if the character is a low surrogate, false otherwise.
+	 */
+	public static boolean isLowSurrogate(final char ch) {
+		// faster way to do it is with bit manipulation....
+		// return (ch &gt;= 0xDC00 &amp;&amp; ch &lt;= 0xDFFF);
+<span class="fc bfc" id="L1100" title="All 2 branches covered.">		return 0x37 == ch &gt;&gt;&gt; 10;</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This is a utility function for determining whether
+	 * a specified Unicode character is legal in URI references
+	 * as determined by RFC 2396.
+	 * &lt;/p&gt;
+	 *
+	 * @param c &lt;code&gt;char&lt;/code&gt; to check for URI reference compliance.
+	 * @return true if it's allowed, false otherwise.
+	 */
+	public static boolean isURICharacter(final char c) {
+<span class="fc bfc" id="L1114" title="All 2 branches covered.">		return (byte)0 != (byte)(CHARFLAGS[c] &amp; MASKURICHAR);</span>
+	}
+
+	/**
+	 * This is a utility function for determining whether a specified 
+	 * character is a character according to production 2 of the 
+	 * XML 1.0 specification.
+	 *
+	 * @param c &lt;code&gt;char&lt;/code&gt; to check for XML compliance
+	 * @return &lt;code&gt;boolean&lt;/code&gt; true if it's a character, 
+	 *                                false otherwise
+	 */
+	public static boolean isXMLCharacter(final int c) {
+<span class="fc bfc" id="L1127" title="All 2 branches covered.">		if (c &gt;= CHARCNT) {</span>
+<span class="fc bfc" id="L1128" title="All 2 branches covered.">			return c &lt;= 0x10FFFF;</span>
+		}
+<span class="fc bfc" id="L1130" title="All 2 branches covered.">		return (byte)0 != (byte)(CHARFLAGS[c] &amp; MASKXMLCHARACTER);</span>
+	}
+
+
+	/**
+	 * This is a utility function for determining whether a specified 
+	 * character is a name character according to production 4 of the 
+	 * XML 1.0 specification.
+	 *
+	 * @param c &lt;code&gt;char&lt;/code&gt; to check for XML name compliance.
+	 * @return &lt;code&gt;boolean&lt;/code&gt; true if it's a name character, 
+	 *                                false otherwise.
+	 */
+	public static boolean isXMLNameCharacter(final char c) {
+<span class="fc bfc" id="L1144" title="All 4 branches covered.">		return (byte)0 != (byte)(CHARFLAGS[c] &amp; MASKXMLNAMECHAR) || c == ':';</span>
+	}
+
+	/**
+	 * This is a utility function for determining whether a specified 
+	 * character is a legal name start character according to production 5
+	 * of the XML 1.0 specification. This production does allow names
+	 * to begin with colons which the Namespaces in XML Recommendation
+	 * disallows. 
+	 *
+	 * @param c &lt;code&gt;char&lt;/code&gt; to check for XML name start compliance.
+	 * @return &lt;code&gt;boolean&lt;/code&gt; true if it's a name start character, 
+	 *                                false otherwise.
+	 */
+	public static boolean isXMLNameStartCharacter(final char c) {
+<span class="fc bfc" id="L1159" title="All 4 branches covered.">		return (byte)0 != (byte)(CHARFLAGS[c] &amp; MASKXMLSTARTCHAR) || c == ':';</span>
+	}
+
+	/**
+	 * This is a utility function for determining whether a specified 
+	 * character is a letter or digit according to productions 84 and 88
+	 * of the XML 1.0 specification.
+	 *
+	 * @param c &lt;code&gt;char&lt;/code&gt; to check.
+	 * @return &lt;code&gt;boolean&lt;/code&gt; true if it's letter or digit, 
+	 *                                false otherwise.
+	 */
+	public static boolean isXMLLetterOrDigit(final char c) {
+<span class="fc bfc" id="L1172" title="All 2 branches covered.">		return (byte)0 != (byte)(CHARFLAGS[c] &amp; MASKXMLLETTERORDIGIT);</span>
+	}
+
+	/**
+	 * This is a utility function for determining whether a specified character
+	 * is a letter according to production 84 of the XML 1.0 specification.
+	 *
+	 * @param c &lt;code&gt;char&lt;/code&gt; to check for XML name compliance.
+	 * @return &lt;code&gt;String&lt;/code&gt; true if it's a letter, false otherwise.
+	 */
+	public static boolean isXMLLetter(final char c) {
+<span class="fc bfc" id="L1183" title="All 2 branches covered.">		return (byte)0 != (byte)(CHARFLAGS[c] &amp; MASKXMLLETTER);</span>
+	}
+
+	/**
+	 * This is a utility function for determining whether a specified character
+	 * is a combining character according to production 87
+	 * of the XML 1.0 specification.
+	 *
+	 * @param c &lt;code&gt;char&lt;/code&gt; to check.
+	 * @return &lt;code&gt;boolean&lt;/code&gt; true if it's a combining character,
+	 *         false otherwise.
+	 */
+	public static boolean isXMLCombiningChar(final char c) {
+<span class="fc bfc" id="L1196" title="All 2 branches covered.">		return (byte)0 != (byte)(CHARFLAGS[c] &amp; MASKXMLCOMBINING);</span>
+	}
+
+	/**
+	 * This is a utility function for determining whether a specified 
+	 * character is an extender according to production 88 of the XML 1.0
+	 * specification.
+	 *
+	 * @param c &lt;code&gt;char&lt;/code&gt; to check.
+	 * @return &lt;code&gt;String&lt;/code&gt; true if it's an extender, false otherwise.
+	 */
+	public static boolean isXMLExtender(final char c) {
+		/*
+		 * This function is not accellerated by the bitmask system because
+		 * there are no longer any actual calls to it from the JDOM code.
+		 * It used to be called by the isXMLNameCharacter() method before
+		 * the bitmask optimization. Now the VerifierBuilder code actually
+		 * calls this method instead.
+		 */
+
+<span class="fc bfc" id="L1216" title="All 2 branches covered.">		if (c &lt; 0x00B6) return false;  // quick short circuit</span>
+
+		// Extenders                               
+<span class="fc bfc" id="L1219" title="All 2 branches covered.">		if (c == 0x00B7) return true;</span>
+<span class="fc bfc" id="L1220" title="All 2 branches covered.">		if (c == 0x02D0) return true;</span>
+<span class="fc bfc" id="L1221" title="All 2 branches covered.">		if (c == 0x02D1) return true;</span>
+<span class="fc bfc" id="L1222" title="All 2 branches covered.">		if (c == 0x0387) return true;</span>
+<span class="fc bfc" id="L1223" title="All 2 branches covered.">		if (c == 0x0640) return true;</span>
+<span class="fc bfc" id="L1224" title="All 2 branches covered.">		if (c == 0x0E46) return true;</span>
+<span class="fc bfc" id="L1225" title="All 2 branches covered.">		if (c == 0x0EC6) return true;</span>
+<span class="fc bfc" id="L1226" title="All 2 branches covered.">		if (c == 0x3005) return true;</span>
+
+<span class="fc bfc" id="L1228" title="All 4 branches covered.">		if (c &lt; 0x3031) return false;  if (c &lt;= 0x3035) return true;</span>
+<span class="fc bfc" id="L1229" title="All 4 branches covered.">		if (c &lt; 0x309D) return false;  if (c &lt;= 0x309E) return true;</span>
+<span class="fc bfc" id="L1230" title="All 4 branches covered.">		if (c &lt; 0x30FC) return false;  if (c &lt;= 0x30FE) return true;</span>
+
+<span class="fc" id="L1232">		return false;</span>
+
+	}
+
+	/**
+	 * This is a utility function for determining whether a specified 
+	 * Unicode character
+	 * is a digit according to production 88 of the XML 1.0 specification.
+	 *
+	 * @param c &lt;code&gt;char&lt;/code&gt; to check for XML digit compliance
+	 * @return &lt;code&gt;boolean&lt;/code&gt; true if it's a digit, false otherwise
+	 */
+	public static boolean isXMLDigit(final char c) {
+<span class="fc bfc" id="L1245" title="All 2 branches covered.">		return (byte)0 != (byte)(CHARFLAGS[c] &amp; MASKXMLDIGIT);</span>
+	}  
+
+	/**
+	 * This is a utility function for determining whether a specified 
+	 * Unicode character is a whitespace character according to production 3
+	 * of the XML 1.0 specification.
+	 *
+	 * @param c &lt;code&gt;char&lt;/code&gt; to check for XML whitespace compliance
+	 * @return &lt;code&gt;boolean&lt;/code&gt; true if it's a whitespace, false otherwise
+	 */
+	public static boolean isXMLWhitespace(final char c) {
+		// the following if is faster than switch statements.
+		// seems the implicit conversion to int is slower than
+		// the fall-through or's
+<span class="fc bfc" id="L1260" title="All 8 branches covered.">		if (c==' ' || c=='\n' || c=='\t' || c=='\r' ){</span>
+<span class="fc" id="L1261">			return true;</span>
+		}
+<span class="fc" id="L1263">		return false;</span>
+	}
+	
+	/**
+	 * This is a utility function for determining whether a specified 
+	 * String is a whitespace character according to production 3
+	 * of the XML 1.0 specification.
+	 * &lt;p&gt;
+	 * This method delegates the individual calls for each character to
+	 * {@link #isXMLWhitespace(char)}.
+	 * 
+	 * @param value
+	 *        The value to inspect
+	 * @return true if all characters in the input value are all whitespace
+	 *        (or the string is the empty-string).
+	 * @since JDOM2
+	 */
+	public static final boolean isAllXMLWhitespace(final String value) {
+		// Doing the count-down instead of a count-up saves a single int
+		// variable declaration.
+<span class="fc" id="L1283">		int i = value.length();</span>
+<span class="fc bfc" id="L1284" title="All 2 branches covered.">		while (--i &gt;= 0) {</span>
+<span class="fc bfc" id="L1285" title="All 2 branches covered.">			if (!isXMLWhitespace(value.charAt(i))) {</span>
+<span class="fc" id="L1286">				return false;</span>
+			}
+		}
+<span class="fc" id="L1289">		return true;</span>
+	}
+	
+	
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StepCandidate.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.steps</a> &gt; <span class="el_source">StepCandidate.java</span></div><h1>StepCandidate.java</h1><pre class="source lang-java linenums">package org.jbehave.core.steps;
+
+import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.commons.lang.StringUtils;
+import org.jbehave.core.annotations.Given;
+import org.jbehave.core.annotations.Pending;
+import org.jbehave.core.annotations.Then;
+import org.jbehave.core.annotations.When;
+import org.jbehave.core.configuration.Keywords;
+import org.jbehave.core.configuration.Keywords.StartingWordNotFound;
+import org.jbehave.core.parsers.StepMatcher;
+import org.jbehave.core.parsers.StepPatternParser;
+
+import com.thoughtworks.paranamer.Paranamer;
+
+/**
+ * A StepCandidate is associated to a Java method annotated with {@link Given},
+ * {@link When}, {@link Then} in a steps instance class. The StepCandidate is
+ * responsible for matching the textual step against the pattern contained in
+ * the method annotation via the {@link StepMatcher} and for the creation of the
+ * matched executable step via the {@link StepCreator}.
+ */
+public class StepCandidate {
+
+    private final String patternAsString;
+    private final Integer priority;
+    private final StepType stepType;
+    private final Method method;
+    private final Class&lt;?&gt; stepsType;
+    private final InjectableStepsFactory stepsFactory;
+    private final Keywords keywords;
+    private final StepMatcher stepMatcher;
+    private final StepCreator stepCreator;
+    private String[] composedSteps;
+<span class="fc" id="L38">    private StepMonitor stepMonitor = new SilentStepMonitor();</span>
+
+    public StepCandidate(String patternAsString, int priority, StepType stepType, Method method, Class&lt;?&gt; stepsType,
+            InjectableStepsFactory stepsFactory, Keywords keywords, StepPatternParser stepPatternParser,
+<span class="fc" id="L42">            ParameterConverters parameterConverters, ParameterControls parameterControls) {</span>
+<span class="fc" id="L43">        this.patternAsString = patternAsString;</span>
+<span class="fc" id="L44">        this.priority = priority;</span>
+<span class="fc" id="L45">        this.stepType = stepType;</span>
+<span class="fc" id="L46">        this.method = method;</span>
+<span class="fc" id="L47">        this.stepsType = stepsType;</span>
+<span class="fc" id="L48">        this.stepsFactory = stepsFactory;</span>
+<span class="fc" id="L49">        this.keywords = keywords;</span>
+<span class="fc" id="L50">        this.stepMatcher = stepPatternParser.parseStep(stepType, patternAsString);</span>
+<span class="fc" id="L51">        this.stepCreator = new StepCreator(stepsType, stepsFactory, parameterConverters, parameterControls,</span>
+                stepMatcher, stepMonitor);
+<span class="fc" id="L53">    }</span>
+
+    public Method getMethod() {
+<span class="fc" id="L56">        return method;</span>
+    }
+
+    public Integer getPriority() {
+<span class="fc" id="L60">        return priority;</span>
+    }
+
+    public String getPatternAsString() {
+<span class="fc" id="L64">        return patternAsString;</span>
+    }
+
+    public Object getStepsInstance() {
+<span class="fc" id="L68">        return stepsFactory.createInstanceOfType(stepsType);</span>
+    }
+
+    public Class&lt;?&gt; getStepsType() {
+<span class="nc" id="L72">        return stepsType;</span>
+    }
+    
+    public StepType getStepType() {
+<span class="fc" id="L76">        return stepType;</span>
+    }
+
+    public String getStartingWord() {
+<span class="fc" id="L80">        return keywords.startingWordFor(stepType);</span>
+    }
+
+    public void useStepMonitor(StepMonitor stepMonitor) {
+<span class="fc" id="L84">        this.stepMonitor = stepMonitor;</span>
+<span class="fc" id="L85">        this.stepCreator.useStepMonitor(stepMonitor);</span>
+<span class="fc" id="L86">    }</span>
+
+    public void doDryRun(boolean dryRun) {
+<span class="fc" id="L89">        this.stepCreator.doDryRun(dryRun);</span>
+<span class="fc" id="L90">    }</span>
+
+    public void useParanamer(Paranamer paranamer) {
+<span class="fc" id="L93">        this.stepCreator.useParanamer(paranamer);</span>
+<span class="fc" id="L94">    }</span>
+
+    public void composedOf(String[] steps) {
+<span class="fc" id="L97">        this.composedSteps = steps;</span>
+<span class="fc" id="L98">    }</span>
+
+    public boolean isComposite() {
+<span class="pc bpc" id="L101" title="1 of 4 branches missed.">        return composedSteps != null &amp;&amp; composedSteps.length &gt; 0;</span>
+    }
+
+    public String[] composedSteps() {
+<span class="fc" id="L105">        return composedSteps;</span>
+    }
+
+    public boolean ignore(String stepAsString) {
+        try {
+<span class="fc" id="L110">            String ignoreWord = keywords.startingWordFor(StepType.IGNORABLE);</span>
+<span class="fc" id="L111">            return keywords.stepStartsWithWord(stepAsString, ignoreWord);</span>
+<span class="fc" id="L112">        } catch (StartingWordNotFound e) {</span>
+<span class="fc" id="L113">            return false;</span>
+        }
+    }
+
+    public boolean isPending() {
+<span class="fc" id="L118">        return method.isAnnotationPresent(Pending.class);</span>
+    }
+
+    public boolean matches(String stepAsString) {
+<span class="fc" id="L122">        return matches(stepAsString, null);</span>
+    }
+
+    public boolean matches(String step, String previousNonAndStep) {
+        try {
+<span class="fc" id="L127">            boolean matchesType = true;</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (isAndStep(step)) {</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">                if (previousNonAndStep == null) {</span>
+                    // cannot handle AND step with no previous step
+<span class="fc" id="L131">                    matchesType = false;</span>
+                } else {
+                    // previous step type should match candidate step type
+<span class="fc" id="L134">                    matchesType = keywords.startingWordFor(stepType).equals(findStartingWord(previousNonAndStep));</span>
+                }
+            }
+<span class="fc" id="L137">            stepMonitor.stepMatchesType(step, previousNonAndStep, matchesType, stepType, method, stepsType);</span>
+<span class="fc" id="L138">            boolean matchesPattern = stepMatcher.matches(stripStartingWord(step));</span>
+<span class="fc" id="L139">            stepMonitor.stepMatchesPattern(step, matchesPattern, stepMatcher.pattern(), method, stepsType);</span>
+            // must match both type and pattern
+<span class="fc bfc" id="L141" title="All 4 branches covered.">            return matchesType &amp;&amp; matchesPattern;</span>
+<span class="fc" id="L142">        } catch (StartingWordNotFound e) {</span>
+<span class="fc" id="L143">            return false;</span>
+        }
+    }
+
+    public Step createMatchedStep(String stepAsString, Map&lt;String, String&gt; namedParameters) {
+<span class="fc" id="L148">        return stepCreator.createParametrisedStep(method, stepAsString, stripStartingWord(stepAsString),</span>
+                namedParameters);
+    }
+
+    public void addComposedSteps(List&lt;Step&gt; steps, String stepAsString, Map&lt;String, String&gt; namedParameters,
+            List&lt;StepCandidate&gt; allCandidates) {
+<span class="fc" id="L154">        addComposedStepsRecursively(steps, stepAsString, namedParameters, allCandidates, composedSteps);</span>
+<span class="fc" id="L155">    }</span>
+
+    private void addComposedStepsRecursively(List&lt;Step&gt; steps, String stepAsString,
+            Map&lt;String, String&gt; namedParameters, List&lt;StepCandidate&gt; allCandidates, String[] composedSteps) {
+<span class="fc" id="L159">        Map&lt;String, String&gt; matchedParameters = stepCreator.matchedParameters(method, stepAsString,</span>
+                stripStartingWord(stepAsString), namedParameters);
+<span class="fc" id="L161">        matchedParameters.putAll(namedParameters);</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        for (String composedStep : composedSteps) {</span>
+<span class="fc" id="L163">            addComposedStep(steps, composedStep, matchedParameters, allCandidates);</span>
+        }
+<span class="fc" id="L165">    }</span>
+
+    private void addComposedStep(List&lt;Step&gt; steps, String composedStep, Map&lt;String, String&gt; matchedParameters,
+            List&lt;StepCandidate&gt; allCandidates) {
+<span class="fc" id="L169">        StepCandidate candidate = findComposedCandidate(composedStep, allCandidates);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (candidate != null) {</span>
+<span class="fc" id="L171">            steps.add(candidate.createMatchedStep(composedStep, matchedParameters));</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">            if (candidate.isComposite()) {</span>
+                // candidate is itself composite: recursively add composed steps
+<span class="fc" id="L174">                addComposedStepsRecursively(steps, composedStep, matchedParameters, allCandidates,</span>
+                        candidate.composedSteps());
+            }
+        } else {
+<span class="fc" id="L178">            steps.add(StepCreator.createPendingStep(composedStep, null));</span>
+        }
+<span class="fc" id="L180">    }</span>
+
+    private StepCandidate findComposedCandidate(String composedStep, List&lt;StepCandidate&gt; allCandidates) {
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        for (StepCandidate candidate : allCandidates) {</span>
+<span class="fc bfc" id="L184" title="All 6 branches covered.">            if (StringUtils.startsWith(composedStep, candidate.getStartingWord())</span>
+                    &amp;&amp; (StringUtils.endsWith(composedStep, candidate.getPatternAsString()) || candidate
+                            .matches(composedStep))) {
+<span class="fc" id="L187">                return candidate;</span>
+            }
+<span class="fc" id="L189">        }</span>
+<span class="fc" id="L190">        return null;</span>
+    }
+
+    public boolean isAndStep(String stepAsString) {
+<span class="fc" id="L194">        return keywords.isAndStep(stepAsString);</span>
+    }
+
+    public boolean isIgnorableStep(String stepAsString) {
+<span class="fc" id="L198">        return keywords.isIgnorableStep(stepAsString);</span>
+    }
+
+    private String findStartingWord(String stepAsString) {
+<span class="fc" id="L202">        return keywords.startingWord(stepAsString, stepType);</span>
+    }
+
+    private String stripStartingWord(String stepAsString) {
+<span class="fc" id="L206">        return keywords.stepWithoutStartingWord(stepAsString, stepType);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L211">        return stepType + &quot; &quot; + patternAsString;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

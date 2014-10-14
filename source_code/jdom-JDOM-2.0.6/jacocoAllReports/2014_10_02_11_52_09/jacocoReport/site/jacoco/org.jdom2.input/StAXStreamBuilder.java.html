@@ -1,0 +1,591 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StAXStreamBuilder.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.input</a> &gt; <span class="el_source">StAXStreamBuilder.java</span></div><h1>StAXStreamBuilder.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2011-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.input;
+
+import static javax.xml.stream.XMLStreamConstants.*;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.xml.namespace.QName;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
+
+import org.jdom2.AttributeType;
+import org.jdom2.Content;
+import org.jdom2.DefaultJDOMFactory;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.JDOMException;
+import org.jdom2.JDOMFactory;
+import org.jdom2.Namespace;
+import org.jdom2.Verifier;
+import org.jdom2.input.stax.DTDParser;
+import org.jdom2.input.stax.StAXFilter;
+
+/**
+ * Builds a JDOM Document from a StAX-based XMLStreamReader.
+ * &lt;p&gt;
+ * XMLStreamReaders are pre-configured and as a result JDOM is not able to
+ * alter whether the input is validated, or whether the Stream has escaped
+ * entities or not. These (and other) characteristics are configurable by
+ * setting the correct features and properties on the XMLInputFactory when it
+ * is used to create the XMLStreamReader.
+ * &lt;p&gt;
+ * Useful configuration to set, or know about is:
+ * &lt;ul&gt;
+ * &lt;li&gt;StAX streams seldom differentiate between Text and CDATA content. You
+ * will likely want to configure your StAX factory (XMLInputFactory) with
+ * &lt;code&gt;http://java.sun.com/xml/stream/properties/report-cdata-event&lt;/code&gt;
+ * for the default Java StAX implementation, or the equivalent property for your
+ * StAX engine.
+ * &lt;li&gt;The remaining XMLInputFactory settings are likely to work fine at their
+ * default values.
+ * &lt;li&gt;StAX is not likely to be your best option if you want a validating
+ * parser, at least not with the default (built-in Java implementation in Java6 
+ * which does not support it). Consider a SAX parser.
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * From a JDOM perspective XMLStreamReaders are more efficient than 
+ * XMLEventReaders. Where possible use an XMLStreamReader.
+ * &lt;p&gt;
+ * If you happen to be looking at the source code, pay careful attention to the
+ * imports so you know what type of instance is being processed, whether it is
+ * a StAX class, or a JDOM class, because there are name conflicts.
+ * 
+ * @author Rolf Lear
+ *
+ */
+<span class="fc" id="L111">public class StAXStreamBuilder {</span>
+
+	/**
+	 * Create a Document from an XMLStreamReader
+	 * @param factory The {@link JDOMFactory} to use
+	 * @param stream The XMLStreamReader to read from
+	 * @return the parsed Document
+	 * @throws JDOMException if there is any issue
+	 * 				(XMLStreamExceptions are wrapped).
+	 */
+	private static final Document process(final JDOMFactory factory, 
+			final XMLStreamReader stream) throws JDOMException {
+		try {
+
+<span class="fc" id="L125">			int state = stream.getEventType();</span>
+
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">			if (START_DOCUMENT != state) {</span>
+<span class="nc" id="L128">				throw new JDOMException(&quot;JDOM requires that XMLStreamReaders &quot; +</span>
+						&quot;are at their beginning when being processed.&quot;);
+			}
+
+<span class="fc" id="L132">			final Document document = factory.document(null);</span>
+
+<span class="fc bfc" id="L134" title="All 2 branches covered.">			while (state != END_DOCUMENT) {</span>
+<span class="pc bpc" id="L135" title="6 of 11 branches missed.">				switch (state) {</span>
+
+					case START_DOCUMENT:
+						// for the &lt;?xml version=&quot;...&quot; standalone=&quot;..&quot;?&gt;
+<span class="fc" id="L139">						document.setBaseURI(stream.getLocation().getSystemId());</span>
+<span class="fc" id="L140">						document.setProperty(&quot;ENCODING_SCHEME&quot;,</span>
+								stream.getCharacterEncodingScheme());
+<span class="fc" id="L142">						document.setProperty(&quot;STANDALONE&quot;,</span>
+								String.valueOf(stream.isStandalone()));
+<span class="fc" id="L144">						document.setProperty(&quot;ENCODING&quot;,</span>
+								stream.getEncoding());
+<span class="fc" id="L146">						break;</span>
+
+					case DTD:
+<span class="fc" id="L149">						document.setDocType(DTDParser.parse(</span>
+								stream.getText(), factory));
+<span class="fc" id="L151">						break;</span>
+
+					case START_ELEMENT:
+<span class="fc" id="L154">						document.setRootElement(processElementFragment(factory, stream));</span>
+<span class="fc" id="L155">						break;</span>
+
+					case END_ELEMENT:
+<span class="nc" id="L158">						throw new JDOMException(&quot;Unexpected XMLStream event at Document level: END_ELEMENT&quot;);</span>
+					case ENTITY_REFERENCE:
+<span class="nc" id="L160">						throw new JDOMException(&quot;Unexpected XMLStream event at Document level: ENTITY_REFERENCE&quot;);</span>
+					case CDATA:
+<span class="nc" id="L162">						throw new JDOMException(&quot;Unexpected XMLStream event at Document level: CDATA&quot;);</span>
+					case SPACE:
+						// I have not been able to identify a StAX Stream handler that produces
+						// space data outside the root element, but just in case, we ignore it.
+<span class="nc" id="L166">						break; //throw new JDOMException(&quot;Unexpected XMLStream event at Document level: SPACE&quot;);</span>
+					case CHARACTERS:
+<span class="nc" id="L168">						final String badtxt = stream.getText();</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">						if (!Verifier.isAllXMLWhitespace(badtxt)) {</span>
+<span class="nc" id="L170">							throw new JDOMException(&quot;Unexpected XMLStream event at Document level: CHARACTERS (&quot; + badtxt + &quot;)&quot;);</span>
+						}
+						// otherwise ignore the chars.
+						break;
+
+					case COMMENT:
+<span class="fc" id="L176">						document.addContent(</span>
+								factory.comment(stream.getText()));
+<span class="fc" id="L178">						break;</span>
+
+					case PROCESSING_INSTRUCTION:
+<span class="fc" id="L181">						document.addContent(factory.processingInstruction(</span>
+								stream.getPITarget(), stream.getPIData()));
+<span class="fc" id="L183">						break;</span>
+
+					default:
+<span class="nc" id="L186">						throw new JDOMException(&quot;Unexpected XMLStream event &quot; + state);</span>
+
+				}
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">				if (stream.hasNext()) {</span>
+<span class="fc" id="L190">					state = stream.next();</span>
+				} else {
+<span class="nc" id="L192">					throw new JDOMException(&quot;Unexpected end-of-XMLStreamReader&quot;);</span>
+				}
+			}
+<span class="fc" id="L195">			return document;</span>
+<span class="nc" id="L196">		} catch (final XMLStreamException xse) {</span>
+<span class="nc" id="L197">			throw new JDOMException(&quot;Unable to process XMLStream. See Cause.&quot;, xse);</span>
+		}
+	}
+
+	private List&lt;Content&gt; processFragments(JDOMFactory factory, XMLStreamReader stream, StAXFilter filter) throws JDOMException {
+		
+<span class="fc" id="L203">		int state = stream.getEventType();</span>
+
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">		if (START_DOCUMENT != state) {</span>
+<span class="nc" id="L206">			throw new JDOMException(&quot;JDOM requires that XMLStreamReaders &quot; +</span>
+					&quot;are at their beginning when being processed.&quot;);
+		}
+<span class="fc" id="L209">		List&lt;Content&gt; ret = new ArrayList&lt;Content&gt;();</span>
+		
+<span class="fc" id="L211">		int depth = 0;</span>
+<span class="fc" id="L212">		String text = null;</span>
+		
+		try {
+<span class="pc bpc" id="L215" title="1 of 4 branches missed.">			while (stream.hasNext() &amp;&amp; (state = stream.next()) != END_DOCUMENT) {</span>
+<span class="pc bpc" id="L216" title="7 of 11 branches missed.">				switch (state) {</span>
+					case START_DOCUMENT:
+<span class="nc" id="L218">						throw new JDOMException(&quot;Illegal state for XMLStreamReader. Cannot get XML Fragment for state START_DOCUMENT&quot; );</span>
+					case END_DOCUMENT:
+<span class="nc" id="L220">						throw new JDOMException(&quot;Illegal state for XMLStreamReader. Cannot get XML Fragment for state END_DOCUMENT&quot; );</span>
+					case END_ELEMENT:
+<span class="nc" id="L222">						throw new JDOMException(&quot;Illegal state for XMLStreamReader. Cannot get XML Fragment for state END_ELEMENT&quot; );</span>
+
+					case START_ELEMENT:
+<span class="fc" id="L225">						final QName qn = stream.getName();</span>
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">						if (filter.includeElement(depth, qn.getLocalPart(), </span>
+								Namespace.getNamespace(qn.getPrefix(), qn.getNamespaceURI()))) {
+<span class="fc" id="L228">							ret.add(processPrunableElement(factory, stream, depth, filter));</span>
+						} else {
+<span class="nc" id="L230">							final int back = depth;</span>
+<span class="nc" id="L231">							depth++;</span>
+							
+<span class="nc bnc" id="L233" title="All 4 branches missed.">							while (depth &gt; back &amp;&amp; stream.hasNext()) {</span>
+<span class="nc" id="L234">								state = stream.next();</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">								if (state == START_ELEMENT) {</span>
+<span class="nc" id="L236">									depth++;</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">								} else if (state == END_ELEMENT) {</span>
+<span class="nc" id="L238">									depth--;</span>
+								}
+							}
+						}
+<span class="nc" id="L242">						break;</span>
+
+					case DTD:
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">						if (filter.includeDocType()) {</span>
+<span class="fc" id="L246">							ret.add(DTDParser.parse(stream.getText(), factory));</span>
+						}
+						break;
+
+					case CDATA:
+<span class="nc bnc" id="L251" title="All 2 branches missed.">						if ((text = filter.includeCDATA(depth, stream.getText())) != null) {</span>
+<span class="nc" id="L252">							ret.add(factory.cdata(text));</span>
+						}
+						break;
+
+					case SPACE:
+					case CHARACTERS:
+<span class="nc bnc" id="L258" title="All 2 branches missed.">						if ((text = filter.includeText(depth, stream.getText())) != null) {</span>
+<span class="nc" id="L259">							ret.add(factory.text(text));</span>
+						}
+						break;
+
+					case COMMENT:
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">						if ((text = filter.includeComment(depth, stream.getText())) != null) {</span>
+<span class="fc" id="L265">							ret.add(factory.comment(text));</span>
+						}
+						break;
+
+					case ENTITY_REFERENCE:
+<span class="nc bnc" id="L270" title="All 2 branches missed.">						if (filter.includeEntityRef(depth, stream.getLocalName())) {</span>
+<span class="nc" id="L271">							ret.add(factory.entityRef(stream.getLocalName()));</span>
+						}
+						break;
+
+					case PROCESSING_INSTRUCTION:
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">						if (filter.includeProcessingInstruction(depth, stream.getPITarget())) {</span>
+<span class="fc" id="L277">							ret.add(factory.processingInstruction(</span>
+								stream.getPITarget(), stream.getPIData()));
+						}
+						break;
+
+					default:
+<span class="pc" id="L283">						throw new JDOMException(&quot;Unexpected XMLStream event &quot; + stream.getEventType());</span>
+				}
+			}
+<span class="nc" id="L286">		} catch (XMLStreamException e) {</span>
+<span class="nc" id="L287">			throw new JDOMException(&quot;Unable to process fragments from XMLStreamReader.&quot;, e);</span>
+<span class="fc" id="L288">		}</span>
+		
+<span class="fc" id="L290">		return ret;</span>
+	}
+
+	
+	private static final Element processPrunableElement(final JDOMFactory factory, 
+			final XMLStreamReader reader, final int topdepth, StAXFilter filter) 
+					throws XMLStreamException, JDOMException {
+
+<span class="pc bpc" id="L298" title="1 of 2 branches missed.">		if (START_ELEMENT != reader.getEventType()) {</span>
+<span class="nc" id="L299">			throw new JDOMException(&quot;JDOM requires that the XMLStreamReader &quot; +</span>
+					&quot;is at the START_ELEMENT state when retrieving an &quot; +
+					&quot;Element Fragment.&quot;);
+		}
+		
+<span class="fc" id="L304">		final Element fragment = processElement(factory, reader);</span>
+<span class="fc" id="L305">		Element current = fragment;</span>
+<span class="fc" id="L306">		int depth = topdepth + 1;</span>
+<span class="fc" id="L307">		String text = null;</span>
+<span class="pc bpc" id="L308" title="1 of 4 branches missed.">		while (depth &gt; topdepth &amp;&amp; reader.hasNext()) {</span>
+<span class="pc bpc" id="L309" title="1 of 8 branches missed.">			switch(reader.next()) {</span>
+				case START_ELEMENT:
+<span class="fc" id="L311">					QName qn = reader.getName();</span>
+<span class="pc bpc" id="L312" title="1 of 2 branches missed.">					if (!filter.pruneElement(depth, qn.getLocalPart(), </span>
+							Namespace.getNamespace(
+									qn.getPrefix(), qn.getNamespaceURI()))) {
+<span class="fc" id="L315">						Element tmp = processElement(factory, reader);</span>
+<span class="fc" id="L316">						current.addContent(tmp);</span>
+<span class="fc" id="L317">						current = tmp;</span>
+<span class="fc" id="L318">						depth++;</span>
+<span class="fc" id="L319">					} else {</span>
+<span class="nc" id="L320">						final int edepth = depth;</span>
+<span class="nc" id="L321">						depth++;</span>
+<span class="nc" id="L322">						int state = 0;</span>
+<span class="nc bnc" id="L323" title="All 6 branches missed.">						while (depth &gt; edepth &amp;&amp; reader.hasNext() &amp;&amp; </span>
+								(state = reader.next()) != END_DOCUMENT) {
+<span class="nc bnc" id="L325" title="All 2 branches missed.">							if (state == START_ELEMENT) {</span>
+<span class="nc" id="L326">								depth++;</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">							} else if (state == END_ELEMENT) {</span>
+<span class="nc" id="L328">								depth--;</span>
+							}
+						}
+					}
+<span class="nc" id="L332">					break;</span>
+				case END_ELEMENT:
+<span class="fc" id="L334">					current = current.getParentElement();</span>
+<span class="fc" id="L335">					depth--;</span>
+<span class="fc" id="L336">					break;</span>
+				case CDATA:
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">					if ((text = filter.pruneCDATA(depth, reader.getText())) != null) {</span>
+<span class="fc" id="L339">						current.addContent(factory.cdata(text));</span>
+					}
+					break;
+
+				case SPACE:
+				case CHARACTERS:
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">					if ((text = filter.pruneText(depth, reader.getText())) != null) {</span>
+<span class="fc" id="L346">						current.addContent(factory.text(text));</span>
+					}
+					break;
+
+				case COMMENT:
+<span class="pc bpc" id="L351" title="1 of 2 branches missed.">					if ((text = filter.pruneComment(depth, reader.getText())) != null) {</span>
+<span class="fc" id="L352">						current.addContent(factory.comment(text));</span>
+					}
+					break;
+
+				case ENTITY_REFERENCE:
+<span class="pc bpc" id="L357" title="1 of 2 branches missed.">					if (!filter.pruneEntityRef(depth, reader.getLocalName())) {</span>
+<span class="fc" id="L358">						current.addContent(factory.entityRef(reader.getLocalName()));</span>
+					}
+					break;
+
+				case PROCESSING_INSTRUCTION:
+<span class="pc bpc" id="L363" title="1 of 2 branches missed.">					if (!filter.pruneProcessingInstruction(depth, reader.getPITarget())) {</span>
+<span class="fc" id="L364">						current.addContent(factory.processingInstruction(</span>
+								reader.getPITarget(), reader.getPIData()));
+					}
+					break;
+
+				default:
+<span class="pc" id="L370">					throw new JDOMException(&quot;Unexpected XMLStream event &quot; + reader.getEventType());</span>
+			}
+			
+		}
+		
+<span class="fc" id="L375">		return fragment;</span>
+	}
+
+	/**
+	 * Create a Content from an XMLStreamReader
+	 * The stream is advanced to the event after the current event (or to the
+	 * event after the matching END_ELEMENT for an Element fragment).
+	 * @param factory The {@link JDOMFactory} to use
+	 * @param stream The XMLStreamReader to read from
+	 * @return the parsed Document
+	 * @throws JDOMException if there is any issue
+	 * 				(XMLStreamExceptions are wrapped).
+	 */
+	private static final Content processFragment(final JDOMFactory factory, 
+			final XMLStreamReader stream) throws JDOMException {
+		try {
+			
+<span class="pc bpc" id="L392" title="10 of 11 branches missed.">			switch (stream.getEventType()) {</span>
+
+				case START_DOCUMENT:
+<span class="nc" id="L395">					throw new JDOMException(&quot;Illegal state for XMLStreamReader. Cannot get XML Fragment for state START_DOCUMENT&quot; );</span>
+				case END_DOCUMENT:
+<span class="nc" id="L397">					throw new JDOMException(&quot;Illegal state for XMLStreamReader. Cannot get XML Fragment for state END_DOCUMENT&quot; );</span>
+				case END_ELEMENT:
+<span class="nc" id="L399">					throw new JDOMException(&quot;Illegal state for XMLStreamReader. Cannot get XML Fragment for state END_ELEMENT&quot; );</span>
+
+				case START_ELEMENT:
+<span class="fc" id="L402">					Element emt = processElementFragment(factory, stream);</span>
+<span class="fc" id="L403">					stream.next();</span>
+<span class="fc" id="L404">					return emt;</span>
+
+				case DTD:
+<span class="nc" id="L407">					Content dt = DTDParser.parse(stream.getText(), factory);</span>
+<span class="nc" id="L408">					stream.next();</span>
+<span class="nc" id="L409">					return dt;</span>
+
+				case CDATA:
+<span class="nc" id="L412">					Content cd = factory.cdata(stream.getText());</span>
+<span class="nc" id="L413">					stream.next();</span>
+<span class="nc" id="L414">					return cd;</span>
+
+				case SPACE:
+				case CHARACTERS:
+<span class="nc" id="L418">					Content txt = factory.text(stream.getText());</span>
+<span class="nc" id="L419">					stream.next();</span>
+<span class="nc" id="L420">					return txt;</span>
+
+				case COMMENT:
+<span class="nc" id="L423">					Content comment = factory.comment(stream.getText());</span>
+<span class="nc" id="L424">					stream.next();</span>
+<span class="nc" id="L425">					return comment;</span>
+
+				case ENTITY_REFERENCE:
+<span class="nc" id="L428">					Content er = factory.entityRef(stream.getLocalName());</span>
+<span class="nc" id="L429">					stream.next();</span>
+<span class="nc" id="L430">					return er;</span>
+
+				case PROCESSING_INSTRUCTION:
+<span class="nc" id="L433">					Content pi = factory.processingInstruction(</span>
+							stream.getPITarget(), stream.getPIData());
+<span class="nc" id="L435">					stream.next();</span>
+<span class="nc" id="L436">					return pi;</span>
+
+				default:
+<span class="nc" id="L439">					throw new JDOMException(&quot;Unexpected XMLStream event &quot; + stream.getEventType());</span>
+
+			}
+<span class="nc" id="L442">		} catch (final XMLStreamException xse) {</span>
+<span class="nc" id="L443">			throw new JDOMException(&quot;Unable to process XMLStream. See Cause.&quot;, xse);</span>
+		}
+	}
+
+	private static final Element processElementFragment(final JDOMFactory factory, 
+			final XMLStreamReader reader) throws XMLStreamException, JDOMException {
+
+<span class="pc bpc" id="L450" title="1 of 2 branches missed.">		if (START_ELEMENT != reader.getEventType()) {</span>
+<span class="nc" id="L451">			throw new JDOMException(&quot;JDOM requires that the XMLStreamReader &quot; +</span>
+					&quot;is at the START_ELEMENT state when retrieving an &quot; +
+					&quot;Element Fragment.&quot;);
+		}
+		
+<span class="fc" id="L456">		final Element fragment = processElement(factory, reader);</span>
+<span class="fc" id="L457">		Element current = fragment;</span>
+<span class="fc" id="L458">		int depth = 1;</span>
+<span class="pc bpc" id="L459" title="1 of 4 branches missed.">		while (depth &gt; 0 &amp;&amp; reader.hasNext()) {</span>
+<span class="pc bpc" id="L460" title="1 of 8 branches missed.">			switch(reader.next()) {</span>
+				case START_ELEMENT:
+<span class="fc" id="L462">					Element tmp = processElement(factory, reader);</span>
+<span class="fc" id="L463">					current.addContent(tmp);</span>
+<span class="fc" id="L464">					current = tmp;</span>
+<span class="fc" id="L465">					depth++;</span>
+<span class="fc" id="L466">					break;</span>
+				case END_ELEMENT:
+<span class="fc" id="L468">					current = current.getParentElement();</span>
+<span class="fc" id="L469">					depth--;</span>
+<span class="fc" id="L470">					break;</span>
+				case CDATA:
+<span class="fc" id="L472">					current.addContent(factory.cdata(reader.getText()));</span>
+<span class="fc" id="L473">					break;</span>
+
+				case SPACE:
+				case CHARACTERS:
+<span class="fc" id="L477">					current.addContent(factory.text(reader.getText()));</span>
+<span class="fc" id="L478">					break;</span>
+
+				case COMMENT:
+<span class="fc" id="L481">					current.addContent(factory.comment(reader.getText()));</span>
+<span class="fc" id="L482">					break;</span>
+
+				case ENTITY_REFERENCE:
+<span class="fc" id="L485">					current.addContent(factory.entityRef(reader.getLocalName()));</span>
+<span class="fc" id="L486">					break;</span>
+
+				case PROCESSING_INSTRUCTION:
+<span class="fc" id="L489">					current.addContent(factory.processingInstruction(</span>
+							reader.getPITarget(), reader.getPIData()));
+<span class="fc" id="L491">					break;</span>
+
+				default:
+<span class="pc" id="L494">					throw new JDOMException(&quot;Unexpected XMLStream event &quot; + reader.getEventType());</span>
+			}
+			
+		}
+		
+<span class="fc" id="L499">		return fragment;</span>
+	}
+
+	private static final Element processElement(final JDOMFactory factory, 
+			final XMLStreamReader reader) {
+
+<span class="fc" id="L505">		final Element element = factory.element(reader.getLocalName(),</span>
+				Namespace.getNamespace(reader.getPrefix(), 
+						reader.getNamespaceURI()));
+
+		// Handle attributes
+<span class="fc bfc" id="L510" title="All 2 branches covered.">		for (int i=0, len=reader.getAttributeCount(); i&lt;len; i++) {</span>
+<span class="fc" id="L511">			factory.setAttribute(element, factory.attribute(</span>
+					reader.getAttributeLocalName(i),
+					reader.getAttributeValue(i), 
+					AttributeType.getAttributeType(reader.getAttributeType(i)),
+					Namespace.getNamespace(reader.getAttributePrefix(i),
+							reader.getAttributeNamespace(i))));
+		}
+
+		// Handle Namespaces
+<span class="fc bfc" id="L520" title="All 2 branches covered.">		for (int i = 0, len = reader.getNamespaceCount(); i &lt; len; i++) {</span>
+<span class="fc" id="L521">			element.addNamespaceDeclaration(Namespace.getNamespace(</span>
+					reader.getNamespacePrefix(i), reader.getNamespaceURI(i)));
+		}
+
+<span class="fc" id="L525">		return element;</span>
+	}
+
+
+	/** The factory to use for parsing */
+<span class="fc" id="L530">	private JDOMFactory builderfactory = new DefaultJDOMFactory();</span>
+
+	/**
+	 * Returns the current {@link org.jdom2.JDOMFactory} in use.
+	 * @return the factory in use
+	 */
+	public JDOMFactory getFactory() {
+<span class="fc" id="L537">		return builderfactory;</span>
+	}
+
+	/**
+	 * This sets a custom JDOMFactory for the builder.  Use this to build
+	 * the tree with your own subclasses of the JDOM classes.
+	 *
+	 * @param factory &lt;code&gt;JDOMFactory&lt;/code&gt; to use
+	 */
+	public void setFactory(JDOMFactory factory) {
+<span class="fc" id="L547">		this.builderfactory = factory;</span>
+<span class="fc" id="L548">	}</span>
+
+	/**
+	 * This builds a document from the supplied
+	 * XMLStreamReader.
+	 * &lt;p&gt;
+	 * The JDOMContent will be built by the current JDOMFactory.
+	 *
+	 * @param reader &lt;code&gt;XMLStreamReader&lt;/code&gt; to read from
+	 * @return &lt;code&gt;Document&lt;/code&gt; resultant Document object
+	 * @throws JDOMException when errors occur in parsing
+	 */
+	public Document build(XMLStreamReader reader) throws JDOMException {
+<span class="fc" id="L561">		return process(builderfactory, reader);</span>
+	}
+	
+	/**
+	 * Read the entire XMLStreamReader and from it build a list of Content that
+	 * conforms to the rules in the supplied StAXFilter.
+	 * @param reader The XMLStreamReader to parse
+	 * @param filter The Filter to use for the Content
+	 * @return a List of Content that were identified by the supplied filter
+	 * @throws JDOMException if there was a parsing problem.
+	 */
+	public List&lt;Content&gt; buildFragments(XMLStreamReader reader, StAXFilter filter) throws JDOMException {
+<span class="fc" id="L573">		return processFragments(builderfactory, reader, filter);</span>
+	}
+
+	
+	/**
+	 * Read the current XML Fragment from the XMLStreamReader.
+	 * The XMLStreamReader must be at some 'content' state, it cannot be
+	 * at START_DOCUMENT, for example.
+	 * @param reader The XMLStreamReader to read the next fragment from
+	 * @return The JDOM fragment at the current position in the reader
+	 * @throws JDOMException if there is an issue with the state of the
+	 * XMLStreamReader or some other issue with the processing.
+	 */
+	public Content fragment(XMLStreamReader reader) throws JDOMException {
+<span class="fc" id="L587">		return processFragment(builderfactory, reader);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

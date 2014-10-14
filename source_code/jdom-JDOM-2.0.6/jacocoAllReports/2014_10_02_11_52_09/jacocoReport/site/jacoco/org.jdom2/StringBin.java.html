@@ -1,0 +1,390 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StringBin.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2</a> &gt; <span class="el_source">StringBin.java</span></div><h1>StringBin.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2011 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2;
+
+import org.jdom2.internal.ArrayCopy;
+
+
+/**
+ * This is a mechanism for storing and reusing unique instances of Strings.
+ * The idea is that in XML the tag names, attribute names, and other String
+ * content is often repeated a lot. Each repeat is typically done as a new
+ * String instance. This class makes it possible to substantially reduce memory
+ * usage by reusing String instances instead of keeping the new ones.
+ * &lt;p&gt;
+ * This class is not the same as String.intern() because String.intern() uses
+ * the PermGen memory space (very limited in size), whereas this uses the heap.
+ * &lt;p&gt;
+ * The primary goal of this class is to be as memory efficient as possible. This
+ * has the interesting side effect of reducing the amount of time spent in
+ * garbage-collection cycles. While this does increase the amount of time to
+ * process a String, it means that subsequent String values can be 'recycled'
+ * fast, and, ideally, never need to leave the 'eden space' in the memory model
+ * which in turn means that the duplicate strings do not even hit the GC
+ * overhead. It is easy to measure that this process takes longer than simply
+ * keeping the duplicate String values, but it is much harder to measure the
+ * decreased cost of GC. It would be somewhat fair to say that the memory
+ * benefit is substantial, and the cost of allocation is offset by the savings
+ * in garbage collection. This trade-off is dependent on the amount of duplicate
+ * data you have. In XML where there are lots of repeating patterns of element
+ * and attribute names this can add up pretty fast.
+ * &lt;p&gt;
+ * This class is not thread-safe.
+ * 
+ * @author Rolf Lear
+ *
+ */
+final class StringBin {
+	
+	// Here are some magic numbers:
+	
+	/** Default bucket-size growth factor */
+	private static final int GROW = 4;
+	/**
+	 * How many buckets to start with
+	 * &lt;p&gt;
+	 * Actually, this just sets the initial capacity which is used to calculate
+	 * the number of buckets. This implementation will turn the default capacity
+	 * of 1023 in to 
+	 */
+	private static final int DEFAULTCAP = 1023;
+	/** How big to let the largest bucket grow before a rehash */
+	private static final int MAXBUCKET = 64;
+	
+	/** 
+	 * The actual buckets.
+	 * There is a really good reason to use a two-dimensional array: a 1
+	 * dimensional array would require us to do an inordinate amount of shifting
+	 * of the data as we insert new values in to the middle.
+	 * By having 'x' number of buckets, the average shift would be 1/x th of the
+	 * amount, which is much faster.
+	 */
+	private String[][] buckets;
+	private int lengths[];
+	
+	/** The bit mask and bit shift */
+<span class="fc" id="L118">	private int mask = 0;</span>
+	
+	/**
+	 * Create a default instance of the StringBin with the default capacity.
+	 */
+	public StringBin() {
+<span class="fc" id="L124">		this(DEFAULTCAP);</span>
+<span class="fc" id="L125">	}</span>
+	
+	/**
+	 * Create a StringBin instance with a specified initial capacity.
+	 * @param capacity the capacity to set.
+	 */
+<span class="fc" id="L131">	public StringBin(int capacity) {</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">		if (capacity &lt; 0) {</span>
+<span class="fc" id="L133">			throw new IllegalArgumentException(&quot;Can not have a negative capacity&quot;);</span>
+		}
+<span class="fc" id="L135">		capacity--;</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">		if (capacity &lt; DEFAULTCAP) {</span>
+<span class="fc" id="L137">			capacity = DEFAULTCAP;</span>
+		}
+		// aim for 'GROW - 1' Strings per bucket...
+<span class="fc" id="L140">		capacity /= (GROW - 1);</span>
+<span class="fc" id="L141">		int shift = 0;</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">		while (capacity != 0) {</span>
+<span class="fc" id="L143">			capacity &gt;&gt;&gt;= 1;</span>
+<span class="fc" id="L144">			shift++;</span>
+		}
+<span class="fc" id="L146">		mask = (1 &lt;&lt; shift) - 1;</span>
+<span class="fc" id="L147">		buckets = new String[mask + 1][];</span>
+<span class="fc" id="L148">		lengths = new int[buckets.length];</span>
+<span class="fc" id="L149">	}</span>
+	
+	/**
+	 * This code effectively does a binary search for a value.
+	 * The order of the data in a bucket is increasing-by-hashcode, and then
+	 * for values with the same hashcode, it is increasing by alphabetical. 
+	 * @param hash
+	 * @param value
+	 * @param bucket
+	 * @param length
+	 * @return
+	 */
+	private final int locate(final int hash, final String value, final String[] bucket, final int length) {
+<span class="fc" id="L162">		int left = 0;</span>
+<span class="fc" id="L163">		int right = length -1;</span>
+<span class="fc" id="L164">		int mid = 0;</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">		while (left &lt;= right) {</span>
+<span class="fc" id="L166">			mid = (left + right) &gt;&gt;&gt; 1;</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">			if (bucket[mid].hashCode() &gt; hash) {</span>
+<span class="fc" id="L168">				right = mid - 1;</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">			} else if (bucket[mid].hashCode() &lt; hash) {</span>
+<span class="fc" id="L170">				left = mid + 1;</span>
+			} else {
+				// have the same hashcode
+				// do a string-compare.
+<span class="fc" id="L174">				int cmp = value.compareTo(bucket[mid]);</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">				if (cmp == 0) {</span>
+					// equals.
+<span class="fc" id="L177">					return mid;</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">				} else if (cmp &lt; 0) {</span>
+					// our input value comes before the bucket value, search
+					// backwards
+<span class="fc bfc" id="L181" title="All 4 branches covered.">					while (--mid &gt;= left &amp;&amp; bucket[mid].hashCode() == hash) {</span>
+						// we have gone back one, and we still have the same
+						// hash code... let's compare.
+<span class="fc" id="L184">						cmp = value.compareTo(bucket[mid]);</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">						if (cmp == 0) {</span>
+							// equals, found it.
+<span class="fc" id="L187">							return mid;</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">						} else if (cmp &gt; 0) {</span>
+							// we were searching backwards because we started at
+							// the mid point which was after the input value.
+							// now that we have found a value that comes
+							// before the input value it means we have gone too
+							// far... which in turn means the insertion point
+							// is one place after where we are.
+<span class="fc" id="L195">							return - (mid + 1) - 1;</span>
+						}
+					}
+					// this must mean that we ran out of data, or ran out of
+					// values with the same hashcode...
+<span class="fc" id="L200">					return - (mid + 1) - 1;</span>
+				} else {
+					// we have a value that comes before the value with the
+					// same hash as us.
+<span class="fc bfc" id="L204" title="All 4 branches covered.">					while (++mid &lt;= right &amp;&amp; bucket[mid].hashCode() == hash) {</span>
+						//the next value exists and has the same hash code.
+<span class="fc" id="L206">						cmp = value.compareTo(bucket[mid]);</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">						if (cmp == 0) {</span>
+							// found our value.
+<span class="fc" id="L209">							return mid;</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">						} else if (cmp &lt; 0) {</span>
+							// we were searching forwards because we started at
+							// the mid point which was before the input value.
+							// now that we have found a value that comes
+							// after the input value it means we have gone too
+							// far... which in turn means the insertion point
+							// is at the point where we are.
+<span class="fc" id="L217">							return - mid - 1;</span>
+						}
+					}
+					// we have run out of values, or the value we are on has a
+					// different hashcode.
+<span class="fc" id="L222">					return - mid - 1;</span>
+				}
+			}
+		}
+		// nothing had the same hashcode.
+<span class="fc" id="L227">		return -left - 1;</span>
+	}
+	
+	/**
+	 * Get a String instance that is equal to the input value. This may or may
+	 * not be the same instance as the input value. Null input values will
+	 * reuse() as null.
+	 * @param value The value to check.
+	 * @return a String that is equals() to the input value, or null if the
+	 * input was null
+	 */
+	public String reuse(final String value) {
+<span class="fc bfc" id="L239" title="All 2 branches covered.">		if (value == null) {</span>
+<span class="fc" id="L240">			return null;</span>
+		}
+<span class="fc" id="L242">		final int hash = value.hashCode();</span>
+		/*
+		 *  we use a special masking routine here. This is important.
+		 *  we always do a 16-bit shift, XOR it with the unshifted value, and
+		 *  then apply the mask.
+		 *  The reason is relatively simple: it makes rehashing much faster
+		 *  because you never need to shift values in the rehash, they are always
+		 *  just appended.
+		 *  Further, there is no real need to get a true random distribution in
+		 *  the buckets... it's not important. The String.hashCode() is a good
+		 *  enough hash function so we do not lose much by doing it this way.
+		 *  
+		 *  In detail:
+		 *  Normally for a bucketing/hashing system we will try to use as many
+		 *  bits as possible to create the bucket hash for the value. In this
+		 *  case though, we XOR the high 16 bits with the low 16 bits (and keep
+		 *  the high 16 bits unchanged. Lets call this the 'interim result'.
+		 *  We then apply our bit mask to that interim result to get the bucket
+		 *  id. The important thing here is that the interim result is the same
+		 *  no matter how many buckets there are.
+		 *  
+		 *  If we need to rehash the buckets, the mask will include more bits,
+		 *  and that guarantees that the values in any one 'original' bucket
+		 *  will be divided in to different buckets, and never merged with
+		 *  values from a different original bucket.
+		 *  
+		 *  Thus, in a rehash, both because of the way we calculate the bucketid
+		 *  and also because the values in a bucket are stored in increasing
+		 *  hash value order, we never need to insert a value in to the middle
+		 *  of the rehashed bucket, we can always add to the end.
+		 */
+<span class="fc" id="L273">		final int bucketid = ((hash &gt;&gt;&gt; 16) ^ hash) &amp; mask;</span>
+		
+<span class="fc" id="L275">		final int length = lengths[bucketid];</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">		if (length == 0) {</span>
+			// start a new bucket
+<span class="fc" id="L278">			final String v = compact(value);</span>
+<span class="fc" id="L279">			buckets[bucketid] = new String[GROW];</span>
+<span class="fc" id="L280">			buckets[bucketid][0] = v;</span>
+<span class="fc" id="L281">			lengths[bucketid] = 1;</span>
+<span class="fc" id="L282">			return v;</span>
+		}
+		
+		// get the existing bucket.
+<span class="fc" id="L286">		String[] bucket = buckets[bucketid];</span>
+		
+		// note the final value calculated as -val - 1
+<span class="fc" id="L289">		final int ip = - locate(hash, value, bucket, length) - 1;</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">		if (ip &lt; 0) {</span>
+			// this means we have found the value.
+<span class="fc" id="L292">			return bucket[- ip - 1];</span>
+		}
+<span class="fc bfc" id="L294" title="All 2 branches covered.">		if (length &gt;= MAXBUCKET) {</span>
+			// need to rehash, so we do, and then add our value
+<span class="fc" id="L296">			rehash();</span>
+<span class="fc" id="L297">			return reuse(value);</span>
+		}
+<span class="fc bfc" id="L299" title="All 2 branches covered.">		if (length == bucket.length) {</span>
+			// there is no space for our value.
+<span class="fc" id="L301">			bucket = ArrayCopy.copyOf(bucket, length + GROW);</span>
+<span class="fc" id="L302">			buckets[bucketid] = bucket;</span>
+		}
+<span class="fc" id="L304">		System.arraycopy(bucket, ip, bucket, ip + 1, length - ip);</span>
+<span class="fc" id="L305">		final String v = compact(value);</span>
+<span class="fc" id="L306">		bucket[ip] = v;</span>
+<span class="fc" id="L307">		lengths[bucketid]++;</span>
+<span class="fc" id="L308">		return v;</span>
+	}
+	
+	/**
+	 * Store the existing values in a new and larger set of buckets.
+	 * This reduces the number of values in each bucket, which improves insert
+	 * time.
+	 * &lt;p&gt;
+	 * The data is stored in hashCode() order, and then alphabetically for
+	 * those instances where two String values have the same hashCode().
+	 * &lt;p&gt;
+	 * The bucketing hash key is calculated in a specific way that guarantees
+	 * that when we rehash there values in a bucket will be divided between
+	 * a new set of buckets, and no other source bucket will ever add values
+	 * to a bucket that we are dividing our bucket to.
+	 * &lt;p&gt; 
+	 * The combination of the bucket hash key, and the bucket ordering means
+	 * that during a rehash we never have to insert values in to the middle of
+	 * the bucket.
+	 */
+	private void rehash() {
+<span class="fc" id="L329">		String[][] olddata = buckets;</span>
+		// magic numbers ... we make 4-times as many buckets.
+<span class="fc" id="L331">		mask = ((mask + 1) &lt;&lt; 2) - 1;</span>
+<span class="fc" id="L332">		buckets = new String[mask + 1][];</span>
+<span class="fc" id="L333">		lengths = new int[buckets.length];</span>
+<span class="fc" id="L334">		int hash = 0, bucketid = 0, length = 0;</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">		for (String[] ob : olddata) {</span>
+<span class="fc bfc" id="L336" title="All 2 branches covered.">			if (ob == null) {</span>
+				// was an empty bucket.
+<span class="fc" id="L338">				continue;</span>
+			}
+<span class="fc bfc" id="L340" title="All 2 branches covered.">			for (String val : ob) {</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">				if (val == null) {</span>
+					// there are no more values to rehash in this bucket.
+<span class="fc" id="L343">					break;</span>
+				}
+<span class="fc" id="L345">				hash = val.hashCode();</span>
+<span class="fc" id="L346">				bucketid = ((hash &gt;&gt;&gt; 16) ^ hash) &amp; mask;</span>
+<span class="fc" id="L347">				length = lengths[bucketid];</span>
+<span class="fc bfc" id="L348" title="All 2 branches covered.">				if (length == 0) {</span>
+<span class="fc" id="L349">					buckets[bucketid] = new String[(ob.length + GROW) / GROW];</span>
+<span class="fc" id="L350">					buckets[bucketid][0] = val;</span>
+				} else {
+<span class="fc bfc" id="L352" title="All 2 branches covered.">					if (buckets[bucketid].length == length) {</span>
+<span class="fc" id="L353">						buckets[bucketid] = ArrayCopy.copyOf(</span>
+								buckets[bucketid], lengths[bucketid] + GROW);
+					}
+<span class="fc" id="L356">					buckets[bucketid][length] = val;</span>
+				}
+<span class="fc" id="L358">				lengths[bucketid]++;</span>
+			}
+		}
+<span class="fc" id="L361">	}</span>
+	
+	/**
+	 * Compact a Java String to its smallest char[] backing array.
+	 * Java often reuses the char[] array that backs String classes. If you have
+	 * one String value and substring it, or some other methods, then instead of
+	 * creating a new char[] array it reuses the original one. This can lead to 
+	 * small String values being backed by very large arrays. We do not want to
+	 * be caching these large arrays... just the smallest.
+	 * @param input The String to compact
+	 * @return a Compacted version of the String.
+	 */
+	private static final String compact(final String input) {
+<span class="fc" id="L374">		return new String(input.toCharArray());</span>
+	}
+	
+	/**
+	 * Number of registered Strings
+	 * @return the number of registered String values.
+	 */
+	public int size() {
+<span class="fc" id="L382">		int sum = 0;</span>
+<span class="fc bfc" id="L383" title="All 2 branches covered.">		for (int l : lengths) {</span>
+<span class="fc" id="L384">			sum += l;</span>
+		}
+<span class="fc" id="L386">		return sum;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

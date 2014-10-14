@@ -1,0 +1,1042 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Format.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.output</a> &gt; <span class="el_source">Format.java</span></div><h1>Format.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2000-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.output;
+
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetEncoder;
+
+import org.jdom2.IllegalDataException;
+import org.jdom2.Verifier;
+
+/**
+ * Class to encapsulate XMLOutputter format options.
+ * Typically users adapt the standard format configurations obtained by
+ * {@link #getRawFormat} (no whitespace changes),
+ * {@link #getPrettyFormat} (whitespace beautification), and
+ * {@link #getCompactFormat} (whitespace normalization).
+ * &lt;p&gt;
+ * Several modes are available to effect the way textual content is printed.
+ * See the documentation for {@link TextMode} for details.
+ * &lt;p&gt;
+ * &lt;b&gt;Note about Line Separator:&lt;/b&gt;
+ * &lt;p&gt;
+ * By default JDOM will always use the CRNL sequence &quot;\r\n&quot; for output. This
+ * can be changed in a number of different ways. See the {@link LineSeparator}
+ * enumeration for more information.
+ * &lt;p&gt;
+ * &lt;b&gt;Note about XML Character Escaping:&lt;/b&gt;
+ * &lt;p&gt;
+ * JDOM will escape characters in the output based on the EscapeStrategy that
+ * is specified by this Format. The Format will by default use a sensible
+ * EscapeStrategy that is based on the character encoding of the output. If
+ * the default escape mechanism is not producing the correct results you can
+ * change the EscapeStrategy on the format to suit your own needs.  
+ * 
+ *
+ * @see LineSeparator
+ *
+ * @author Jason Hunter
+ * @author Rolf Lear
+ */
+public class Format implements Cloneable {
+
+	/**
+	 * An EscapeStrategy suitable for UTF-8 an UTF-16. We want the class to
+	 * have its own name.
+	 */
+<span class="fc" id="L99">	private static final class EscapeStrategyUTF implements EscapeStrategy {</span>
+		@Override
+		public final boolean shouldEscape(char ch) {
+<span class="fc" id="L102">			return Verifier.isHighSurrogate(ch);</span>
+		}
+	}
+
+	/**
+	 * An EscapeStrategy suitable for UTF-8 an UTF-16
+	 */
+<span class="fc" id="L109">	private static final EscapeStrategy UTFEscapeStrategy = new EscapeStrategyUTF();</span>
+
+	/**
+	 * An EscapeStrategy suitable for 8-bit charsets. We want the class to have
+	 * its own name.
+	 */
+<span class="fc" id="L115">	private static final class EscapeStrategy8Bits implements EscapeStrategy {</span>
+		@Override
+		public boolean shouldEscape(final char ch) {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">			return (ch &gt;&gt;&gt; 8) != 0;</span>
+		}
+	}
+
+	/**
+	 * An EscapeStrategy suitable for 8-bit charsets
+	 */
+<span class="fc" id="L125">	private static final EscapeStrategy Bits8EscapeStrategy = new EscapeStrategy8Bits();</span>
+
+	/**
+	 * An EscapeStrategy suitable for 7-bit charsets. We want the class to
+	 * have its own name.
+	 */
+<span class="fc" id="L131">	private static final class EscapeStrategy7Bits implements EscapeStrategy {</span>
+		@Override
+		public boolean shouldEscape(final char ch) {
+<span class="fc bfc" id="L134" title="All 2 branches covered.">			return (ch &gt;&gt;&gt; 7) != 0;</span>
+		}
+	}
+	
+	/**
+	 * An EscapeStrategy suitable for 7-bit charsets
+	 */
+<span class="fc" id="L141">	private static final EscapeStrategy Bits7EscapeStrategy = </span>
+			new EscapeStrategy7Bits();
+	
+	/**
+	 * An EscapeStrategy suitable for 'unknown' charsets
+	 */
+<span class="fc" id="L147">	private static final EscapeStrategy DefaultEscapeStrategy = new EscapeStrategy() {</span>
+		@Override
+		public boolean shouldEscape(char ch) {
+<span class="fc bfc" id="L150" title="All 2 branches covered.">			if (Verifier.isHighSurrogate(ch)) {</span>
+<span class="fc" id="L151">				return true;  // Safer this way per http://unicode.org/faq/utf_bom.html#utf8-4</span>
+			}
+
+<span class="fc" id="L154">			return false;</span>
+		}
+	};
+	
+	/**
+	 * Handles Charsets.
+	 */
+	private final static class DefaultCharsetEscapeStrategy implements EscapeStrategy {
+		
+		private final CharsetEncoder encoder;
+
+<span class="fc" id="L165">		public DefaultCharsetEscapeStrategy(CharsetEncoder cse) {</span>
+<span class="fc" id="L166">			encoder = cse;</span>
+<span class="fc" id="L167">		}</span>
+
+		@Override
+		public boolean shouldEscape(final char ch) {
+			
+<span class="fc bfc" id="L172" title="All 2 branches covered.">			if (Verifier.isHighSurrogate(ch)) {</span>
+<span class="fc" id="L173">				return true;  // Safer this way per http://unicode.org/faq/utf_bom.html#utf8-4</span>
+			}
+
+<span class="fc bfc" id="L176" title="All 2 branches covered.">			return !encoder.canEncode(ch);</span>
+		}
+		
+	}
+	
+	/**
+	 * Returns a new Format object that performs no whitespace changes, uses
+	 * the UTF-8 encoding, doesn't expand empty elements, includes the
+	 * declaration and encoding, and uses the default entity escape strategy.
+	 * Tweaks can be made to the returned Format instance without affecting
+	 * other instances.
+
+	 * @return                     a Format with no whitespace changes
+	 */
+	public static Format getRawFormat() {
+<span class="fc" id="L191">		return new Format();</span>
+	}
+
+	/**
+	 * Returns a new Format object that performs whitespace beautification with
+	 * 2-space indents, uses the UTF-8 encoding, doesn't expand empty elements,
+	 * includes the declaration and encoding, and uses the default entity
+	 * escape strategy.
+	 * Tweaks can be made to the returned Format instance without affecting
+	 * other instances.
+	 *
+	 * @return                     a Format with whitespace beautification
+	 */
+	public static Format getPrettyFormat() {
+<span class="fc" id="L205">		Format f = new Format();</span>
+<span class="fc" id="L206">		f.setIndent(STANDARD_INDENT);</span>
+<span class="fc" id="L207">		f.setTextMode(TextMode.TRIM);</span>
+<span class="fc" id="L208">		return f;</span>
+	}
+
+	/**
+	 * Returns a new Format object that performs whitespace normalization, uses
+	 * the UTF-8 encoding, doesn't expand empty elements, includes the
+	 * declaration and encoding, and uses the default entity escape strategy.
+	 * Tweaks can be made to the returned Format instance without affecting
+	 * other instances.
+	 *
+	 * @return                     a Format with whitespace normalization
+	 */
+	public static Format getCompactFormat() {
+<span class="fc" id="L221">		Format f = new Format();</span>
+<span class="fc" id="L222">		f.setTextMode(TextMode.NORMALIZE);</span>
+<span class="fc" id="L223">		return f;</span>
+	}
+	
+	/**
+	 * Use the XML Specification definition of whitespace to compact the
+	 * input value. The value is trimmed, and any internal XML whitespace
+	 * is replaced with a single ' ' space.
+	 * @param str The value to compact.
+	 * @return The compacted value
+	 * @since JDOM2
+	 */
+	public static final String compact(String str) {
+<span class="fc" id="L235">		int right = str.length() - 1;</span>
+<span class="fc" id="L236">		int left = 0;</span>
+<span class="fc bfc" id="L237" title="All 4 branches covered.">		while (left &lt;= right &amp;&amp; </span>
+				Verifier.isXMLWhitespace(str.charAt(left))) {
+<span class="fc" id="L239">			left++;</span>
+		}
+<span class="fc bfc" id="L241" title="All 4 branches covered.">		while (right &gt; left &amp;&amp;</span>
+				Verifier.isXMLWhitespace(str.charAt(right))) {
+<span class="fc" id="L243">			right--;</span>
+		}
+		
+<span class="fc bfc" id="L246" title="All 2 branches covered.">		if (left &gt; right) {</span>
+<span class="fc" id="L247">			return &quot;&quot;;</span>
+		}
+		
+<span class="fc" id="L250">		boolean space = true;</span>
+<span class="fc" id="L251">		final StringBuilder buffer = new StringBuilder(right - left + 1);</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">		while (left &lt;= right) {</span>
+<span class="fc" id="L253">			final char c = str.charAt(left);</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">			if (Verifier.isXMLWhitespace(c)) {</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">				if (space) {</span>
+<span class="fc" id="L256">					buffer.append(' ');</span>
+<span class="fc" id="L257">					space = false;</span>
+				}
+			} else {
+<span class="fc" id="L260">				buffer.append(c);</span>
+<span class="fc" id="L261">				space = true;</span>
+			}
+<span class="fc" id="L263">			left++;</span>
+<span class="fc" id="L264">		}</span>
+<span class="fc" id="L265">		return buffer.toString();</span>
+	}
+
+	/**
+	 * Use the XML Specification definition of whitespace to Right-trim the
+	 * input value.
+	 * @param str The value to trim.
+	 * @return The value right-trimmed
+	 * @since JDOM2
+	 */
+	public static final String trimRight(String str) {
+<span class="fc" id="L276">		int right = str.length() - 1;</span>
+<span class="fc bfc" id="L277" title="All 4 branches covered.">		while (right &gt;= 0 &amp;&amp; Verifier.isXMLWhitespace(str.charAt(right))) {</span>
+<span class="fc" id="L278">			right--;</span>
+		}
+<span class="fc bfc" id="L280" title="All 2 branches covered.">		if (right &lt; 0) {</span>
+<span class="fc" id="L281">			return &quot;&quot;;</span>
+		}
+<span class="fc" id="L283">		return str.substring(0, right + 1);</span>
+	}
+
+	/**
+	 * Use the XML Specification definition of whitespace to Left-trim the
+	 * input value.
+	 * @param str The value to trim.
+	 * @return The value left-trimmed
+	 * @since JDOM2
+	 */
+	public static final String trimLeft(final String str) {
+<span class="fc" id="L294">		final int right = str.length();</span>
+<span class="fc" id="L295">		int left = 0;</span>
+<span class="fc bfc" id="L296" title="All 4 branches covered.">		while (left &lt; right &amp;&amp; Verifier.isXMLWhitespace(str.charAt(left))) {</span>
+<span class="fc" id="L297">			left++;</span>
+		}
+<span class="fc bfc" id="L299" title="All 2 branches covered.">		if (left &gt;= right) {</span>
+<span class="fc" id="L300">			return &quot;&quot;;</span>
+		}
+
+<span class="fc" id="L303">		return str.substring(left);</span>
+	}
+
+	/**
+	 * Use the XML Specification definition of whitespace to trim the
+	 * input value.
+	 * @param str The value to trim.
+	 * @return The value trimmed
+	 * @since JDOM2
+	 */
+	public static final String trimBoth(final String str) {
+<span class="fc" id="L314">		int right = str.length() - 1;</span>
+<span class="fc bfc" id="L315" title="All 4 branches covered.">		while (right &gt; 0 &amp;&amp; Verifier.isXMLWhitespace(str.charAt(right))) {</span>
+<span class="fc" id="L316">			right--;</span>
+		}
+<span class="fc" id="L318">		int left = 0;</span>
+<span class="fc bfc" id="L319" title="All 4 branches covered.">		while (left &lt;= right &amp;&amp; Verifier.isXMLWhitespace(str.charAt(left))) {</span>
+<span class="fc" id="L320">			left++;</span>
+		}
+<span class="fc bfc" id="L322" title="All 2 branches covered.">		if (left &gt; right) {</span>
+<span class="fc" id="L323">			return &quot;&quot;;</span>
+		}
+<span class="fc" id="L325">		return str.substring(left, right + 1);</span>
+	}
+
+	
+	/**
+	 * This will take the three pre-defined entities in XML 1.0 ('&amp;lt;', '&amp;gt;',
+	 * and '&amp;amp;' - used specifically in XML elements) as well as CR/NL, tabs,
+	 * and Quote characters which require escaping inside Attribute values and
+	 * converts their character representation to the appropriate entity
+	 * reference suitable for XML attribute content. Further, some special
+	 * characters (e.g. characters that are not valid in the current encoding)
+	 * are converted to escaped representations.
+	 * &lt;p&gt;
+	 * @param strategy 
+	 *        The EscapeStrategy to query.
+	 * @param value
+	 *        &lt;code&gt;String&lt;/code&gt; Attribute value to escape.
+	 * @return The value appropriately escaped.
+	 * @throws IllegalDataException
+	 *         if an entity can not be escaped
+	 */
+	public static final String escapeAttribute(final EscapeStrategy strategy, 
+			final String value) {
+<span class="fc" id="L348">		final int len = value.length();</span>
+<span class="fc" id="L349">		int idx = 0;</span>
+		
+<span class="fc bfc" id="L351" title="All 2 branches covered.">		checkloop: while (idx &lt; len) {</span>
+<span class="fc" id="L352">			final char ch = value.charAt(idx);</span>
+<span class="fc bfc" id="L353" title="All 16 branches covered.">			if (ch == '&lt;' || ch == '&gt;' || ch == '&amp;' || ch == '\r' || ch == '\n'</span>
+					|| ch == '&quot;' || ch == '\t' || strategy.shouldEscape(ch)) {
+<span class="fc" id="L355">				break checkloop;</span>
+			}
+<span class="fc" id="L357">			idx++;</span>
+<span class="fc" id="L358">		}</span>
+		
+<span class="fc bfc" id="L360" title="All 2 branches covered.">		if (idx == len) {</span>
+<span class="fc" id="L361">			return value;</span>
+		}
+		
+<span class="fc" id="L364">		char highsurrogate = 0;</span>
+<span class="fc" id="L365">		final StringBuilder sb = new StringBuilder(len + 5);</span>
+<span class="fc" id="L366">		sb.append(value, 0, idx);</span>
+<span class="fc bfc" id="L367" title="All 2 branches covered.">		while (idx &lt; len) {</span>
+<span class="fc" id="L368">			final char ch = value.charAt(idx++);</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">			if (highsurrogate &gt; 0) {</span>
+<span class="fc bfc" id="L370" title="All 2 branches covered.">				if (!Verifier.isLowSurrogate(ch)) {</span>
+<span class="fc" id="L371">					throw new IllegalDataException(</span>
+							&quot;Could not decode surrogate pair 0x&quot; +
+									Integer.toHexString(highsurrogate) + &quot; / 0x&quot;
+									+ Integer.toHexString(ch));
+				}
+<span class="fc" id="L376">				int chp = Verifier.decodeSurrogatePair(highsurrogate, ch);</span>
+<span class="fc" id="L377">				sb.append(&quot;&amp;#x&quot;);</span>
+<span class="fc" id="L378">				sb.append(Integer.toHexString(chp));</span>
+<span class="fc" id="L379">				sb.append(';');</span>
+<span class="fc" id="L380">				highsurrogate = 0;</span>
+<span class="fc" id="L381">				continue;</span>
+			}
+<span class="fc bfc" id="L383" title="All 8 branches covered.">			switch (ch) {</span>
+				case '&lt;':
+<span class="fc" id="L385">					sb.append(&quot;&amp;lt;&quot;);</span>
+<span class="fc" id="L386">					break;</span>
+				case '&gt;':
+<span class="fc" id="L388">					sb.append(&quot;&amp;gt;&quot;);</span>
+<span class="fc" id="L389">					break;</span>
+				case '&amp;':
+<span class="fc" id="L391">					sb.append(&quot;&amp;amp;&quot;);</span>
+<span class="fc" id="L392">					break;</span>
+				case '\r':
+<span class="fc" id="L394">					sb.append(&quot;&amp;#xD;&quot;);</span>
+<span class="fc" id="L395">					break;</span>
+				case '&quot;':
+<span class="fc" id="L397">					sb.append(&quot;&amp;quot;&quot;);</span>
+<span class="fc" id="L398">					break;</span>
+				case '\t':
+<span class="fc" id="L400">					sb.append(&quot;&amp;#x9;&quot;);</span>
+<span class="fc" id="L401">					break;</span>
+				case '\n':
+<span class="fc" id="L403">					sb.append(&quot;&amp;#xA;&quot;);</span>
+<span class="fc" id="L404">					break;</span>
+				default:
+
+<span class="fc bfc" id="L407" title="All 2 branches covered.">					if (strategy.shouldEscape(ch)) {</span>
+						// make sure what we are escaping is not the
+						// beginning of a multi-byte character.
+<span class="fc bfc" id="L410" title="All 2 branches covered.">						if (Verifier.isHighSurrogate(ch)) {</span>
+							// this is a the high of a surrogate pair
+<span class="fc" id="L412">							highsurrogate = ch;</span>
+						} else {
+<span class="fc" id="L414">							sb.append(&quot;&amp;#x&quot;);</span>
+<span class="fc" id="L415">							sb.append(Integer.toHexString(ch));</span>
+<span class="fc" id="L416">							sb.append(';');</span>
+						}
+					} else {
+<span class="fc" id="L419">						sb.append(ch);</span>
+					}
+					break;
+			}
+<span class="fc" id="L423">		}</span>
+<span class="fc bfc" id="L424" title="All 2 branches covered.">		if (highsurrogate &gt; 0) {</span>
+<span class="fc" id="L425">			throw new IllegalDataException(&quot;Surrogate pair 0x&quot; +</span>
+					Integer.toHexString(highsurrogate) + &quot;truncated&quot;);
+		}
+
+<span class="fc" id="L429">		return sb.toString();</span>
+	}
+
+	
+	
+	
+	/**
+	 * This will take the three pre-defined entities in XML 1.0 ('&amp;lt;', '&amp;gt;',
+	 * and '&amp;amp;' - used specifically in XML elements) and convert their
+	 * character representation to the appropriate entity reference, suitable
+	 * for XML element content. Further, some special characters (e.g.
+	 * characters that are not valid in the current encoding) are converted to
+	 * escaped representations. If the eol parameter is not null, then any
+	 * internal newlines will be replaced with the specified eol sequence.
+	 * 
+	 * @param strategy
+	 *        The EscapeStrategy
+	 * @param eol
+	 *        The End-Of-Line sequence to be used (may be null).
+	 * @param value
+	 *        The String to escape
+	 * @return The input value escaped.
+	 * @throws IllegalDataException
+	 *         if an entity can not be escaped
+	 * @since JDOM2
+	 */
+	public static final String escapeText(final EscapeStrategy strategy,
+			final String eol, final String value) {
+<span class="fc" id="L457">		final int right = value.length();</span>
+<span class="fc" id="L458">		int idx = 0;</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">		checkloop: while (idx &lt; right) {</span>
+<span class="fc" id="L460">			final char ch = value.charAt(idx);</span>
+<span class="fc bfc" id="L461" title="All 12 branches covered.">			if (ch == '&lt;' || ch == '&gt;' || ch == '&amp;' || ch == '\r' || ch == '\n'</span>
+					|| strategy.shouldEscape(ch)) {
+<span class="fc" id="L463">				break checkloop;</span>
+			}
+<span class="fc" id="L465">			idx++;</span>
+<span class="fc" id="L466">		}</span>
+		
+<span class="fc bfc" id="L468" title="All 2 branches covered.">		if (idx == right) {</span>
+			// no escape needed.
+<span class="fc" id="L470">			return value;</span>
+		}
+		
+<span class="fc" id="L473">		StringBuilder sb = new StringBuilder();</span>
+<span class="fc bfc" id="L474" title="All 2 branches covered.">		if (idx &gt; 0) {</span>
+<span class="fc" id="L475">			sb.append(value, 0, idx);</span>
+		}
+<span class="fc" id="L477">		char highsurrogate = 0;</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">		while (idx &lt; right) {</span>
+<span class="fc" id="L479">			final char ch = value.charAt(idx++);</span>
+<span class="fc bfc" id="L480" title="All 2 branches covered.">			if (highsurrogate &gt; 0) {</span>
+<span class="fc bfc" id="L481" title="All 2 branches covered.">				if (!Verifier.isLowSurrogate(ch)) {</span>
+<span class="fc" id="L482">					throw new IllegalDataException(</span>
+							&quot;Could not decode surrogate pair 0x&quot; +
+									Integer.toHexString(highsurrogate) + &quot; / 0x&quot;
+									+ Integer.toHexString(ch));
+				}
+<span class="fc" id="L487">				int chp = Verifier.decodeSurrogatePair(highsurrogate, ch);</span>
+<span class="fc" id="L488">				sb.append(&quot;&amp;#x&quot; + Integer.toHexString(chp) + &quot;;&quot;);</span>
+<span class="fc" id="L489">				highsurrogate = 0;</span>
+<span class="fc" id="L490">				continue;</span>
+			}
+<span class="fc bfc" id="L492" title="All 6 branches covered.">			switch (ch) {</span>
+				case '&lt;':
+<span class="fc" id="L494">					sb.append(&quot;&amp;lt;&quot;);</span>
+<span class="fc" id="L495">					break;</span>
+				case '&gt;':
+<span class="fc" id="L497">					sb.append(&quot;&amp;gt;&quot;);</span>
+<span class="fc" id="L498">					break;</span>
+				case '&amp;':
+<span class="fc" id="L500">					sb.append(&quot;&amp;amp;&quot;);</span>
+<span class="fc" id="L501">					break;</span>
+				case '\r':
+<span class="fc" id="L503">					sb.append(&quot;&amp;#xD;&quot;);</span>
+<span class="fc" id="L504">					break;</span>
+				case '\n':
+<span class="fc bfc" id="L506" title="All 2 branches covered.">					if (eol != null) {</span>
+<span class="fc" id="L507">						sb.append(eol);</span>
+					} else {
+<span class="fc" id="L509">						sb.append('\n');</span>
+					}
+<span class="fc" id="L511">					break;</span>
+				default:
+
+<span class="fc bfc" id="L514" title="All 2 branches covered.">					if (strategy.shouldEscape(ch)) {</span>
+						// make sure what we are escaping is not the
+						// beginning of a multi-byte character.
+<span class="fc bfc" id="L517" title="All 2 branches covered.">						if (Verifier.isHighSurrogate(ch)) {</span>
+							// this is a the high of a surrogate pair
+<span class="fc" id="L519">							highsurrogate = ch;</span>
+						} else {
+<span class="fc" id="L521">							sb.append(&quot;&amp;#x&quot; + Integer.toHexString(ch) + &quot;;&quot;);</span>
+						}
+					} else {
+<span class="fc" id="L524">						sb.append(ch);</span>
+					}
+					break;
+			}
+<span class="fc" id="L528">		}</span>
+<span class="pc bpc" id="L529" title="1 of 2 branches missed.">		if (highsurrogate &gt; 0) {</span>
+<span class="nc" id="L530">			throw new IllegalDataException(&quot;Surrogate pair 0x&quot; +</span>
+					Integer.toHexString(highsurrogate) + &quot;truncated&quot;);
+		}
+		
+<span class="fc" id="L534">		return sb.toString();</span>
+
+	}
+	
+	
+	private static final EscapeStrategy chooseStrategy(String encoding) {
+<span class="fc bfc" id="L540" title="All 4 branches covered.">		if (&quot;UTF-8&quot;.equalsIgnoreCase(encoding) ||</span>
+				&quot;UTF-16&quot;.equalsIgnoreCase(encoding)) {
+<span class="fc" id="L542">			return UTFEscapeStrategy;</span>
+		}
+		
+<span class="fc bfc" id="L545" title="All 4 branches covered.">		if (encoding.toUpperCase().startsWith(&quot;ISO-8859-&quot;) ||</span>
+				&quot;Latin1&quot;.equalsIgnoreCase(encoding)) {
+<span class="fc" id="L547">			return Bits8EscapeStrategy;</span>
+		}
+		
+<span class="pc bpc" id="L550" title="1 of 4 branches missed.">		if (&quot;US-ASCII&quot;.equalsIgnoreCase(encoding) ||</span>
+				&quot;ASCII&quot;.equalsIgnoreCase(encoding)) {
+<span class="fc" id="L552">			return Bits7EscapeStrategy;</span>
+		}
+
+		try {
+<span class="fc" id="L556">			final CharsetEncoder cse = Charset.forName(encoding).newEncoder();</span>
+<span class="fc" id="L557">			return new DefaultCharsetEscapeStrategy(cse);</span>
+<span class="fc" id="L558">		} catch (Exception e) {</span>
+			// swallow that... and assume false.
+		}
+<span class="fc" id="L561">		return DefaultEscapeStrategy;</span>
+	}
+	
+
+	/** standard value to indent by, if we are indenting */
+	private static final String STANDARD_INDENT = &quot;  &quot;;
+
+	/** standard string with which to end a line */
+<span class="fc" id="L569">	private static final String STANDARD_LINE_SEPARATOR = LineSeparator.DEFAULT.value();</span>
+
+	/** standard encoding */
+	private static final String STANDARD_ENCODING = &quot;UTF-8&quot;;
+
+
+	/** The default indent is no spaces (as original document) */
+<span class="fc" id="L576">	String indent = null;</span>
+
+	/** New line separator */
+<span class="fc" id="L579">	String lineSeparator = STANDARD_LINE_SEPARATOR;</span>
+
+	/** The encoding format */
+<span class="fc" id="L582">	String encoding = STANDARD_ENCODING;</span>
+
+	/** Whether or not to output the XML declaration
+	 * - default is &lt;code&gt;false&lt;/code&gt; */
+<span class="fc" id="L586">	boolean omitDeclaration = false;</span>
+
+	/** Whether or not to output the encoding in the XML declaration
+	 * - default is &lt;code&gt;false&lt;/code&gt; */
+<span class="fc" id="L590">	boolean omitEncoding = false;</span>
+	
+	/** Whether Attributes that are defaulted from the DTD or Schema
+	 * are output. */
+<span class="fc" id="L594">	boolean specifiedAttributesOnly = false;</span>
+
+	/** Whether or not to expand empty elements to
+	 * &amp;lt;tagName&amp;gt;&amp;lt;/tagName&amp;gt; - default is &lt;code&gt;false&lt;/code&gt; */
+<span class="fc" id="L598">	boolean expandEmptyElements = false;</span>
+
+	/** Whether TrAX output escaping disabling/enabling PIs are ignored
+	 * or processed - default is &lt;code&gt;false&lt;/code&gt; */
+<span class="fc" id="L602">	boolean ignoreTrAXEscapingPIs = false;</span>
+
+	/** text handling mode */
+<span class="fc" id="L605">	TextMode mode = TextMode.PRESERVE;</span>
+
+	/** entity escape logic */
+<span class="fc" id="L608">	EscapeStrategy escapeStrategy = DefaultEscapeStrategy;</span>
+
+	/**
+	 * Creates a new Format instance with default (raw) behavior.
+	 */
+<span class="fc" id="L613">	private Format() {</span>
+<span class="fc" id="L614">		setEncoding(STANDARD_ENCODING);</span>
+<span class="fc" id="L615">	}</span>
+
+	/**
+	 * Sets the {@link EscapeStrategy} to use for character escaping.
+	 *
+	 * @param strategy the EscapeStrategy to use
+	 * @return a pointer to this Format for chaining
+	 */
+	public Format setEscapeStrategy(EscapeStrategy strategy) {
+<span class="fc" id="L624">		escapeStrategy = strategy;</span>
+<span class="fc" id="L625">		return this;</span>
+	}
+
+	/**
+	 * Returns the current escape strategy
+	 *
+	 * @return the current escape strategy
+	 */
+	public EscapeStrategy getEscapeStrategy() {
+<span class="fc" id="L634">		return escapeStrategy;</span>
+	}
+
+	/**
+	 * This will set the newline separator (&lt;code&gt;LineSeparator&lt;/code&gt;).
+	 * The default is &lt;code&gt;\r\n&lt;/code&gt;.
+	 * &lt;p&gt;
+	 * Use the {@link #setLineSeparator(LineSeparator)} method to set
+	 * standard separators in an easier way.
+	 * &lt;p&gt;
+	 * To make it output the system default line ending string, call
+	 * &lt;code&gt;setLineSeparator(System.getProperty(&quot;line.separator&quot;))&lt;/code&gt;.
+	 *
+	 * &lt;p&gt;
+	 * To output &quot;UNIX-style&quot; documents, call
+	 * &lt;code&gt;setLineSeparator(&quot;\n&quot;)&lt;/code&gt;.  To output &quot;Mac-style&quot;
+	 * documents, call &lt;code&gt;setLineSeparator(&quot;\r&quot;)&lt;/code&gt;.  DOS-style
+	 * documents use CR-LF (&quot;\r\n&quot;), which is the default.
+	 * &lt;/p&gt;
+	 *
+	 * &lt;p&gt;
+	 * Note that this only applies to newlines generated by the
+	 * outputter.  All XML parsers are required to 'normalize' all the
+	 * combinations of line seperators to just '\n'. As a result, if any JDOM
+	 * component has an end-of-line-like value (e.g. '\r') in it then that value
+	 * must be the result of an escaped value in the XML source document
+	 * &lt;code&gt;&amp;amp;#xD;&lt;/code&gt; or a value explicitly set with one of the Text
+	 * value setters. Values in JDOM content that were explicitly set to be
+	 * '\r' will always be escaped on XML Output.
+	 * &lt;p&gt;
+	 * The actual newline separator itself though can be set with this method.
+	 * Any internal newlines in Text output will be represented by this
+	 * end-of-line sequence. For example, the following code:
+	 * &lt;p&gt;
+	 * &lt;pre&gt;
+	 *   Text txt = new Text(&quot;\r\n&quot;);
+	 *   XMLOutputter xout = new XMLOutputter();
+	 *   String result = xout.outputString(txt);
+	 * &lt;/pre&gt;
+	 * will produce the literal String sequence &quot;&amp;amp;#xD;\r\n&quot; because the
+	 * original \r is escaped to be &lt;code&gt;&amp;amp;#xD;&lt;/code&gt; and the original \n
+	 * is replaced with the JDOM default Line Separator &quot;\r\n&quot;.
+	 *
+	 * &lt;p&gt;
+	 * If the format's &quot;indent&quot; property is null (as is the default
+	 * for the Raw and Compact formats), then this value only effects the
+	 * newlines written after the declaration and doctype, as well as any
+	 * newlines embedded within existing text content. 
+	 * &lt;/p&gt;
+	 * Setting the indent to be null will disable end-of-line processing
+	 * for any formatting, but will not affect substitution of embedded \n.
+	 * Setting this value to null or the empty string will disable all
+	 * end-of-line modifications.
+	 *
+	 * @see #setTextMode
+	 * @see #setLineSeparator(LineSeparator)
+	 *
+	 * @param separator &lt;code&gt;String&lt;/code&gt; line separator to use.
+	 * @return a pointer to this Format for chaining
+	 */
+	public Format setLineSeparator(String separator) {
+<span class="pc bpc" id="L695" title="1 of 2 branches missed.">		this.lineSeparator = &quot;&quot;.equals(separator) ? null : separator;</span>
+<span class="fc" id="L696">		return this;</span>
+	}
+
+	/**
+	 * This will set the newline separator sequence.
+	 * &lt;p&gt;
+	 * This method differes from {@link #setLineSeparator(String)} slightly in
+	 * that, to disable end-of-line processing you should call:
+	 * &lt;pre&gt;
+	 * Format.setLinewSeparator(LineSeparator.NONE);
+	 * &lt;/pre&gt;
+	 * 
+	 * @see #setLineSeparator(String) for comprehensive notes.
+	 *
+	 * @param separator {@link LineSeparator} line separator to us
+	 * @return a pointer to this Format for chaining
+	 * @since JDOM2
+	 */
+	public Format setLineSeparator(LineSeparator separator) {
+<span class="pc bpc" id="L715" title="1 of 2 branches missed.">		return setLineSeparator(separator == null ? </span>
+				STANDARD_LINE_SEPARATOR : 
+				separator.value());
+	}
+	
+	/**
+	 * Returns the current line separator.
+	 *
+	 * @return the current line separator
+	 */
+	public String getLineSeparator() {
+<span class="fc" id="L726">		return lineSeparator;</span>
+	}
+
+	/**
+	 * This will set whether the XML declaration
+	 * (&lt;code&gt;&amp;lt;&amp;#063;xml version=&quot;1&amp;#046;0&quot;
+	 * encoding=&quot;UTF-8&quot;&amp;#063;&amp;gt;&lt;/code&gt;)
+	 * includes the encoding of the document. It is common to omit
+	 * this in uses such as WML and other wireless device protocols.
+	 *
+	 * @param omitEncoding &lt;code&gt;boolean&lt;/code&gt; indicating whether or not
+	 *        the XML declaration should indicate the document encoding.
+	 * @return a pointer to this Format for chaining
+	 */
+	public Format setOmitEncoding(boolean omitEncoding) {
+<span class="fc" id="L741">		this.omitEncoding = omitEncoding;</span>
+<span class="fc" id="L742">		return this;</span>
+	}
+
+	/**
+	 * Returns whether the XML declaration encoding will be omitted.
+	 *
+	 * @return whether the XML declaration encoding will be omitted
+	 */
+	public boolean getOmitEncoding() {
+<span class="fc" id="L751">		return omitEncoding;</span>
+	}
+
+	/**
+	 * This will set whether the XML declaration
+	 * (&lt;code&gt;&amp;lt;&amp;#063;xml version=&quot;1&amp;#046;0&quot;&amp;#063;&amp;gt;&lt;/code&gt;)
+	 * will be omitted or not. It is common to omit this in uses such
+	 * as SOAP and XML-RPC calls.
+	 *
+	 * @param omitDeclaration &lt;code&gt;boolean&lt;/code&gt; indicating whether or not
+	 *        the XML declaration should be omitted.
+	 * @return a pointer to this Format for chaining
+	 */
+	public Format setOmitDeclaration(boolean omitDeclaration) {
+<span class="fc" id="L765">		this.omitDeclaration = omitDeclaration;</span>
+<span class="fc" id="L766">		return this;</span>
+	}
+
+	/**
+	 * Returns whether the XML declaration will be omitted.
+	 *
+	 * @return whether the XML declaration will be omitted
+	 */
+	public boolean getOmitDeclaration() {
+<span class="fc" id="L775">		return omitDeclaration;</span>
+	}
+
+	/**
+	 * This will set whether empty elements are expanded from
+	 * &lt;code&gt;&amp;lt;tagName/&amp;gt;&lt;/code&gt; to
+	 * &lt;code&gt;&amp;lt;tagName&amp;gt;&amp;lt;/tagName&amp;gt;&lt;/code&gt;.
+	 *
+	 * @param expandEmptyElements &lt;code&gt;boolean&lt;/code&gt; indicating whether or not
+	 *        empty elements should be expanded.
+	 * @return a pointer to this Format for chaining
+	 */
+	public Format setExpandEmptyElements(boolean expandEmptyElements) {
+<span class="fc" id="L788">		this.expandEmptyElements = expandEmptyElements;</span>
+<span class="fc" id="L789">		return this;</span>
+	}
+
+	/**
+	 * Returns whether empty elements are expanded.
+	 *
+	 * @return whether empty elements are expanded
+	 */
+	public boolean getExpandEmptyElements() {
+<span class="fc" id="L798">		return expandEmptyElements;</span>
+	}
+
+	/**
+	 * This will set whether JAXP TrAX processing instructions for
+	 * disabling/enabling output escaping are ignored.  Disabling
+	 * output escaping allows using XML text as element content and
+	 * outputing it verbatim, i&amp;#46;e&amp;#46; as element children would be.
+	 * &lt;p&gt;
+	 * When processed, these processing instructions are removed from
+	 * the generated XML text and control whether the element text
+	 * content is output verbatim or with escaping of the pre-defined
+	 * entities in XML 1.0.  The text to be output verbatim shall be
+	 * surrounded by the
+	 * &lt;code&gt;&amp;lt;?javax.xml.transform.disable-output-escaping ?&amp;gt;&lt;/code&gt;
+	 * and &lt;code&gt;&amp;lt;?javax.xml.transform.enable-output-escaping ?&amp;gt;&lt;/code&gt;
+	 * PIs.&lt;/p&gt;
+	 * &lt;p&gt;
+	 * When ignored, the processing instructions are present in the
+	 * generated XML text and the pre-defined entities in XML 1.0 are
+	 * escaped.
+	 * &lt;p&gt;
+	 * Default: &lt;code&gt;false&lt;/code&gt;.&lt;/p&gt;
+	 *
+	 * @param ignoreTrAXEscapingPIs &lt;code&gt;boolean&lt;/code&gt; indicating
+	 *        whether or not TrAX ouput escaping PIs are ignored.
+	 *
+	 * @see javax.xml.transform.Result#PI_ENABLE_OUTPUT_ESCAPING
+	 * @see javax.xml.transform.Result#PI_DISABLE_OUTPUT_ESCAPING
+	 */
+	public void setIgnoreTrAXEscapingPIs(boolean ignoreTrAXEscapingPIs) {
+<span class="fc" id="L829">		this.ignoreTrAXEscapingPIs = ignoreTrAXEscapingPIs;</span>
+<span class="fc" id="L830">	}</span>
+
+	/**
+	 * Returns whether JAXP TrAX processing instructions for
+	 * disabling/enabling output escaping are ignored.
+	 *
+	 * @return whether or not TrAX ouput escaping PIs are ignored.
+	 */
+	public boolean getIgnoreTrAXEscapingPIs() {
+<span class="fc" id="L839">		return ignoreTrAXEscapingPIs;</span>
+	}
+
+	/**
+	 * This sets the text output style.  Options are available as static
+	 * {@link TextMode} instances.  The default is {@link TextMode#PRESERVE}.
+	 * 
+	 * @param mode The TextMode to set.
+	 * @return a pointer to this Format for chaining
+	 */
+	public Format setTextMode(Format.TextMode mode) {
+<span class="fc" id="L850">		this.mode = mode;</span>
+<span class="fc" id="L851">		return this;</span>
+	}
+
+	/**
+	 * Returns the current text output style.
+	 *
+	 * @return the current text output style
+	 */
+	public Format.TextMode getTextMode() {
+<span class="fc" id="L860">		return mode;</span>
+	}
+
+	/**
+	 * This will set the indent &lt;code&gt;String&lt;/code&gt; to use; this
+	 * is usually a &lt;code&gt;String&lt;/code&gt; of empty spaces. If you pass
+	 * the empty string (&quot;&quot;), then no indentation will happen but newlines
+	 * will still be generated.  Passing null will result in no indentation
+	 * and no newlines generated.  Default: none (null)
+	 *
+	 * @param indent &lt;code&gt;String&lt;/code&gt; to use for indentation.
+	 * @return a pointer to this Format for chaining
+	 */
+	public Format setIndent(String indent) {
+<span class="fc" id="L874">		this.indent = indent;</span>
+<span class="fc" id="L875">		return this;</span>
+	}
+
+	/**
+	 * Returns the indent string in use.
+	 *
+	 * @return the indent string in use
+	 */
+	public String getIndent() {
+<span class="fc" id="L884">		return indent;</span>
+	}
+
+	/**
+	 * Sets the output encoding.  The name should be an accepted XML
+	 * encoding.
+	 *
+	 * @param encoding the encoding format.  Use XML-style names like
+	 *                 &quot;UTF-8&quot; or &quot;ISO-8859-1&quot; or &quot;US-ASCII&quot;
+	 * @return a pointer to this Format for chaining
+	 */
+	public Format setEncoding(String encoding) {
+<span class="fc" id="L896">		this.encoding = encoding;</span>
+<span class="fc" id="L897">		escapeStrategy = chooseStrategy(encoding);</span>
+<span class="fc" id="L898">		return this;</span>
+	}
+
+	/**
+	 * Returns the configured output encoding.
+	 *
+	 * @return the output encoding
+	 */
+	public String getEncoding() {
+<span class="fc" id="L907">		return encoding;</span>
+	}
+	
+	
+	/**
+	 * Will Attributes defaulted from the DTD or XMLSchema
+	 * be output
+	 * @return true if the defaulted Attributes will be output
+	 */
+	public boolean isSpecifiedAttributesOnly() {
+<span class="fc" id="L917">		return specifiedAttributesOnly;</span>
+	}
+
+	/**
+	 * Set whether only those Attributes specified in the input XML should 
+	 * be output. Other Attributes (those defaulted or 'fixed' in the DTD
+	 * or XMLSchema) should be ignored.
+	 * @param specifiedAttributesOnly true if the defaulted
+	 * Attributes should be ignored, false if they should be output
+	 */
+	public void setSpecifiedAttributesOnly(boolean specifiedAttributesOnly) {
+<span class="fc" id="L928">		this.specifiedAttributesOnly = specifiedAttributesOnly;</span>
+<span class="fc" id="L929">	}</span>
+
+	@Override
+	public Format clone() {
+<span class="fc" id="L933">		Format format = null;</span>
+
+		try {
+<span class="fc" id="L936">			format = (Format) super.clone();</span>
+		}
+<span class="nc" id="L938">		catch (CloneNotSupportedException ce) {</span>
+			// swallow.
+<span class="fc" id="L940">		}</span>
+
+<span class="fc" id="L942">		return format;</span>
+	}
+
+	/**
+	 * Class to signify how text should be handled on output.  The following
+	 * table provides details.
+	 *
+	 * &lt;table&gt;
+	 *   &lt;tr&gt;
+	 *     &lt;th align=&quot;left&quot;&gt;
+	 *       Text Mode
+	 *     &lt;/th&gt;
+	 *     &lt;th&gt;
+	 *       Resulting behavior.
+	 *     &lt;/th&gt;
+	 *   &lt;/tr&gt;
+	 *
+	 *   &lt;tr valign=&quot;top&quot;&gt;
+	 *     &lt;td&gt;
+	 *       &lt;i&gt;PRESERVE (Default)&lt;/i&gt;
+	 *     &lt;/td&gt;
+	 *     &lt;td&gt;
+	 *       All content is printed in the format it was created, no whitespace
+	 *       or line separators are are added or removed.
+	 *     &lt;/td&gt;
+	 *   &lt;/tr&gt;
+	 *
+	 *   &lt;tr valign=&quot;top&quot;&gt;
+	 *     &lt;td&gt;
+	 *       TRIM_FULL_WHITE
+	 *     &lt;/td&gt;
+	 *     &lt;td&gt;
+	 *       Content between tags consisting of all whitespace is not printed.
+	 *       If the content contains even one non-whitespace character, it is
+	 *       all printed verbatim, whitespace and all.
+	 *     &lt;/td&gt;
+	 *   &lt;/tr&gt;
+	 *
+	 *   &lt;tr valign=&quot;top&quot;&gt;
+	 *     &lt;td&gt;
+	 *       TRIM
+	 *     &lt;/td&gt;
+	 *     &lt;td&gt;
+	 *       All leading and trailing whitespace is trimmed.
+	 *     &lt;/td&gt;
+	 *   &lt;/tr&gt;
+	 *
+	 *   &lt;tr valign=&quot;top&quot;&gt;
+	 *     &lt;td&gt;
+	 *       NORMALIZE
+	 *     &lt;/td&gt;
+	 *     &lt;td&gt;
+	 *       Leading and trailing whitespace is trimmed, and any 'internal'
+	 *       whitespace is compressed to a single space.
+	 *     &lt;/td&gt;
+	 *   &lt;/tr&gt;
+	 * &lt;/table&gt;
+	 *
+	 * In most cases textual content is aligned with the surrounding tags
+	 * (after the appropriate text mode is applied). In the case where the only
+	 * content between the start and end tags is textual, the start tag, text,
+	 * and end tag are all printed on the same line. If the document being
+	 * output already has whitespace, it's wise to turn on TRIM mode so the
+	 * pre-existing whitespace can be trimmed before adding new whitespace.
+	 * &lt;p&gt;
+	 * When an element has a xml:space attribute with the value of &quot;preserve&quot;,
+	 * all formating is turned off (actually, the TextMode is set to
+	 * {@link #PRESERVE} until the element and its contents have been printed.
+	 * If a nested element contains another xml:space with the value &quot;default&quot;
+	 * formatting is turned back on  for the child element and then off for the
+	 * remainder of the parent element.
+	 * 
+	 * @since JDOM2
+	 */
+<span class="pc" id="L1016">	public static enum TextMode {</span>
+		/**
+		 * Mode for literal text preservation.
+		 */
+<span class="fc" id="L1020">		PRESERVE,</span>
+
+		/**
+		 * Mode for text trimming (left and right trim).
+		 */
+<span class="fc" id="L1025">		TRIM,</span>
+
+		/**
+		 * Mode for text normalization (left and right trim plus internal
+		 * whitespace is normalized to a single space.
+		 * @see org.jdom2.Element#getTextNormalize
+		 */
+<span class="fc" id="L1032">		NORMALIZE,</span>
+
+		/**
+		 * Mode for text trimming of content consisting of nothing but
+		 * whitespace but otherwise not changing output.
+		 */
+<span class="fc" id="L1038">		TRIM_FULL_WHITE;</span>
+
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,700 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StoryRunner.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.embedder</a> &gt; <span class="el_source">StoryRunner.java</span></div><h1>StoryRunner.java</h1><pre class="source lang-java linenums">package org.jbehave.core.embedder;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.jbehave.core.annotations.ScenarioType;
+import org.jbehave.core.configuration.Configuration;
+import org.jbehave.core.configuration.Keywords;
+import org.jbehave.core.failures.FailureStrategy;
+import org.jbehave.core.failures.PendingStepFound;
+import org.jbehave.core.failures.PendingStepStrategy;
+import org.jbehave.core.failures.RestartingScenarioFailure;
+import org.jbehave.core.failures.UUIDExceptionWrapper;
+import org.jbehave.core.model.ExamplesTable;
+import org.jbehave.core.model.GivenStories;
+import org.jbehave.core.model.GivenStory;
+import org.jbehave.core.model.Lifecycle;
+import org.jbehave.core.model.Meta;
+import org.jbehave.core.model.Scenario;
+import org.jbehave.core.model.Story;
+import org.jbehave.core.model.StoryDuration;
+import org.jbehave.core.reporters.ConcurrentStoryReporter;
+import org.jbehave.core.reporters.StoryReporter;
+import org.jbehave.core.steps.CandidateSteps;
+import org.jbehave.core.steps.InjectableStepsFactory;
+import org.jbehave.core.steps.PendingStepMethodGenerator;
+import org.jbehave.core.steps.ProvidedStepsFactory;
+import org.jbehave.core.steps.Step;
+import org.jbehave.core.steps.StepCollector.Stage;
+import org.jbehave.core.steps.StepCreator.ParameterisedStep;
+import org.jbehave.core.steps.StepCreator.PendingStep;
+import org.jbehave.core.steps.StepResult;
+
+import static org.codehaus.plexus.util.StringUtils.capitalizeFirstLetter;
+
+/**
+ * Runs a {@link Story}, given a {@link Configuration} and a list of
+ * {@link CandidateSteps}, describing the results to the {@link StoryReporter}.
+ * 
+ * @author Elizabeth Keogh
+ * @author Mauro Talevi
+ * @author Paul Hammant
+ */
+<span class="fc" id="L46">public class StoryRunner {</span>
+
+<span class="fc" id="L48">    private ThreadLocal&lt;FailureStrategy&gt; currentStrategy = new ThreadLocal&lt;FailureStrategy&gt;();</span>
+<span class="fc" id="L49">    private ThreadLocal&lt;FailureStrategy&gt; failureStrategy = new ThreadLocal&lt;FailureStrategy&gt;();</span>
+<span class="fc" id="L50">    private ThreadLocal&lt;PendingStepStrategy&gt; pendingStepStrategy = new ThreadLocal&lt;PendingStepStrategy&gt;();</span>
+<span class="fc" id="L51">    private ThreadLocal&lt;UUIDExceptionWrapper&gt; storyFailure = new ThreadLocal&lt;UUIDExceptionWrapper&gt;();</span>
+<span class="fc" id="L52">    private ThreadLocal&lt;StoryReporter&gt; reporter = new ThreadLocal&lt;StoryReporter&gt;();</span>
+<span class="fc" id="L53">    private ThreadLocal&lt;String&gt; reporterStoryPath = new ThreadLocal&lt;String&gt;();</span>
+<span class="fc" id="L54">    private ThreadLocal&lt;State&gt; storiesState = new ThreadLocal&lt;State&gt;();</span>
+    // should this be volatile?
+<span class="fc" id="L56">    private Map&lt;Story, StoryDuration&gt; cancelledStories = new HashMap&lt;Story, StoryDuration&gt;();</span>
+
+    /**
+     * Run steps before or after a collection of stories. Steps are execute only
+     * &lt;b&gt;once&lt;/b&gt; per collection of stories.
+     * 
+     * @param configuration the Configuration used to find the steps to run
+     * @param candidateSteps the List of CandidateSteps containing the candidate
+     *            steps methods
+     * @param stage the Stage
+     * @return The State after running the steps
+     */
+    public State runBeforeOrAfterStories(Configuration configuration, List&lt;CandidateSteps&gt; candidateSteps, Stage stage) {
+<span class="fc" id="L69">        String storyPath = capitalizeFirstLetter(stage.name().toLowerCase()) + &quot;Stories&quot;;</span>
+<span class="fc" id="L70">        reporter.set(configuration.storyReporter(storyPath));</span>
+<span class="fc" id="L71">        reporter.get().beforeStory(new Story(storyPath), false);</span>
+<span class="fc" id="L72">        RunContext context = new RunContext(configuration, candidateSteps, storyPath, MetaFilter.EMPTY);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (stage == Stage.BEFORE) {</span>
+<span class="fc" id="L74">            resetStoryFailure(context);</span>
+        }
+<span class="pc bpc" id="L76" title="1 of 4 branches missed.">        if (stage == Stage.AFTER &amp;&amp; storiesState.get() != null) {</span>
+<span class="fc" id="L77">            context.stateIs(storiesState.get());</span>
+        }
+        try {
+<span class="fc" id="L80">            runStepsWhileKeepingState(context,</span>
+                    configuration.stepCollector().collectBeforeOrAfterStoriesSteps(context.candidateSteps(), stage));
+<span class="nc" id="L82">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L83">            throw new UUIDExceptionWrapper(e);</span>
+<span class="fc" id="L84">        }</span>
+<span class="fc" id="L85">        reporter.get().afterStory(false);</span>
+<span class="fc" id="L86">        storiesState.set(context.state());</span>
+        // if we are running with multiple threads, call delayed
+        // methods, otherwise we will forget to close files on BeforeStories
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (stage == Stage.BEFORE) {</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">            if (reporter.get() instanceof ConcurrentStoryReporter) {</span>
+<span class="fc" id="L91">                ((ConcurrentStoryReporter) reporter.get()).invokeDelayed();</span>
+            }
+        }
+        // handle any after stories failure according to strategy
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (stage == Stage.AFTER) {</span>
+            try {
+<span class="fc" id="L97">                handleStoryFailureByStrategy();</span>
+<span class="fc" id="L98">            } catch (Throwable e) {</span>
+<span class="fc" id="L99">                return new SomethingHappened(storyFailure.get());</span>
+            } finally {
+<span class="pc bpc" id="L101" title="3 of 6 branches missed.">                if (reporter.get() instanceof ConcurrentStoryReporter) {</span>
+<span class="pc" id="L102">                    ((ConcurrentStoryReporter) reporter.get()).invokeDelayed();</span>
+                }
+            }
+        }
+<span class="fc" id="L106">        return context.state();</span>
+    }
+
+    /**
+     * Runs a Story with the given configuration and steps.
+     * 
+     * @param configuration the Configuration used to run story
+     * @param candidateSteps the List of CandidateSteps containing the candidate
+     *            steps methods
+     * @param story the Story to run
+     * @throws Throwable if failures occurred and FailureStrategy dictates it to
+     *             be re-thrown.
+     */
+    public void run(Configuration configuration, List&lt;CandidateSteps&gt; candidateSteps, Story story) throws Throwable {
+<span class="fc" id="L120">        run(configuration, candidateSteps, story, MetaFilter.EMPTY);</span>
+<span class="fc" id="L121">    }</span>
+
+    /**
+     * Runs a Story with the given configuration and steps, applying the given
+     * meta filter.
+     * 
+     * @param configuration the Configuration used to run story
+     * @param candidateSteps the List of CandidateSteps containing the candidate
+     *            steps methods
+     * @param story the Story to run
+     * @param filter the Filter to apply to the story Meta
+     * @throws Throwable if failures occurred and FailureStrategy dictates it to
+     *             be re-thrown.
+     */
+    public void run(Configuration configuration, List&lt;CandidateSteps&gt; candidateSteps, Story story, MetaFilter filter)
+            throws Throwable {
+<span class="fc" id="L137">        run(configuration, candidateSteps, story, filter, null);</span>
+<span class="fc" id="L138">    }</span>
+
+    /**
+     * Runs a Story with the given configuration and steps, applying the given
+     * meta filter, and staring from given state.
+     * 
+     * @param configuration the Configuration used to run story
+     * @param candidateSteps the List of CandidateSteps containing the candidate
+     *            steps methods
+     * @param story the Story to run
+     * @param filter the Filter to apply to the story Meta
+     * @param beforeStories the State before running any of the stories, if not
+     *            &lt;code&gt;null&lt;/code&gt;
+     * @throws Throwable if failures occurred and FailureStrategy dictates it to
+     *             be re-thrown.
+     */
+    public void run(Configuration configuration, List&lt;CandidateSteps&gt; candidateSteps, Story story, MetaFilter filter,
+            State beforeStories) throws Throwable {
+<span class="fc" id="L156">        run(configuration, new ProvidedStepsFactory(candidateSteps), story, filter, beforeStories);</span>
+<span class="fc" id="L157">    }</span>
+
+    /**
+     * Runs a Story with the given steps factory, applying the given meta
+     * filter, and staring from given state.
+     * 
+     * @param configuration the Configuration used to run story
+     * @param stepsFactory the InjectableStepsFactory used to created the
+     *            candidate steps methods
+     * @param story the Story to run
+     * @param filter the Filter to apply to the story Meta
+     * @param beforeStories the State before running any of the stories, if not
+     *            &lt;code&gt;null&lt;/code&gt;
+     * 
+     * @throws Throwable if failures occurred and FailureStrategy dictates it to
+     *             be re-thrown.
+     */
+    public void run(Configuration configuration, InjectableStepsFactory stepsFactory, Story story, MetaFilter filter,
+            State beforeStories) throws Throwable {
+<span class="fc" id="L176">        RunContext context = new RunContext(configuration, stepsFactory, story.getPath(), filter);</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (beforeStories != null) {</span>
+<span class="fc" id="L178">            context.stateIs(beforeStories);</span>
+        }
+<span class="fc" id="L180">        Map&lt;String, String&gt; storyParameters = new HashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L181">        run(context, story, storyParameters);</span>
+<span class="fc" id="L182">    }</span>
+
+    /**
+     * Returns the parsed story from the given path
+     * 
+     * @param configuration the Configuration used to run story
+     * @param storyPath the story path
+     * @return The parsed Story
+     */
+    public Story storyOfPath(Configuration configuration, String storyPath) {
+<span class="fc" id="L192">        String storyAsText = configuration.storyLoader().loadStoryAsText(storyPath);</span>
+<span class="fc" id="L193">        return configuration.storyParser().parseStory(storyAsText, storyPath);</span>
+    }
+
+    /**
+     * Returns the parsed story from the given text
+     * 
+     * @param configuration the Configuration used to run story
+     * @param storyAsText the story text
+     * @param storyId the story Id, which will be returned as story path
+     * @return The parsed Story
+     */
+    public Story storyOfText(Configuration configuration, String storyAsText, String storyId) {
+<span class="nc" id="L205">        return configuration.storyParser().parseStory(storyAsText, storyId);</span>
+    }
+
+    /**
+     * Cancels story execution following a timeout
+     * 
+     * @param story the Story that was timed out
+     * @param storyDuration the StoryDuration
+     */
+    public void cancelStory(Story story, StoryDuration storyDuration) {
+<span class="fc" id="L215">        cancelledStories.put(story, storyDuration);</span>
+<span class="fc" id="L216">    }</span>
+
+    private void run(RunContext context, Story story, Map&lt;String, String&gt; storyParameters) throws Throwable {
+        try {
+<span class="fc" id="L220">            runCancellable(context, story, storyParameters);</span>
+<span class="fc" id="L221">        } catch (Throwable e) {</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">            if (cancelledStories.containsKey(story)) {</span>
+<span class="fc" id="L223">                reporter.get().storyCancelled(story, cancelledStories.get(story));</span>
+<span class="fc" id="L224">                reporter.get().afterScenario();</span>
+<span class="fc" id="L225">                reporter.get().afterStory(context.givenStory);</span>
+            }
+<span class="fc" id="L227">            throw e;</span>
+        } finally {
+<span class="pc bpc" id="L229" title="2 of 8 branches missed.">            if (!context.givenStory() &amp;&amp; reporter.get() instanceof ConcurrentStoryReporter) {</span>
+<span class="fc" id="L230">                ((ConcurrentStoryReporter) reporter.get()).invokeDelayed();</span>
+            }
+        }
+<span class="fc" id="L233">    }</span>
+
+    private void runCancellable(RunContext context, Story story, Map&lt;String, String&gt; storyParameters) throws Throwable {
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        if (!context.givenStory()) {</span>
+<span class="fc" id="L237">            reporter.set(reporterFor(context, story));</span>
+        }
+<span class="fc" id="L239">        pendingStepStrategy.set(context.configuration().pendingStepStrategy());</span>
+<span class="fc" id="L240">        failureStrategy.set(context.configuration().failureStrategy());</span>
+
+<span class="fc" id="L242">        resetStoryFailure(context);</span>
+
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (context.dryRun()) {</span>
+<span class="fc" id="L245">            reporter.get().dryRun();</span>
+        }
+
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        if (context.configuration().storyControls().resetStateBeforeStory()) {</span>
+<span class="fc" id="L249">            context.resetState();</span>
+        }
+
+        // run before story steps, if any
+<span class="fc" id="L253">        reporter.get().beforeStory(story, context.givenStory());</span>
+
+<span class="fc" id="L255">        boolean storyAllowed = true;</span>
+
+<span class="fc" id="L257">        FilteredStory filterContext = context.filter(story);</span>
+<span class="fc" id="L258">        Meta storyMeta = story.getMeta();</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        if (!filterContext.allowed()) {</span>
+<span class="fc" id="L260">            reporter.get().storyNotAllowed(story, context.metaFilterAsString());</span>
+<span class="fc" id="L261">            storyAllowed = false;</span>
+        }
+
+<span class="fc bfc" id="L264" title="All 2 branches covered.">        if (storyAllowed) {</span>
+
+<span class="fc" id="L266">            reporter.get().narrative(story.getNarrative());</span>
+
+<span class="fc" id="L268">            runBeforeOrAfterStorySteps(context, story, Stage.BEFORE);</span>
+
+<span class="fc" id="L270">            addMetaParameters(storyParameters, storyMeta);</span>
+
+<span class="fc" id="L272">            runGivenStories(story.getGivenStories(), storyParameters, context);</span>
+            
+            // determine if before and after scenario steps should be run
+<span class="fc" id="L275">            boolean runBeforeAndAfterScenarioSteps = shouldRunBeforeOrAfterScenarioSteps(context);</span>
+            
+<span class="fc" id="L277">            reporter.get().lifecyle(story.getLifecycle());</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">            for (Scenario scenario : story.getScenarios()) {</span>
+                // scenario also inherits meta from story
+<span class="fc" id="L280">                boolean scenarioAllowed = true;</span>
+<span class="fc bfc" id="L281" title="All 4 branches covered.">                if (failureOccurred(context) &amp;&amp; context.configuration().storyControls().skipScenariosAfterFailure()) {</span>
+<span class="fc" id="L282">                    continue;</span>
+                }
+<span class="fc" id="L284">                reporter.get().beforeScenario(scenario.getTitle());</span>
+<span class="fc" id="L285">                reporter.get().scenarioMeta(scenario.getMeta());</span>
+
+<span class="fc bfc" id="L287" title="All 2 branches covered.">                if (!filterContext.allowed(scenario)) {</span>
+<span class="fc" id="L288">                    reporter.get().scenarioNotAllowed(scenario, context.metaFilterAsString());</span>
+<span class="fc" id="L289">                    scenarioAllowed = false;</span>
+                }
+
+<span class="fc bfc" id="L292" title="All 2 branches covered.">                if (scenarioAllowed) {</span>
+<span class="fc bfc" id="L293" title="All 2 branches covered.">                    if (context.configuration().storyControls().resetStateBeforeScenario()) {</span>
+<span class="fc" id="L294">                        context.resetState();</span>
+                    }
+<span class="fc" id="L296">                    Meta storyAndScenarioMeta = scenario.getMeta().inheritFrom(storyMeta);</span>
+                    // run before scenario steps, if allowed
+<span class="fc bfc" id="L298" title="All 2 branches covered.">                    if (runBeforeAndAfterScenarioSteps) {</span>
+<span class="fc" id="L299">                        runBeforeOrAfterScenarioSteps(context, scenario, storyAndScenarioMeta, Stage.BEFORE,</span>
+                                ScenarioType.NORMAL);
+                    }
+<span class="fc" id="L302">                    runLifecycleSteps(context, story.getLifecycle(), Stage.BEFORE, storyAndScenarioMeta);</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">                    if (isParameterisedByExamples(scenario)) { // run parametrised scenarios by examples</span>
+<span class="fc" id="L304">                        runScenariosParametrisedByExamples(context, scenario, storyAndScenarioMeta);</span>
+                    } else { // run as plain old scenario
+<span class="fc" id="L306">                        addMetaParameters(storyParameters, storyAndScenarioMeta);</span>
+<span class="fc" id="L307">                        runGivenStories(scenario.getGivenStories(), storyParameters, context);</span>
+<span class="fc" id="L308">                        runScenarioSteps(context, scenario, storyParameters);</span>
+                    }
+<span class="fc" id="L310">                    runLifecycleSteps(context, story.getLifecycle(), Stage.AFTER, storyAndScenarioMeta);</span>
+
+                    // run after scenario steps, if allowed
+<span class="fc bfc" id="L313" title="All 2 branches covered.">                    if (runBeforeAndAfterScenarioSteps) {</span>
+<span class="fc" id="L314">                        runBeforeOrAfterScenarioSteps(context, scenario, storyAndScenarioMeta, Stage.AFTER,</span>
+                                ScenarioType.NORMAL);
+                    }
+
+                }
+
+<span class="fc" id="L320">                reporter.get().afterScenario();</span>
+<span class="fc" id="L321">            }</span>
+
+            // run after story steps, if any
+<span class="fc" id="L324">            runBeforeOrAfterStorySteps(context, story, Stage.AFTER);</span>
+
+        }
+
+<span class="fc" id="L328">        reporter.get().afterStory(context.givenStory());</span>
+
+        // handle any failure according to strategy
+<span class="fc bfc" id="L331" title="All 2 branches covered.">        if (!context.givenStory()) {</span>
+<span class="fc" id="L332">            handleStoryFailureByStrategy();</span>
+        }
+<span class="fc" id="L334">    }</span>
+
+    private void addMetaParameters(Map&lt;String, String&gt; storyParameters, Meta meta) {
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">        for (String name : meta.getPropertyNames()) {</span>
+<span class="nc" id="L338">            storyParameters.put(name, meta.getProperty(name));</span>
+<span class="nc" id="L339">        }</span>
+<span class="fc" id="L340">    }</span>
+
+    private boolean shouldRunBeforeOrAfterScenarioSteps(RunContext context) {
+<span class="fc" id="L343">        Configuration configuration = context.configuration();</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        if (!configuration.storyControls().skipBeforeAndAfterScenarioStepsIfGivenStory()) {</span>
+<span class="fc" id="L345">            return true;</span>
+        }
+
+<span class="fc bfc" id="L348" title="All 2 branches covered.">        return !context.givenStory();</span>
+    }
+
+    private boolean failureOccurred(RunContext context) {
+<span class="fc" id="L352">        return context.failureOccurred();</span>
+    }
+
+    private StoryReporter reporterFor(RunContext context, Story story) {
+<span class="fc" id="L356">        Configuration configuration = context.configuration();</span>
+<span class="pc bpc" id="L357" title="1 of 2 branches missed.">        if (context.givenStory()) {</span>
+<span class="nc" id="L358">            return configuration.storyReporter(reporterStoryPath.get());</span>
+        } else {
+            // store parent story path for reporting
+<span class="fc" id="L361">            reporterStoryPath.set(story.getPath());</span>
+<span class="fc" id="L362">            return configuration.storyReporter(reporterStoryPath.get());</span>
+        }
+    }
+
+    private void handleStoryFailureByStrategy() throws Throwable {
+<span class="fc" id="L367">        Throwable throwable = storyFailure.get();</span>
+<span class="fc bfc" id="L368" title="All 2 branches covered.">        if (throwable != null) {</span>
+<span class="fc" id="L369">            currentStrategy.get().handleFailure(throwable);</span>
+        }
+<span class="fc" id="L371">    }</span>
+
+    private void resetStoryFailure(RunContext context) {
+<span class="fc bfc" id="L374" title="All 2 branches covered.">        if (context.givenStory()) {</span>
+            // do not reset failure for given stories
+<span class="fc" id="L376">            return;</span>
+        }
+<span class="fc" id="L378">        currentStrategy.set(context.configuration().failureStrategy());</span>
+<span class="fc" id="L379">        storyFailure.set(null);</span>
+<span class="fc" id="L380">    }</span>
+
+    private void runGivenStories(GivenStories givenStories, Map&lt;String, String&gt; parameters, RunContext context) throws Throwable {
+<span class="fc bfc" id="L383" title="All 2 branches covered.">        if (givenStories.getPaths().size() &gt; 0) {</span>
+<span class="fc" id="L384">            reporter.get().givenStories(givenStories);</span>
+<span class="fc bfc" id="L385" title="All 2 branches covered.">            for (GivenStory givenStory : givenStories.getStories()) {</span>
+<span class="fc" id="L386">                RunContext childContext = context.childContextFor(givenStory);</span>
+                // run given story, using any parameters provided
+<span class="fc" id="L388">                Story story = storyOfPath(context.configuration(), childContext.path());</span>
+<span class="pc bpc" id="L389" title="1 of 2 branches missed.">                if ( givenStory.hasAnchorParameters() ){</span>
+<span class="nc" id="L390">                    story = storyWithMatchingScenarios(story, givenStory.getAnchorParameters());</span>
+                }
+<span class="fc" id="L392">                parameters.putAll(givenStory.getParameters());</span>
+<span class="fc" id="L393">                run(childContext, story, parameters);</span>
+<span class="fc" id="L394">            }</span>
+        }
+<span class="fc" id="L396">    }</span>
+
+    private Story storyWithMatchingScenarios(Story story, Map&lt;String,String&gt; parameters) {
+<span class="nc bnc" id="L399" title="All 2 branches missed.">        if ( parameters.isEmpty() ) return story;</span>
+<span class="nc" id="L400">        List&lt;Scenario&gt; scenarios = new ArrayList&lt;Scenario&gt;();</span>
+<span class="nc bnc" id="L401" title="All 2 branches missed.">        for ( Scenario scenario : story.getScenarios() ){</span>
+<span class="nc bnc" id="L402" title="All 2 branches missed.">            if ( matchesParameters(scenario, parameters) ){</span>
+<span class="nc" id="L403">                scenarios.add(scenario);</span>
+            }
+<span class="nc" id="L405">        }</span>
+<span class="nc" id="L406">        return new Story(story.getPath(), story.getDescription(), story.getMeta(), story.getNarrative(), scenarios); </span>
+    }
+
+    private boolean matchesParameters(Scenario scenario, Map&lt;String, String&gt; parameters) {
+<span class="nc" id="L410">        Meta meta = scenario.getMeta();</span>
+<span class="nc bnc" id="L411" title="All 2 branches missed.">        for ( String name : parameters.keySet() ){</span>
+<span class="nc bnc" id="L412" title="All 2 branches missed.">            if ( meta.hasProperty(name) ){</span>
+<span class="nc" id="L413">                return meta.getProperty(name).equals(parameters.get(name));</span>
+            }
+<span class="nc" id="L415">        }</span>
+<span class="nc" id="L416">        return false;</span>
+    }
+
+    private boolean isParameterisedByExamples(Scenario scenario) {
+<span class="pc bpc" id="L420" title="1 of 4 branches missed.">        return scenario.getExamplesTable().getRowCount() &gt; 0 &amp;&amp; !scenario.getGivenStories().requireParameters();</span>
+    }
+
+    private void runScenariosParametrisedByExamples(RunContext context, Scenario scenario, Meta storyAndScenarioMeta)
+            throws Throwable {
+<span class="fc" id="L425">        ExamplesTable table = scenario.getExamplesTable();</span>
+<span class="fc" id="L426">        reporter.get().beforeExamples(scenario.getSteps(), table);</span>
+<span class="fc" id="L427">    	Keywords keywords = context.configuration().keywords();</span>
+<span class="fc bfc" id="L428" title="All 2 branches covered.">        for (Map&lt;String, String&gt; scenarioParameters : table.getRows()) {</span>
+<span class="fc" id="L429">			Meta parameterMeta = parameterMeta(keywords, scenarioParameters);</span>
+<span class="pc bpc" id="L430" title="3 of 4 branches missed.">			if ( !parameterMeta.isEmpty() &amp;&amp; !context.filter.allow(parameterMeta) ){</span>
+<span class="nc" id="L431">				continue;</span>
+			}
+<span class="fc" id="L433">            reporter.get().example(scenarioParameters);</span>
+<span class="pc bpc" id="L434" title="1 of 2 branches missed.">            if (context.configuration().storyControls().resetStateBeforeScenario()) {</span>
+<span class="fc" id="L435">                context.resetState();</span>
+            }
+<span class="fc" id="L437">            runBeforeOrAfterScenarioSteps(context, scenario, storyAndScenarioMeta, Stage.BEFORE, ScenarioType.EXAMPLE);</span>
+<span class="fc" id="L438">            addMetaParameters(scenarioParameters, storyAndScenarioMeta);</span>
+<span class="fc" id="L439">            runGivenStories(scenario.getGivenStories(), scenarioParameters, context);</span>
+<span class="fc" id="L440">            runScenarioSteps(context, scenario, scenarioParameters);</span>
+<span class="fc" id="L441">            runBeforeOrAfterScenarioSteps(context, scenario, storyAndScenarioMeta, Stage.AFTER, ScenarioType.EXAMPLE);</span>
+<span class="fc" id="L442">        }</span>
+<span class="fc" id="L443">        reporter.get().afterExamples();</span>
+<span class="fc" id="L444">    }</span>
+
+	private Meta parameterMeta(Keywords keywords,
+			Map&lt;String, String&gt; scenarioParameters) {
+<span class="fc" id="L448">		String meta = keywords.meta();</span>
+<span class="pc bpc" id="L449" title="1 of 2 branches missed.">		if (scenarioParameters.containsKey(meta)) {</span>
+<span class="nc" id="L450">			return Meta.createMeta(scenarioParameters.get(meta), keywords);</span>
+		}
+<span class="fc" id="L452">		return Meta.EMPTY;</span>
+	}
+
+	private void runBeforeOrAfterStorySteps(RunContext context, Story story, Stage stage) throws InterruptedException {
+<span class="fc" id="L456">        runStepsWhileKeepingState(context, context.collectBeforeOrAfterStorySteps(story, stage));</span>
+<span class="fc" id="L457">    }</span>
+
+    private void runBeforeOrAfterScenarioSteps(RunContext context, Scenario scenario, Meta storyAndScenarioMeta,
+            Stage stage, ScenarioType type) throws InterruptedException {
+<span class="fc" id="L461">        runStepsWhileKeepingState(context, context.collectBeforeOrAfterScenarioSteps(storyAndScenarioMeta, stage, type));</span>
+<span class="fc" id="L462">    }</span>
+
+    private void runLifecycleSteps(RunContext context, Lifecycle lifecycle, Stage stage, Meta storyAndScenarioMeta) throws InterruptedException {
+<span class="fc" id="L465">        runStepsWhileKeepingState(context, context.collectLifecycleSteps(lifecycle, storyAndScenarioMeta, stage));        </span>
+<span class="fc" id="L466">    }</span>
+
+    private void runScenarioSteps(RunContext context, Scenario scenario, Map&lt;String, String&gt; scenarioParameters)
+            throws InterruptedException {
+<span class="fc" id="L470">        boolean restart = true;</span>
+<span class="fc bfc" id="L471" title="All 2 branches covered.">        while (restart) {</span>
+<span class="fc" id="L472">            restart = false;</span>
+<span class="fc" id="L473">            List&lt;Step&gt; steps = context.collectScenarioSteps(scenario, scenarioParameters);</span>
+            try {
+<span class="fc" id="L475">                runStepsWhileKeepingState(context, steps);</span>
+<span class="fc" id="L476">            } catch (RestartingScenarioFailure e) {</span>
+<span class="fc" id="L477">                restart = true;</span>
+<span class="fc" id="L478">                continue;</span>
+<span class="fc" id="L479">            }</span>
+<span class="fc" id="L480">            generatePendingStepMethods(context, steps);</span>
+<span class="fc" id="L481">        }</span>
+<span class="fc" id="L482">    }</span>
+
+    private void generatePendingStepMethods(RunContext context, List&lt;Step&gt; steps) {
+<span class="fc" id="L485">        List&lt;PendingStep&gt; pendingSteps = new ArrayList&lt;PendingStep&gt;();</span>
+<span class="fc bfc" id="L486" title="All 2 branches covered.">        for (Step step : steps) {</span>
+<span class="pc bpc" id="L487" title="1 of 2 branches missed.">            if (step instanceof PendingStep) {</span>
+<span class="nc" id="L488">                pendingSteps.add((PendingStep) step);</span>
+            }
+<span class="fc" id="L490">        }</span>
+<span class="pc bpc" id="L491" title="1 of 2 branches missed.">        if (!pendingSteps.isEmpty()) {</span>
+<span class="nc" id="L492">            PendingStepMethodGenerator generator = new PendingStepMethodGenerator(context.configuration().keywords());</span>
+<span class="nc" id="L493">            List&lt;String&gt; methods = new ArrayList&lt;String&gt;();</span>
+<span class="nc bnc" id="L494" title="All 2 branches missed.">            for (PendingStep pendingStep : pendingSteps) {</span>
+<span class="nc bnc" id="L495" title="All 2 branches missed.">                if (!pendingStep.annotated()) {</span>
+<span class="nc" id="L496">                    methods.add(generator.generateMethod(pendingStep));</span>
+                }
+<span class="nc" id="L498">            }</span>
+<span class="nc" id="L499">            reporter.get().pendingMethods(methods);</span>
+        }
+<span class="fc" id="L501">    }</span>
+
+    private void runStepsWhileKeepingState(RunContext context, List&lt;Step&gt; steps) throws InterruptedException {
+<span class="pc bpc" id="L504" title="1 of 4 branches missed.">        if (steps == null || steps.size() == 0) {</span>
+<span class="fc" id="L505">            return;</span>
+        }
+<span class="fc" id="L507">        State state = context.state();</span>
+<span class="fc bfc" id="L508" title="All 2 branches covered.">        for (Step step : steps) {</span>
+            try {
+<span class="fc" id="L510">                context.interruptIfCancelled();</span>
+<span class="fc" id="L511">                state = state.run(step);</span>
+<span class="fc" id="L512">            } catch (RestartingScenarioFailure e) {</span>
+<span class="fc" id="L513">                reporter.get().restarted(step.toString(), e);</span>
+<span class="fc" id="L514">                throw e;</span>
+<span class="fc" id="L515">            }</span>
+<span class="fc" id="L516">        }</span>
+<span class="fc" id="L517">        context.stateIs(state);</span>
+<span class="fc" id="L518">    }</span>
+
+    public interface State {
+        State run(Step step);
+    }
+
+<span class="fc" id="L524">    private final class FineSoFar implements State {</span>
+
+        public State run(Step step) {
+<span class="fc bfc" id="L527" title="All 2 branches covered.">            if ( step instanceof ParameterisedStep ){</span>
+<span class="fc" id="L528">                ((ParameterisedStep)step).describeTo(reporter.get());</span>
+            }
+<span class="fc" id="L530">            UUIDExceptionWrapper storyFailureIfItHappened = storyFailure.get(); </span>
+<span class="fc" id="L531">            StepResult result = step.perform(storyFailureIfItHappened);</span>
+<span class="fc" id="L532">            result.describeTo(reporter.get());</span>
+<span class="fc" id="L533">            UUIDExceptionWrapper stepFailure = result.getFailure();</span>
+<span class="fc bfc" id="L534" title="All 2 branches covered.">            if (stepFailure == null) {</span>
+<span class="fc" id="L535">                return this;</span>
+            }
+
+<span class="fc" id="L538">            storyFailure.set(mostImportantOf(storyFailureIfItHappened, stepFailure));</span>
+<span class="fc" id="L539">            currentStrategy.set(strategyFor(storyFailure.get()));</span>
+<span class="fc" id="L540">            return new SomethingHappened(stepFailure);</span>
+        }
+
+        private UUIDExceptionWrapper mostImportantOf(UUIDExceptionWrapper failure1, UUIDExceptionWrapper failure2) {
+<span class="pc bpc" id="L544" title="3 of 6 branches missed.">            return failure1 == null ? failure2</span>
+                    : failure1.getCause() instanceof PendingStepFound ? (failure2 == null ? failure1 : failure2)
+                            : failure1;
+        }
+
+        private FailureStrategy strategyFor(Throwable failure) {
+<span class="fc bfc" id="L550" title="All 2 branches covered.">            if (failure instanceof PendingStepFound) {</span>
+<span class="fc" id="L551">                return pendingStepStrategy.get();</span>
+            } else {
+<span class="fc" id="L553">                return failureStrategy.get();</span>
+            }
+        }
+    }
+
+    private final class SomethingHappened implements State {
+        UUIDExceptionWrapper scenarioFailure;
+
+<span class="fc" id="L561">        public SomethingHappened(UUIDExceptionWrapper scenarioFailure) {</span>
+<span class="fc" id="L562">            this.scenarioFailure = scenarioFailure;</span>
+<span class="fc" id="L563">        }</span>
+
+        public State run(Step step) {
+<span class="fc" id="L566">            StepResult result = step.doNotPerform(scenarioFailure);</span>
+<span class="fc" id="L567">            result.describeTo(reporter.get());</span>
+<span class="fc" id="L568">            return this;</span>
+        }
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L574">        return this.getClass().getSimpleName();</span>
+    }
+
+    /**
+     * The context for running a story.
+     */
+<span class="fc" id="L580">    private class RunContext {</span>
+        private final Configuration configuration;
+        private final List&lt;CandidateSteps&gt; candidateSteps;
+        private final String path;
+        private final MetaFilter filter;
+        private final boolean givenStory;
+		private State state;
+		private RunContext parentContext;
+
+        public RunContext(Configuration configuration, InjectableStepsFactory stepsFactory, String path,
+                MetaFilter filter) {
+<span class="fc" id="L591">            this(configuration, stepsFactory.createCandidateSteps(), path, filter);</span>
+<span class="fc" id="L592">        }</span>
+
+        public RunContext(Configuration configuration, List&lt;CandidateSteps&gt; steps, String path, MetaFilter filter) {
+<span class="fc" id="L595">            this(configuration, steps, path, filter, false, null);</span>
+<span class="fc" id="L596">        }</span>
+
+        private RunContext(Configuration configuration, List&lt;CandidateSteps&gt; steps, String path, MetaFilter filter,
+<span class="fc" id="L599">                boolean givenStory, RunContext parentContext) {</span>
+<span class="fc" id="L600">            this.configuration = configuration;</span>
+<span class="fc" id="L601">            this.candidateSteps = steps;</span>
+<span class="fc" id="L602">            this.path = path;</span>
+<span class="fc" id="L603">            this.filter = filter;</span>
+<span class="fc" id="L604">            this.givenStory = givenStory;</span>
+<span class="fc" id="L605">			this.parentContext = parentContext;</span>
+<span class="fc" id="L606">            resetState();</span>
+<span class="fc" id="L607">        }</span>
+
+        public void interruptIfCancelled() throws InterruptedException {
+<span class="fc bfc" id="L610" title="All 2 branches covered.">            for (Story story : cancelledStories.keySet()) {</span>
+<span class="pc bpc" id="L611" title="1 of 2 branches missed.">                if (path.equals(story.getPath())) {</span>
+<span class="fc" id="L612">                    throw new InterruptedException(path);</span>
+                }
+<span class="nc" id="L614">            }</span>
+<span class="fc" id="L615">        }</span>
+
+        public boolean dryRun() {
+<span class="fc" id="L618">            return configuration.storyControls().dryRun();</span>
+        }
+
+        public Configuration configuration() {
+<span class="fc" id="L622">            return configuration;</span>
+        }
+
+        public List&lt;CandidateSteps&gt; candidateSteps() {
+<span class="fc" id="L626">            return candidateSteps;</span>
+        }
+
+        public boolean givenStory() {
+<span class="fc" id="L630">            return givenStory;</span>
+        }
+
+        public String path() {
+<span class="fc" id="L634">            return path;</span>
+        }
+
+        public FilteredStory filter(Story story) {
+<span class="fc" id="L638">            return new FilteredStory(filter, story, configuration.storyControls());</span>
+        }
+
+        public String metaFilterAsString() {
+<span class="fc" id="L642">            return filter.asString();</span>
+        }
+        
+        public List&lt;Step&gt; collectBeforeOrAfterStorySteps(Story story, Stage stage) {
+<span class="fc" id="L646">            return configuration.stepCollector().collectBeforeOrAfterStorySteps(candidateSteps, story, stage,</span>
+                    givenStory);
+        }
+
+        public List&lt;Step&gt; collectBeforeOrAfterScenarioSteps(Meta storyAndScenarioMeta, Stage stage, ScenarioType type) {
+<span class="fc" id="L651">            return configuration.stepCollector().collectBeforeOrAfterScenarioSteps(candidateSteps,</span>
+                    storyAndScenarioMeta, stage, type);
+        }
+
+        public List&lt;Step&gt; collectLifecycleSteps(Lifecycle lifecycle, Meta storyAndScenarioMeta, Stage stage) {
+<span class="fc" id="L656">            return configuration.stepCollector().collectLifecycleSteps(candidateSteps, lifecycle, storyAndScenarioMeta, stage);</span>
+        }
+
+        public List&lt;Step&gt; collectScenarioSteps(Scenario scenario, Map&lt;String, String&gt; parameters) {
+<span class="fc" id="L660">            return configuration.stepCollector().collectScenarioSteps(candidateSteps, scenario, parameters);</span>
+        }
+
+        public RunContext childContextFor(GivenStory givenStory) {
+<span class="fc" id="L664">            String actualPath = configuration.pathCalculator().calculate(path, givenStory.getPath());</span>
+<span class="fc" id="L665">            return new RunContext(configuration, candidateSteps, actualPath, filter, true, this);</span>
+        }
+
+        public State state() {
+<span class="fc" id="L669">            return state;</span>
+        }
+
+        public void stateIs(State state) {
+<span class="fc" id="L673">            this.state = state;</span>
+<span class="fc bfc" id="L674" title="All 2 branches covered.">            if ( parentContext != null ){</span>
+<span class="fc" id="L675">            	parentContext.stateIs(state);</span>
+            }
+<span class="fc" id="L677">        }</span>
+
+        public boolean failureOccurred() {
+<span class="fc" id="L680">            return failed(state);</span>
+        }
+
+        public void resetState() {
+<span class="fc" id="L684">            this.state = new FineSoFar();</span>
+<span class="fc" id="L685">        }</span>
+
+    }
+
+    public boolean failed(State state) {
+<span class="fc bfc" id="L690" title="All 2 branches covered.">        return !state.getClass().equals(FineSoFar.class);</span>
+    }
+
+    public Throwable failure(State state) {
+<span class="nc bnc" id="L694" title="All 2 branches missed.">        if (failed(state)) {</span>
+<span class="nc" id="L695">            return ((SomethingHappened) state).scenarioFailure.getCause();</span>
+        }
+<span class="nc" id="L697">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

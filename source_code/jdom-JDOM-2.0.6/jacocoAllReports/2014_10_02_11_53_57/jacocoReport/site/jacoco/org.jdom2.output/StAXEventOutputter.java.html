@@ -1,0 +1,580 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StAXEventOutputter.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.output</a> &gt; <span class="el_source">StAXEventOutputter.java</span></div><h1>StAXEventOutputter.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2011-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.output;
+
+import java.util.List;
+
+import javax.xml.stream.XMLEventFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.util.XMLEventConsumer;
+
+import org.jdom2.Attribute;
+import org.jdom2.CDATA;
+import org.jdom2.Comment;
+import org.jdom2.Content;
+import org.jdom2.DocType;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.EntityRef;
+import org.jdom2.ProcessingInstruction;
+import org.jdom2.Text;
+import org.jdom2.output.support.AbstractStAXEventProcessor;
+import org.jdom2.output.support.StAXEventProcessor;
+import org.jdom2.output.support.XMLOutputProcessor;
+
+/**
+ * Outputs a JDOM document as a StAX XMLEventConsumer of bytes.
+ * &lt;p&gt;
+ * The StAXStreamOutputter can manage many styles of document formatting, from
+ * untouched to 'pretty' printed. The default is to output the document content
+ * exactly as created, but this can be changed by setting a new Format object:
+ * &lt;ul&gt;
+ * &lt;li&gt;For pretty-print output, use
+ * &lt;code&gt;{@link Format#getPrettyFormat()}&lt;/code&gt;.
+ * &lt;li&gt;For whitespace-normalised output, use
+ * &lt;code&gt;{@link Format#getCompactFormat()}&lt;/code&gt;.
+ * &lt;li&gt;For unmodified-format output, use
+ * &lt;code&gt;{@link Format#getRawFormat()}&lt;/code&gt;.
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * &lt;b&gt;All&lt;/b&gt; of the &lt;code&gt;output*(...)&lt;/code&gt; methods will flush the
+ * destination XMLEventConsumer before returning, and &lt;b&gt;none&lt;/b&gt; of them
+ * will &lt;code&gt;close()&lt;/code&gt; the destination.
+ * &lt;p&gt;
+ * To omit output of the declaration use
+ * &lt;code&gt;{@link Format#setOmitDeclaration}&lt;/code&gt;. To omit printing of the
+ * encoding in the declaration use &lt;code&gt;{@link Format#setOmitEncoding}&lt;/code&gt;.
+ * &lt;p&gt;
+ * If changing the {@link Format} settings are insufficient for your output
+ * needs you can customise this StAXStreamOutputter further by setting a different
+ * {@link StAXEventProcessor} with the
+ * {@link #setStAXEventProcessor(StAXEventProcessor)} method or an appropriate
+ * constructor. A fully-enabled Abstract class
+ * {@link AbstractStAXEventProcessor} is available to be further extended to
+ * your needs if all you want to do is tweak some details.
+ * 
+ * @since JDOM2
+ * @author Rolf Lear
+ */
+
+public final class StAXEventOutputter implements Cloneable {
+
+	/*
+	 * =====================================================================
+	 * Static content.
+	 * =====================================================================
+	 */
+
+	/**
+	 * Create a final and static instance of the AbstractStAXEventProcessor The
+	 * final part is important because it improves performance.
+	 * &lt;p&gt;
+	 * The JDOM user can change the actual XMLOutputProcessor with the
+	 * {@link StAXEventOutputter#setStAXEventProcessor(StAXEventProcessor)} method.
+	 * 
+	 * @author rolf
+	 */
+<span class="fc" id="L129">	private static final class DefaultStAXEventProcessor</span>
+			extends AbstractStAXEventProcessor {
+		// nothing
+	}
+
+	/**
+	 * This constant StAXEventProcessor is used for all non-customised
+	 * StAXStreamOutputters
+	 */
+<span class="fc" id="L138">	private static final DefaultStAXEventProcessor DEFAULTPROCESSOR =</span>
+			new DefaultStAXEventProcessor();
+
+	/**
+	 * This constant StAXEventProcessor is used for all non-customised
+	 * StAXStreamOutputters
+	 */
+<span class="fc" id="L145">	private static final XMLEventFactory DEFAULTEVENTFACTORY =</span>
+			XMLEventFactory.newInstance();
+	
+	/*
+	 * =====================================================================
+	 * Instance content.
+	 * =====================================================================
+	 */
+
+	// For normal output
+<span class="fc" id="L155">	private Format myFormat = null;</span>
+
+	// The actual StAXEventProcessor to delegate to.
+<span class="fc" id="L158">	private StAXEventProcessor myProcessor = null;</span>
+	
+<span class="fc" id="L160">	private XMLEventFactory myEventFactory = null;</span>
+
+	/*
+	 * =====================================================================
+	 * Constructors
+	 * =====================================================================
+	 */
+
+	/**
+	 * This will create an &lt;code&gt;StAXStreamOutputter&lt;/code&gt; with the specified format
+	 * characteristics.
+	 * &lt;p&gt;
+	 * &lt;b&gt;Note:&lt;/b&gt; the format object is cloned internally before use. If you
+	 * want to modify the Format after constructing the StAXStreamOutputter you can
+	 * modify the Format instance {@link #getFormat()} returns.
+	 * 
+	 * @param format
+	 *        The Format instance to use. This instance will be cloned() and as
+	 *        a consequence, changes made to the specified format instance
+	 *        &lt;b&gt;will not&lt;/b&gt; be reflected in this StAXStreamOutputter. A null input
+	 *        format indicates that StAXStreamOutputter should use the default
+	 *        {@link Format#getRawFormat()}
+	 * @param processor
+	 *        The XMLOutputProcessor to delegate output to. If null the
+	 *        StAXStreamOutputter will use the default XMLOutputProcessor.
+	 * @param eventfactory 
+	 * 		  The factory to use to create XMLEvent instances.
+	 */
+<span class="fc" id="L188">	public StAXEventOutputter(Format format, StAXEventProcessor processor, XMLEventFactory eventfactory) {</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">		myFormat = format == null ? Format.getRawFormat() : format.clone();</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">		myProcessor = processor == null ? DEFAULTPROCESSOR : processor;</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">		myEventFactory = eventfactory == null ? DEFAULTEVENTFACTORY : eventfactory;</span>
+<span class="fc" id="L192">	}</span>
+
+	/**
+	 * This will create an &lt;code&gt;StAXStreamOutputter&lt;/code&gt; with a default
+	 * {@link Format} and {@link XMLOutputProcessor}.
+	 */
+	public StAXEventOutputter() {
+<span class="fc" id="L199">		this(null, null, null);</span>
+<span class="fc" id="L200">	}</span>
+
+	/**
+	 * This will create an &lt;code&gt;StAXStreamOutputter&lt;/code&gt; with the specified format
+	 * characteristics.
+	 * &lt;p&gt;
+	 * &lt;b&gt;Note:&lt;/b&gt; the format object is cloned internally before use.
+	 * 
+	 * @param format
+	 *        The Format instance to use. This instance will be cloned() and as
+	 *        a consequence, changes made to the specified format instance
+	 *        &lt;b&gt;will not&lt;/b&gt; be reflected in this StAXStreamOutputter. A null input
+	 *        format indicates that StAXStreamOutputter should use the default
+	 *        {@link Format#getRawFormat()}
+	 */
+	public StAXEventOutputter(Format format) {
+<span class="fc" id="L216">		this(format, null, null);</span>
+<span class="fc" id="L217">	}</span>
+
+	/**
+	 * This will create an &lt;code&gt;StAXStreamOutputter&lt;/code&gt; with the specified
+	 * XMLOutputProcessor.
+	 * 
+	 * @param processor
+	 *        The XMLOutputProcessor to delegate output to. If null the
+	 *        StAXStreamOutputter will use the default XMLOutputProcessor.
+	 */
+	public StAXEventOutputter(StAXEventProcessor processor) {
+<span class="fc" id="L228">		this(null, processor, null);</span>
+<span class="fc" id="L229">	}</span>
+
+	/**
+	 * This will create an &lt;code&gt;StAXStreamOutputter&lt;/code&gt; with the specified
+	 * XMLOutputProcessor.
+	 * 
+	 * @param eventfactory
+	 *        The XMLEventFactory to use to create XMLEvent instances.
+	 */
+	public StAXEventOutputter(XMLEventFactory eventfactory) {
+<span class="nc" id="L239">		this(null, null, eventfactory);</span>
+<span class="nc" id="L240">	}</span>
+
+	/*
+	 * =======================================================================
+	 * API - Settings...
+	 * =======================================================================
+	 */
+
+	/**
+	 * Sets the new format logic for the StAXStreamOutputter. Note the Format object is
+	 * cloned internally before use.
+	 * 
+	 * @see #getFormat()
+	 * @param newFormat
+	 *        the format to use for subsequent output
+	 */
+	public void setFormat(Format newFormat) {
+<span class="fc" id="L257">		this.myFormat = newFormat.clone();</span>
+<span class="fc" id="L258">	}</span>
+
+	/**
+	 * Returns the current format in use by the StAXStreamOutputter. Note the Format
+	 * object returned is &lt;b&gt;not&lt;/b&gt; a clone of the one used internally, thus,
+	 * an StAXStreamOutputter instance is able to have it's Format changed by changing
+	 * the settings on the Format instance returned by this method.
+	 * 
+	 * @return the current Format instance used by this StAXStreamOutputter.
+	 */
+	public Format getFormat() {
+<span class="fc" id="L269">		return myFormat;</span>
+	}
+
+	/**
+	 * Returns the current XMLOutputProcessor instance in use by the
+	 * StAXStreamOutputter.
+	 * 
+	 * @return the current XMLOutputProcessor instance.
+	 */
+	public StAXEventProcessor getStAXStream() {
+<span class="fc" id="L279">		return myProcessor;</span>
+	}
+
+	/**
+	 * Sets a new XMLOutputProcessor instance for this StAXStreamOutputter. Note the
+	 * processor object is expected to be thread-safe.
+	 * 
+	 * @param processor
+	 *        the new XMLOutputProcesor to use for output
+	 */
+	public void setStAXEventProcessor(StAXEventProcessor processor) {
+<span class="fc" id="L290">		this.myProcessor = processor;</span>
+<span class="fc" id="L291">	}</span>
+
+	
+	
+	/**
+	 * @return the current XMLEventFactory used by this StAXEventOutputter
+	 */
+	public XMLEventFactory getEventFactory() {
+<span class="nc" id="L299">		return myEventFactory;</span>
+	}
+
+	/**
+	 * @param myEventFactory the XMLEventFactory to use for subsequent output.
+	 */
+	public void setEventFactory(XMLEventFactory myEventFactory) {
+<span class="nc" id="L306">		this.myEventFactory = myEventFactory;</span>
+<span class="nc" id="L307">	}</span>
+
+	/*
+	 * ========================================================================
+	 * API - Output to XMLEventConsumer Methods ... These are the core methods that the
+	 * Stream and String output methods call. On the other hand, these methods
+	 * defer to the protected/override methods. These methods flush the writer.
+	 * ========================================================================
+	 */
+
+	/**
+	 * This will print the &lt;code&gt;Document&lt;/code&gt; to the given Writer.
+	 * &lt;p&gt;
+	 * Warning: using your own Writer may cause the outputter's preferred
+	 * character encoding to be ignored. If you use encodings other than UTF-8,
+	 * we recommend using the method that takes an OutputStream instead.
+	 * &lt;/p&gt;
+	 * 
+	 * @param doc
+	 *        &lt;code&gt;Document&lt;/code&gt; to format.
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @throws XMLStreamException
+	 *         - if there's any problem writing.
+	 * @throws NullPointerException
+	 *         if the specified content is null.
+	 */
+	public final void output(Document doc, XMLEventConsumer out) throws XMLStreamException {
+<span class="fc" id="L335">		myProcessor.process(out, myFormat, myEventFactory, doc);</span>
+		//out.flush();
+<span class="fc" id="L337">	}</span>
+
+	/**
+	 * Print out the &lt;code&gt;{@link DocType}&lt;/code&gt;.
+	 * 
+	 * @param doctype
+	 *        &lt;code&gt;DocType&lt;/code&gt; to output.
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @throws XMLStreamException
+	 *         - if there's any problem writing.
+	 * @throws NullPointerException
+	 *         if the specified content is null.
+	 */
+	public final void output(DocType doctype, XMLEventConsumer out) throws XMLStreamException {
+<span class="fc" id="L352">		myProcessor.process(out, myFormat, myEventFactory, doctype);</span>
+		//out.flush();
+<span class="fc" id="L354">	}</span>
+
+	/**
+	 * Print out an &lt;code&gt;{@link Element}&lt;/code&gt;, including its
+	 * &lt;code&gt;{@link Attribute}&lt;/code&gt;s, and all contained (child) elements, etc.
+	 * 
+	 * @param element
+	 *        &lt;code&gt;Element&lt;/code&gt; to output.
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @throws XMLStreamException
+	 *         - if there's any problem writing.
+	 * @throws NullPointerException
+	 *         if the specified content is null.
+	 */
+	public final void output(Element element, XMLEventConsumer out) throws XMLStreamException {
+		// If this is the root element we could pre-initialize the
+		// namespace stack with the namespaces
+<span class="fc" id="L372">		myProcessor.process(out, myFormat, myEventFactory, element);</span>
+		//out.flush();
+<span class="fc" id="L374">	}</span>
+
+	/**
+	 * This will handle printing out an &lt;code&gt;{@link
+	 * Element}&lt;/code&gt;'s content only, not including its tag, and attributes.
+	 * This can be useful for printing the content of an element that contains
+	 * HTML, like &quot;&amp;lt;description&amp;gt;JDOM is
+	 * &amp;lt;b&amp;gt;fun&amp;gt;!&amp;lt;/description&amp;gt;&quot;.
+	 * 
+	 * @param element
+	 *        &lt;code&gt;Element&lt;/code&gt; to output.
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @throws XMLStreamException
+	 *         - if there's any problem writing.
+	 * @throws NullPointerException
+	 *         if the specified content is null.
+	 */
+	public final void outputElementContent(Element element, XMLEventConsumer out)
+			throws XMLStreamException {
+<span class="fc" id="L394">		myProcessor.process(out, myFormat, myEventFactory, element.getContent());</span>
+		//out.flush();
+<span class="fc" id="L396">	}</span>
+
+	/**
+	 * This will handle printing out a list of nodes. This can be useful for
+	 * printing the content of an element that contains HTML, like
+	 * &quot;&amp;lt;description&amp;gt;JDOM is &amp;lt;b&amp;gt;fun&amp;gt;!&amp;lt;/description&amp;gt;&quot;.
+	 * 
+	 * @param list
+	 *        &lt;code&gt;List&lt;/code&gt; of nodes.
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @throws XMLStreamException
+	 *         - if there's any problem writing.
+	 * @throws NullPointerException
+	 *         if the specified content is null.
+	 */
+	public final void output(List&lt;? extends Content&gt; list, XMLEventConsumer out)
+			throws XMLStreamException {
+<span class="fc" id="L414">		myProcessor.process(out, myFormat, myEventFactory, list);</span>
+		//out.flush();
+<span class="fc" id="L416">	}</span>
+
+	/**
+	 * Print out a &lt;code&gt;{@link CDATA}&lt;/code&gt; node.
+	 * 
+	 * @param cdata
+	 *        &lt;code&gt;CDATA&lt;/code&gt; to output.
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @throws XMLStreamException
+	 *         - if there's any problem writing.
+	 * @throws NullPointerException
+	 *         if the specified content is null.
+	 */
+	public final void output(CDATA cdata, XMLEventConsumer out) throws XMLStreamException {
+<span class="fc" id="L431">		myProcessor.process(out, myFormat, myEventFactory, cdata);</span>
+		//out.flush();
+<span class="fc" id="L433">	}</span>
+
+	/**
+	 * Print out a &lt;code&gt;{@link Text}&lt;/code&gt; node. Perfoms the necessary entity
+	 * escaping and whitespace stripping.
+	 * 
+	 * @param text
+	 *        &lt;code&gt;Text&lt;/code&gt; to output.
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @throws XMLStreamException
+	 *         - if there's any problem writing.
+	 * @throws NullPointerException
+	 *         if the specified content is null.
+	 */
+	public final void output(Text text, XMLEventConsumer out) throws XMLStreamException {
+<span class="fc" id="L449">		myProcessor.process(out, myFormat, myEventFactory, text);</span>
+		//out.flush();
+<span class="fc" id="L451">	}</span>
+
+	/**
+	 * Print out a &lt;code&gt;{@link Comment}&lt;/code&gt;.
+	 * 
+	 * @param comment
+	 *        &lt;code&gt;Comment&lt;/code&gt; to output.
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @throws XMLStreamException
+	 *         - if there's any problem writing.
+	 * @throws NullPointerException
+	 *         if the specified content is null.
+	 */
+	public final void output(Comment comment, XMLEventConsumer out) throws XMLStreamException {
+<span class="fc" id="L466">		myProcessor.process(out, myFormat, myEventFactory, comment);</span>
+		//out.flush();
+<span class="fc" id="L468">	}</span>
+
+	/**
+	 * Print out a &lt;code&gt;{@link ProcessingInstruction}&lt;/code&gt;.
+	 * 
+	 * @param pi
+	 *        &lt;code&gt;ProcessingInstruction&lt;/code&gt; to output.
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @throws XMLStreamException
+	 *         - if there's any problem writing.
+	 * @throws NullPointerException
+	 *         if the specified content is null.
+	 */
+	public final void output(ProcessingInstruction pi, XMLEventConsumer out)
+			throws XMLStreamException {
+<span class="fc" id="L484">		myProcessor.process(out, myFormat, myEventFactory, pi);</span>
+		//out.flush();
+<span class="fc" id="L486">	}</span>
+
+	/**
+	 * Print out an &lt;code&gt;{@link EntityRef}&lt;/code&gt;.
+	 * 
+	 * @param entity
+	 *        &lt;code&gt;EntityRef&lt;/code&gt; to output.
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @throws XMLStreamException
+	 *         - if there's any problem writing.
+	 * @throws NullPointerException
+	 *         if the specified content is null.
+	 */
+	public final void output(EntityRef entity, XMLEventConsumer out) throws XMLStreamException {
+<span class="fc" id="L501">		myProcessor.process(out, myFormat, myEventFactory, entity);</span>
+		//out.flush();
+<span class="fc" id="L503">	}</span>
+
+	/*
+	 * ========================================================================
+	 * Basic Support methods.
+	 * ========================================================================
+	 */
+
+	/**
+	 * Returns a cloned copy of this StAXStreamOutputter.
+	 */
+	@Override
+	public StAXEventOutputter clone() {
+		// Implementation notes: Since all state of an StAXStreamOutputter is
+		// embodied in simple private instance variables, Object.clone
+		// can be used. Note that since Object.clone is totally
+		// broken, we must catch an exception that will never be
+		// thrown.
+		try {
+<span class="fc" id="L522">			return (StAXEventOutputter) super.clone();</span>
+<span class="nc" id="L523">		} catch (java.lang.CloneNotSupportedException e) {</span>
+			// even though this should never ever happen, it's still
+			// possible to fool Java into throwing a
+			// CloneNotSupportedException. If that happens, we
+			// shouldn't swallow it.
+<span class="nc" id="L528">			throw new RuntimeException(e.toString());</span>
+		}
+	}
+
+	/**
+	 * Return a string listing of the settings for this StAXStreamOutputter instance.
+	 * 
+	 * @return a string listing the settings for this StAXStreamOutputter instance
+	 */
+	@Override
+	public String toString() {
+<span class="fc" id="L539">		StringBuilder buffer = new StringBuilder();</span>
+<span class="fc" id="L540">		buffer.append(&quot;StAXStreamOutputter[omitDeclaration = &quot;);</span>
+<span class="fc" id="L541">		buffer.append(myFormat.omitDeclaration);</span>
+<span class="fc" id="L542">		buffer.append(&quot;, &quot;);</span>
+<span class="fc" id="L543">		buffer.append(&quot;encoding = &quot;);</span>
+<span class="fc" id="L544">		buffer.append(myFormat.encoding);</span>
+<span class="fc" id="L545">		buffer.append(&quot;, &quot;);</span>
+<span class="fc" id="L546">		buffer.append(&quot;omitEncoding = &quot;);</span>
+<span class="fc" id="L547">		buffer.append(myFormat.omitEncoding);</span>
+<span class="fc" id="L548">		buffer.append(&quot;, &quot;);</span>
+<span class="fc" id="L549">		buffer.append(&quot;indent = '&quot;);</span>
+<span class="fc" id="L550">		buffer.append(myFormat.indent);</span>
+<span class="fc" id="L551">		buffer.append(&quot;'&quot;);</span>
+<span class="fc" id="L552">		buffer.append(&quot;, &quot;);</span>
+<span class="fc" id="L553">		buffer.append(&quot;expandEmptyElements = &quot;);</span>
+<span class="fc" id="L554">		buffer.append(myFormat.expandEmptyElements);</span>
+<span class="fc" id="L555">		buffer.append(&quot;, &quot;);</span>
+<span class="fc" id="L556">		buffer.append(&quot;lineSeparator = '&quot;);</span>
+<span class="fc bfc" id="L557" title="All 2 branches covered.">		for (char ch : myFormat.lineSeparator.toCharArray()) {</span>
+<span class="pc bpc" id="L558" title="1 of 4 branches missed.">			switch (ch) {</span>
+				case '\r':
+<span class="nc" id="L560">					buffer.append(&quot;\\r&quot;);</span>
+<span class="nc" id="L561">					break;</span>
+				case '\n':
+<span class="fc" id="L563">					buffer.append(&quot;\\n&quot;);</span>
+<span class="fc" id="L564">					break;</span>
+				case '\t':
+<span class="fc" id="L566">					buffer.append(&quot;\\t&quot;);</span>
+<span class="fc" id="L567">					break;</span>
+				default:
+<span class="fc" id="L569">					buffer.append(&quot;[&quot; + ((int) ch) + &quot;]&quot;);</span>
+					break;
+			}
+		}
+<span class="fc" id="L573">		buffer.append(&quot;', &quot;);</span>
+<span class="fc" id="L574">		buffer.append(&quot;textMode = &quot;);</span>
+<span class="fc" id="L575">		buffer.append(myFormat.mode + &quot;]&quot;);</span>
+<span class="fc" id="L576">		return buffer.toString();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

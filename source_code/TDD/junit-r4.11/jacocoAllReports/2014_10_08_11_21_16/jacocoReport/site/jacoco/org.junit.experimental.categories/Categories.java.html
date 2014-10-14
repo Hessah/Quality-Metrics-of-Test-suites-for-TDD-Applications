@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Categories.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Junit-r4.11</a> &gt; <a href="index.source.html" class="el_package">org.junit.experimental.categories</a> &gt; <span class="el_source">Categories.java</span></div><h1>Categories.java</h1><pre class="source lang-java linenums">package org.junit.experimental.categories;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import org.junit.runner.Description;
+import org.junit.runner.manipulation.Filter;
+import org.junit.runner.manipulation.NoTestsRemainException;
+import org.junit.runners.Suite;
+import org.junit.runners.model.InitializationError;
+import org.junit.runners.model.RunnerBuilder;
+
+/**
+ * From a given set of test classes, runs only the classes and methods that are
+ * annotated with either the category given with the @IncludeCategory
+ * annotation, or a subtype of that category.
+ *
+ * Note that, for now, annotating suites with {@code @Category} has no effect.
+ * Categories must be annotated on the direct method or class.
+ *
+ * Example:
+ *
+ * &lt;pre&gt;
+ * public interface FastTests {
+ * }
+ *
+ * public interface SlowTests {
+ * }
+ *
+ * public static class A {
+ *  &amp;#064;Test
+ *  public void a() {
+ *      fail();
+ *     }
+ *
+ *  &amp;#064;Category(SlowTests.class)
+ *  &amp;#064;Test
+ *  public void b() {
+ *     }
+ * }
+ *
+ * &amp;#064;Category( { SlowTests.class, FastTests.class })
+ * public static class B {
+ *  &amp;#064;Test
+ *  public void c() {
+ *
+ *     }
+ * }
+ *
+ * &amp;#064;RunWith(Categories.class)
+ * &amp;#064;IncludeCategory(SlowTests.class)
+ * &amp;#064;SuiteClasses( { A.class, B.class })
+ * // Note that Categories is a kind of Suite
+ * public static class SlowTestSuite {
+ * }
+ * &lt;/pre&gt;
+ */
+public class Categories extends Suite {
+    // the way filters are implemented makes this unnecessarily complicated,
+    // buggy, and difficult to specify.  A new way of handling filters could
+    // someday enable a better new implementation.
+    // https://github.com/KentBeck/junit/issues/issue/172
+
+    @Retention(RetentionPolicy.RUNTIME)
+    public @interface IncludeCategory {
+        public Class&lt;?&gt; value();
+    }
+
+    @Retention(RetentionPolicy.RUNTIME)
+    public @interface ExcludeCategory {
+        public Class&lt;?&gt; value();
+    }
+
+    public static class CategoryFilter extends Filter {
+        public static CategoryFilter include(Class&lt;?&gt; categoryType) {
+<span class="fc" id="L79">            return new CategoryFilter(categoryType, null);</span>
+        }
+
+        private final Class&lt;?&gt; fIncluded;
+
+        private final Class&lt;?&gt; fExcluded;
+
+        public CategoryFilter(Class&lt;?&gt; includedCategory,
+<span class="fc" id="L87">                Class&lt;?&gt; excludedCategory) {</span>
+<span class="fc" id="L88">            fIncluded = includedCategory;</span>
+<span class="fc" id="L89">            fExcluded = excludedCategory;</span>
+<span class="fc" id="L90">        }</span>
+
+        @Override
+        public String describe() {
+<span class="fc" id="L94">            return &quot;category &quot; + fIncluded;</span>
+        }
+
+        @Override
+        public boolean shouldRun(Description description) {
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            if (hasCorrectCategoryAnnotation(description)) {</span>
+<span class="fc" id="L100">                return true;</span>
+            }
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            for (Description each : description.getChildren()) {</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                if (shouldRun(each)) {</span>
+<span class="fc" id="L104">                    return true;</span>
+                }
+<span class="fc" id="L106">            }</span>
+<span class="fc" id="L107">            return false;</span>
+        }
+
+        private boolean hasCorrectCategoryAnnotation(Description description) {
+<span class="fc" id="L111">            List&lt;Class&lt;?&gt;&gt; categories = categories(description);</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            if (categories.isEmpty()) {</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                return fIncluded == null;</span>
+            }
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            for (Class&lt;?&gt; each : categories) {</span>
+<span class="fc bfc" id="L116" title="All 4 branches covered.">                if (fExcluded != null &amp;&amp; fExcluded.isAssignableFrom(each)) {</span>
+<span class="fc" id="L117">                    return false;</span>
+                }
+<span class="fc" id="L119">            }</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">            for (Class&lt;?&gt; each : categories) {</span>
+<span class="fc bfc" id="L121" title="All 4 branches covered.">                if (fIncluded == null || fIncluded.isAssignableFrom(each)) {</span>
+<span class="fc" id="L122">                    return true;</span>
+                }
+<span class="fc" id="L124">            }</span>
+<span class="fc" id="L125">            return false;</span>
+        }
+
+        private List&lt;Class&lt;?&gt;&gt; categories(Description description) {
+<span class="fc" id="L129">            ArrayList&lt;Class&lt;?&gt;&gt; categories = new ArrayList&lt;Class&lt;?&gt;&gt;();</span>
+<span class="fc" id="L130">            categories.addAll(Arrays.asList(directCategories(description)));</span>
+<span class="fc" id="L131">            categories.addAll(Arrays.asList(directCategories(parentDescription(description))));</span>
+<span class="fc" id="L132">            return categories;</span>
+        }
+
+        private Description parentDescription(Description description) {
+<span class="fc" id="L136">            Class&lt;?&gt; testClass = description.getTestClass();</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">            if (testClass == null) {</span>
+<span class="fc" id="L138">                return null;</span>
+            }
+<span class="fc" id="L140">            return Description.createSuiteDescription(testClass);</span>
+        }
+
+        private Class&lt;?&gt;[] directCategories(Description description) {
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            if (description == null) {</span>
+<span class="fc" id="L145">                return new Class&lt;?&gt;[0];</span>
+            }
+<span class="fc" id="L147">            Category annotation = description.getAnnotation(Category.class);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            if (annotation == null) {</span>
+<span class="fc" id="L149">                return new Class&lt;?&gt;[0];</span>
+            }
+<span class="fc" id="L151">            return annotation.value();</span>
+        }
+    }
+
+    public Categories(Class&lt;?&gt; klass, RunnerBuilder builder)
+            throws InitializationError {
+<span class="fc" id="L157">        super(klass, builder);</span>
+        try {
+<span class="fc" id="L159">            filter(new CategoryFilter(getIncludedCategory(klass),</span>
+                    getExcludedCategory(klass)));
+<span class="fc" id="L161">        } catch (NoTestsRemainException e) {</span>
+<span class="fc" id="L162">            throw new InitializationError(e);</span>
+<span class="fc" id="L163">        }</span>
+<span class="fc" id="L164">        assertNoCategorizedDescendentsOfUncategorizeableParents(getDescription());</span>
+<span class="fc" id="L165">    }</span>
+
+    private Class&lt;?&gt; getIncludedCategory(Class&lt;?&gt; klass) {
+<span class="fc" id="L168">        IncludeCategory annotation = klass.getAnnotation(IncludeCategory.class);</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        return annotation == null ? null : annotation.value();</span>
+    }
+
+    private Class&lt;?&gt; getExcludedCategory(Class&lt;?&gt; klass) {
+<span class="fc" id="L173">        ExcludeCategory annotation = klass.getAnnotation(ExcludeCategory.class);</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        return annotation == null ? null : annotation.value();</span>
+    }
+
+    private void assertNoCategorizedDescendentsOfUncategorizeableParents(Description description) throws InitializationError {
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        if (!canHaveCategorizedChildren(description)) {</span>
+<span class="fc" id="L179">            assertNoDescendantsHaveCategoryAnnotations(description);</span>
+        }
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        for (Description each : description.getChildren()) {</span>
+<span class="fc" id="L182">            assertNoCategorizedDescendentsOfUncategorizeableParents(each);</span>
+<span class="fc" id="L183">        }</span>
+<span class="fc" id="L184">    }</span>
+
+    private void assertNoDescendantsHaveCategoryAnnotations(Description description) throws InitializationError {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        for (Description each : description.getChildren()) {</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">            if (each.getAnnotation(Category.class) != null) {</span>
+<span class="fc" id="L189">                throw new InitializationError(&quot;Category annotations on Parameterized classes are not supported on individual methods.&quot;);</span>
+            }
+<span class="fc" id="L191">            assertNoDescendantsHaveCategoryAnnotations(each);</span>
+<span class="fc" id="L192">        }</span>
+<span class="fc" id="L193">    }</span>
+
+    // If children have names like [0], our current magical category code can't determine their
+    // parentage.
+    private static boolean canHaveCategorizedChildren(Description description) {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        for (Description each : description.getChildren()) {</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            if (each.getTestClass() == null) {</span>
+<span class="fc" id="L200">                return false;</span>
+            }
+<span class="fc" id="L202">        }</span>
+<span class="fc" id="L203">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

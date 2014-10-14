@@ -1,0 +1,468 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>FormatStack.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jdom</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.output.support</a> &gt; <span class="el_source">FormatStack.java</span></div><h1>FormatStack.java</h1><pre class="source lang-java linenums">/*-- 
+
+ Copyright (C) 2000-2007 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows 
+    these conditions in the documentation and/or other materials 
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the 
+ end-user documentation provided with the redistribution and/or in the 
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos 
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many 
+ individuals on behalf of the JDOM Project and was originally 
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.output.support;
+
+import org.jdom2.internal.ArrayCopy;
+import org.jdom2.output.EscapeStrategy;
+import org.jdom2.output.Format;
+import org.jdom2.output.Format.TextMode;
+
+/**
+ * FormatStack implements a mechanism where the formatting details can be
+ * changed mid-tree, but then get reverted when that tree segment is
+ * complete.
+ * &lt;p&gt;
+ * This class is intended as a working-class for in the various outputter
+ * implementations. It is inly public so that people extending the
+ * Abstract*Processor classes can take advantage of it's functionality.
+ * &lt;p&gt;
+ * The value this class adds is:
+ * &lt;ul&gt;
+ * &lt;li&gt;Fast - 
+ * &lt;/ul&gt;
+ * 
+ * @since JDOM2
+ * @author Rolf Lear
+ */
+public final class FormatStack {
+
+<span class="fc" id="L81">	private int capacity = 16; // can grow if more than 16 levels in XML</span>
+<span class="fc" id="L82">	private int depth = 0; // current level in XML</span>
+
+	/*
+	 * ====================================================================
+	 * The following values cannot be changed mid-way through the output
+	 * ====================================================================
+	 */
+
+	private final TextMode defaultMode; // the base/initial Text mode
+
+	/** The default indent is no spaces (as original document) */
+	private final String indent;
+
+	/** The encoding format */
+	private final String encoding;
+
+	/** New line separator */
+	private final String lineSeparator;
+
+	/**
+	 * Whether or not to output the XML declaration - default is
+	 * &lt;code&gt;false&lt;/code&gt;
+	 */
+	private final boolean omitDeclaration;
+
+	/**
+	 * Whether or not to output the encoding in the XML declaration -
+	 * default is &lt;code&gt;false&lt;/code&gt;
+	 */
+	private final boolean omitEncoding;
+
+	/**
+	 * Whether or not to expand empty elements to
+	 * &amp;lt;tagName&amp;gt;&amp;lt;/tagName&amp;gt; - default is &lt;code&gt;false&lt;/code&gt;
+	 */
+	private final boolean expandEmptyElements;
+	
+	/**
+	 * Whether or not to output 'specified' Attributes only
+	 */
+	private final boolean specifiedAttributesOnly;
+
+	/** entity escape logic */
+	private final EscapeStrategy escapeStrategy;
+
+	/*
+	 * ====================================================================
+	 * The following values can be changed mid-way through the output, hence
+	 * they are arrays.
+	 * ====================================================================
+	 */
+
+	/** The 'current' accumulated indent */
+<span class="fc" id="L135">	private String[] levelIndent = new String[capacity];</span>
+
+	/** The 'current' End-Of-Line */
+<span class="fc" id="L138">	private String[] levelEOL = new String[capacity];</span>
+
+	/** The padding to put between content items */
+<span class="fc" id="L141">	private String[] levelEOLIndent = new String[capacity];</span>
+	
+	/** The padding to put after the last item (typically one less indent) */
+<span class="fc" id="L144">	private String[] termEOLIndent  = new String[capacity];</span>
+	
+	/**
+	 * Whether TrAX output escaping disabling/enabling PIs are ignored or
+	 * processed - default is &lt;code&gt;false&lt;/code&gt;
+	 */
+<span class="fc" id="L150">	private boolean[] ignoreTrAXEscapingPIs = new boolean[capacity];</span>
+
+	/** text handling mode */
+<span class="fc" id="L153">	private TextMode[] mode = new TextMode[capacity];</span>
+
+	/** escape Output logic - can be changed by */
+<span class="fc" id="L156">	private boolean[] escapeOutput = new boolean[capacity];</span>
+
+	/**
+	 * Creates a new FormatStack seeded with the specified Format
+	 * 
+	 * @param format
+	 *        the Format instance to seed the stack with.
+	 */
+<span class="fc" id="L164">	public FormatStack(Format format) {</span>
+<span class="fc" id="L165">		indent = format.getIndent();</span>
+<span class="fc" id="L166">		lineSeparator = format.getLineSeparator();</span>
+
+<span class="fc" id="L168">		encoding = format.getEncoding();</span>
+<span class="fc" id="L169">		omitDeclaration = format.getOmitDeclaration();</span>
+<span class="fc" id="L170">		omitEncoding = format.getOmitEncoding();</span>
+<span class="fc" id="L171">		expandEmptyElements = format.getExpandEmptyElements();</span>
+<span class="fc" id="L172">		escapeStrategy = format.getEscapeStrategy();</span>
+<span class="fc" id="L173">		defaultMode = format.getTextMode();</span>
+<span class="fc" id="L174">		specifiedAttributesOnly = format.isSpecifiedAttributesOnly();</span>
+
+<span class="fc bfc" id="L176" title="All 2 branches covered.">		levelIndent[depth] = format.getIndent() == null</span>
+				? null : &quot;&quot;;
+<span class="fc" id="L178">		levelEOL[depth] = format.getLineSeparator();</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">		levelEOLIndent[depth] = levelIndent[depth] == null ?  </span>
+				null : levelEOL[depth];
+<span class="fc" id="L181">		termEOLIndent[depth] = levelEOLIndent[depth];</span>
+		
+<span class="fc" id="L183">		ignoreTrAXEscapingPIs[depth] = format.getIgnoreTrAXEscapingPIs();</span>
+<span class="fc" id="L184">		mode[depth] = format.getTextMode();</span>
+<span class="fc" id="L185">		escapeOutput[depth] = true;</span>
+<span class="fc" id="L186">	}</span>
+
+	/**
+	 * If the indent strategy changes part way through a stack, we need to
+	 * clear the previously calculated reusable 'lower' levels of the stack.
+	 */
+	private final void resetReusableIndents() {
+<span class="fc" id="L193">		int d = depth + 1;</span>
+<span class="pc bpc" id="L194" title="2 of 4 branches missed.">		while (d &lt; levelIndent.length &amp;&amp; levelIndent[d] != null) {</span>
+			// all subsequent forays in to lower levels will need to be redone
+<span class="nc" id="L196">			levelIndent[d] = null;</span>
+<span class="nc" id="L197">			d++;</span>
+		}
+<span class="fc" id="L199">	}</span>
+
+	/**
+	 * @return the original {@link Format#getIndent()}, may be null
+	 */
+	public String getIndent() {
+<span class="nc" id="L205">		return indent;</span>
+	}
+
+	/**
+	 * @return the original {@link Format#getLineSeparator()}
+	 */
+	public String getLineSeparator() {
+<span class="fc" id="L212">		return lineSeparator;</span>
+	}
+	
+	/**
+	 * @return the original {@link Format#getEncoding()}
+	 */
+	public String getEncoding() {
+<span class="fc" id="L219">		return encoding;</span>
+	}
+
+	/**
+	 * @return the original {@link Format#getOmitDeclaration()}
+	 */
+	public boolean isOmitDeclaration() {
+<span class="fc" id="L226">		return omitDeclaration;</span>
+	}
+	
+	/**
+	 * Indicate whether only those Attributes specified in the XML
+	 * should be output.
+	 * @return true if only the specified Attributes should be output,
+	 *      false if those Attributes defaulted from the DTD or XML schema
+	 *      should be output too.
+	 */
+	public boolean isSpecifiedAttributesOnly() {
+<span class="fc" id="L237">		return specifiedAttributesOnly;</span>
+	}
+
+	/**
+	 * @return the original {@link Format#getOmitEncoding()}
+	 */
+	public boolean isOmitEncoding() {
+<span class="fc" id="L244">		return omitEncoding;</span>
+	}
+
+	/**
+	 * @return the original {@link Format#getExpandEmptyElements()}
+	 */
+	public boolean isExpandEmptyElements() {
+<span class="fc" id="L251">		return expandEmptyElements;</span>
+	}
+
+	/**
+	 * @return the original {@link Format#getEscapeStrategy()}
+	 */
+	public EscapeStrategy getEscapeStrategy() {
+<span class="fc" id="L258">		return escapeStrategy;</span>
+	}
+
+	/**
+	 * @return the current depth's {@link Format#getIgnoreTrAXEscapingPIs()}
+	 */
+	public boolean isIgnoreTrAXEscapingPIs() {
+<span class="fc" id="L265">		return ignoreTrAXEscapingPIs[depth];</span>
+	}
+
+	/**
+	 * Set the current depth's {@link Format#getIgnoreTrAXEscapingPIs()}
+	 * 
+	 * @param ignoreTrAXEscapingPIs
+	 *        the boolean value to set.
+	 */
+	public void setIgnoreTrAXEscapingPIs(boolean ignoreTrAXEscapingPIs) {
+<span class="fc" id="L275">		this.ignoreTrAXEscapingPIs[depth] = ignoreTrAXEscapingPIs;</span>
+<span class="fc" id="L276">	}</span>
+
+	/**
+	 * The escapeOutput flag can be set or unset. When set, Element text and
+	 * Attribute values are 'escaped' so that the output is valid XML. When
+	 * unset, the Element text and Attribute values are not escaped.
+	 * 
+	 * @return the current depth's escapeOutput flag.
+	 */
+	public boolean getEscapeOutput() {
+<span class="fc" id="L286">		return escapeOutput[depth];</span>
+	}
+
+	/**
+	 * The escapeOutput flag can be set or unset. When set, Element text and
+	 * Attribute values are 'escaped' so that the output is valid XML. When
+	 * unset, the Element text and Attribute values are not escaped.
+	 * 
+	 * @param escape
+	 *        what to set the current level's escapeOutput flag to.
+	 */
+	public void setEscapeOutput(boolean escape) {
+<span class="fc" id="L298">		escapeOutput[depth] = escape;</span>
+<span class="fc" id="L299">	}</span>
+
+	/**
+	 * @return the TextMode that was originally set for this stack before
+	 *         any modifications.
+	 */
+	public TextMode getDefaultMode() {
+<span class="fc" id="L306">		return defaultMode;</span>
+	}
+
+	/**
+	 * @return the current depth's accumulated/maintained indent, may be null
+	 */
+	public String getLevelIndent() {
+<span class="nc" id="L313">		return levelIndent[depth];</span>
+	}
+
+	/**
+	 * Get the end-of-line indenting sequence for before the first item in an
+	 * Element, as well as between subsequent items (but not after the last item)
+	 * @return the String EOL sequence followed by an indent. Null if it should 
+	 * be ignored
+	 */
+	public String getPadBetween() {
+<span class="fc" id="L323">		return levelEOLIndent[depth];</span>
+	}
+
+	/**
+	 * Get the end-of-line indenting sequence for after the last item in an
+	 * Element
+	 * @return the String EOL sequence followed by an indent. Null if it should 
+	 * be ignored
+	 */
+	public String getPadLast() {
+<span class="fc" id="L333">		return termEOLIndent[depth];</span>
+	}
+	
+	/**
+	 * Override the current depth's accumulated line indent.
+	 * 
+	 * @param indent
+	 *        the indent to set.
+	 */
+	public void setLevelIndent(String indent) {
+<span class="nc" id="L343">		this.levelIndent[depth] = indent;</span>
+<span class="nc bnc" id="L344" title="All 4 branches missed.">		levelEOLIndent[depth] = (indent == null || levelEOL[depth] == null) ?  </span>
+				null : (levelEOL[depth] + indent);
+<span class="nc" id="L346">		resetReusableIndents();</span>
+<span class="nc" id="L347">	}</span>
+
+	/**
+	 * @return the current depth's End-Of-Line sequence, may be null
+	 */
+	public String getLevelEOL() {
+<span class="fc" id="L353">		return levelEOL[depth];</span>
+	}
+
+	/**
+	 * Set the current depth's End-Of-Line sequence
+	 * 
+	 * @param newline
+	 *        the new End-Of-Line sequence to set.
+	 */
+	public void setLevelEOL(String newline) {
+<span class="nc" id="L363">		this.levelEOL[depth] = newline;</span>
+<span class="nc" id="L364">		resetReusableIndents();</span>
+<span class="nc" id="L365">	}</span>
+
+	/**
+	 * @return the current depth's {@link Format#getTextMode()}
+	 */
+	public TextMode getTextMode() {
+<span class="fc" id="L371">		return mode[depth];</span>
+	}
+
+	/**
+	 * Change the current level's TextMode
+	 * 
+	 * @param mode
+	 *        the new mode to set.
+	 */
+	public void setTextMode(TextMode mode) {
+<span class="fc bfc" id="L381" title="All 2 branches covered.">		if (this.mode[depth] == mode) {</span>
+<span class="fc" id="L382">			return;</span>
+		}
+<span class="fc" id="L384">		this.mode[depth] = mode;</span>
+<span class="pc bfc" id="L385" title="All 2 branches covered.">		switch (mode) {</span>
+			case PRESERVE:
+<span class="fc" id="L387">				levelEOL[depth] = null;</span>
+<span class="fc" id="L388">				levelIndent[depth] = null;</span>
+<span class="fc" id="L389">				levelEOLIndent[depth] = null;</span>
+<span class="fc" id="L390">				termEOLIndent[depth] = null;</span>
+<span class="fc" id="L391">				break;</span>
+			default:
+<span class="fc" id="L393">				levelEOL[depth] = lineSeparator;</span>
+<span class="pc bpc" id="L394" title="1 of 4 branches missed.">				if (indent == null || lineSeparator == null) {</span>
+<span class="fc" id="L395">					levelEOLIndent[depth] = null;</span>
+<span class="fc" id="L396">					termEOLIndent[depth] = null;</span>
+				} else {
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">					if (depth &gt; 0) {</span>
+<span class="fc" id="L399">						final StringBuilder sb = new StringBuilder(indent.length() * depth);</span>
+<span class="fc bfc" id="L400" title="All 2 branches covered.">						for (int i = 1; i &lt; depth; i++) {</span>
+<span class="fc" id="L401">							sb.append(indent);</span>
+						}
+						// the start point was '1', so we are one indent
+						// short, which is just right for the term....
+<span class="fc" id="L405">						termEOLIndent[depth] = lineSeparator + sb.toString();</span>
+						// but we increase it once for the actual indent.
+<span class="fc" id="L407">						sb.append(indent);</span>
+<span class="fc" id="L408">						levelIndent[depth] = sb.toString();</span>
+<span class="fc" id="L409">					} else {</span>
+<span class="nc" id="L410">						termEOLIndent[depth] = lineSeparator; </span>
+<span class="nc" id="L411">						levelIndent[depth] = &quot;&quot;;</span>
+					}
+<span class="fc" id="L413">					levelEOLIndent[depth] = lineSeparator + levelIndent[depth];</span>
+				}
+		}
+<span class="fc" id="L416">		resetReusableIndents();</span>
+<span class="fc" id="L417">	}</span>
+
+	/**
+	 * Create a new depth level on the stack. The previous level's details
+	 * are copied to this level, and the accumulated indent (if any) is
+	 * indented further.
+	 */
+	public void push() {
+<span class="fc" id="L425">		final int prev = depth++;</span>
+<span class="fc bfc" id="L426" title="All 2 branches covered.">		if (depth &gt;= capacity) {</span>
+<span class="fc" id="L427">			capacity *= 2;</span>
+<span class="fc" id="L428">			levelIndent = ArrayCopy.copyOf(levelIndent, capacity);</span>
+<span class="fc" id="L429">			levelEOL = ArrayCopy.copyOf(levelEOL, capacity);</span>
+<span class="fc" id="L430">			levelEOLIndent = ArrayCopy.copyOf(levelEOLIndent, capacity);</span>
+<span class="fc" id="L431">			termEOLIndent = ArrayCopy.copyOf(termEOLIndent, capacity);</span>
+<span class="fc" id="L432">			ignoreTrAXEscapingPIs = ArrayCopy.copyOf(ignoreTrAXEscapingPIs, capacity);</span>
+<span class="fc" id="L433">			mode = ArrayCopy.copyOf(mode, capacity);</span>
+<span class="fc" id="L434">			escapeOutput = ArrayCopy.copyOf(escapeOutput, capacity);</span>
+		}
+		
+<span class="fc" id="L437">		ignoreTrAXEscapingPIs[depth] = ignoreTrAXEscapingPIs[prev];</span>
+<span class="fc" id="L438">		mode[depth] = mode[prev];</span>
+<span class="fc" id="L439">		escapeOutput[depth] = escapeOutput[prev];</span>
+		
+<span class="pc bpc" id="L441" title="1 of 4 branches missed.">		if (levelIndent[prev] == null || levelEOL[prev] == null) {</span>
+<span class="fc" id="L442">			levelIndent[depth] = null;</span>
+<span class="fc" id="L443">			levelEOL[depth] = null;</span>
+<span class="fc" id="L444">			levelEOLIndent[depth] = null;</span>
+<span class="fc" id="L445">			termEOLIndent[depth] = null;</span>
+<span class="fc bfc" id="L446" title="All 2 branches covered.">		} else if (levelIndent[depth] == null) {</span>
+			// we need to build our level details ....
+			// cannot reuse previous ones.
+<span class="fc" id="L449">			levelEOL[depth] = levelEOL[prev];</span>
+<span class="fc" id="L450">			termEOLIndent[depth] = levelEOL[depth] + levelIndent[prev];</span>
+<span class="fc" id="L451">			levelIndent[depth] = levelIndent[prev] + indent;</span>
+<span class="fc" id="L452">			levelEOLIndent[depth] = levelEOL[depth] + levelIndent[depth];</span>
+		}
+<span class="fc" id="L454">	}</span>
+
+	/**
+	 * Move back a level on the stack.
+	 */
+	public void pop() {
+		// no need to clear previously used members in the stack.
+		// the stack is short-lived, and does not create new instances for
+		// the depth levels, in other words, it does not affect GC and does
+		// not save memory to clear the stack.
+<span class="fc" id="L464">		depth--;</span>
+<span class="fc" id="L465">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

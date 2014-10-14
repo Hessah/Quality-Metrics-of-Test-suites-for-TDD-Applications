@@ -1,0 +1,1020 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>AbstractXMLOutputProcessor.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jdom</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.output.support</a> &gt; <span class="el_source">AbstractXMLOutputProcessor.java</span></div><h1>AbstractXMLOutputProcessor.java</h1><pre class="source lang-java linenums">/*-- 
+
+ Copyright (C) 2000-2007 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows 
+    these conditions in the documentation and/or other materials 
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the 
+ end-user documentation provided with the redistribution and/or in the 
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos 
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many 
+ individuals on behalf of the JDOM Project and was originally 
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.output.support;
+
+import java.io.IOException;
+import java.io.Writer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import javax.xml.transform.Result;
+
+import org.jdom2.Attribute;
+import org.jdom2.CDATA;
+import org.jdom2.Comment;
+import org.jdom2.Content;
+import org.jdom2.DocType;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.EntityRef;
+import org.jdom2.IllegalDataException;
+import org.jdom2.Namespace;
+import org.jdom2.ProcessingInstruction;
+import org.jdom2.Text;
+import org.jdom2.Verifier;
+import org.jdom2.output.Format;
+import org.jdom2.output.Format.TextMode;
+import org.jdom2.output.XMLOutputter;
+import org.jdom2.util.NamespaceStack;
+
+/**
+ * This class provides a concrete implementation of {@link XMLOutputProcessor}
+ * for supporting the {@link XMLOutputter}.
+ * &lt;p&gt;
+ * &lt;h2&gt;Overview&lt;/h2&gt;
+ * &lt;p&gt;
+ * This class is marked abstract even though all methods are fully implemented.
+ * The &lt;code&gt;process*(...)&lt;/code&gt; methods are public because they match the
+ * XMLOutputProcessor interface but the remaining methods are all protected.
+ * &lt;p&gt;
+ * People who want to create a custom XMLOutputProcessor for XMLOutputter are
+ * able to extend this class and modify any functionality they want. Before
+ * sub-classing this you should first check to see if the {@link Format} class
+ * can get you the results you want.
+ * &lt;p&gt;
+ * &lt;b&gt;&lt;i&gt;Subclasses of this should have reentrant methods.&lt;/i&gt;&lt;/b&gt; This is
+ * easiest to accomplish simply by not allowing any instance fields. If your
+ * sub-class has an instance field/variable, then it's probably broken.
+ * &lt;p&gt;
+ * &lt;h2&gt;The Stacks&lt;/h2&gt;
+ * &lt;p&gt;
+ * One significant feature of this implementation is that it creates and
+ * maintains both a {@link NamespaceStack} and {@link FormatStack} that are
+ * managed in the
+ * {@link #printElement(Writer, FormatStack, NamespaceStack, Element)} method.
+ * The stacks are pushed and popped in that method only. They significantly
+ * improve the performance and readability of the code.
+ * &lt;p&gt;
+ * The NamespaceStack is only sent through to the
+ * {@link #printElement(Writer, FormatStack, NamespaceStack, Element)} and
+ * {@link #printContent(Writer, FormatStack, NamespaceStack, Walker)} methods,
+ * but the FormatStack is pushed through to all print* Methods.
+ * &lt;p&gt;
+ * &lt;h2&gt;Text Processing&lt;/h2&gt;
+ * &lt;p&gt;
+ * In XML the concept of 'Text' can be loosely defined as anything that can be
+ * found between an Element's start and end tags, excluding Comments and
+ * Processing Instructions. When considered from a JDOM perspective, this means
+ * {@link Text}, {@link CDATA} and {@link EntityRef} content. This will be
+ * referred to as 'Text-like content'
+ * &lt;p&gt;
+ * XMLOutputter delegates the management and formatting of Content to a
+ * Walker instance. See {@link Walker} and its various implementations for
+ * details on how the Element content is processed.
+ * &lt;p&gt;
+ * Because the Walker interface specifies that Text/CDATA content may be
+ * returned as either Text/CDATA instances or as formatted String values
+ * this class sometimes uses printCDATA(...) and printText(...), and sometimes
+ * uses the more direct {@link #textCDATA(Writer, String)} or
+ * {@link #textRaw(Writer, String)} as
+ * appropriate. In other words, subclasses should probably override these second
+ * methods instead of the print methods.
+ * &lt;p&gt;
+ * &lt;h2&gt;Non-Text Content&lt;/h2&gt;
+ * &lt;p&gt;
+ * Non-text content is processed via the respective print* methods. The usage
+ * should be logical based on the method name.
+ * &lt;p&gt;
+ * The general observations are:
+ * &lt;ul&gt;
+ * &lt;li&gt;printElement - maintains the Stacks, prints the element open tags, with
+ * attributes and namespaces. It checks to see whether the Element is text-only,
+ * or has non-text content. If it is text-only there is no indent/newline
+ * handling and it delegates to the correct text-type print method, otherwise it
+ * delegates to printContent.
+ * &lt;li&gt;printContent is called to output all lists of Content. It assumes that
+ * all whitespace indentation/newlines are appropriate before it is called, but
+ * it will ensure that padding is appropriate between the items in the list.
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * &lt;h2&gt;Final Notes&lt;/h2&gt; No methods actually write to the destination Writer
+ * except the &lt;code&gt;write(...)&lt;/code&gt; methods. Thus, all other methods do their
+ * respective processing and delegate the actual destination output to the
+ * {@link #write(Writer, char)} or {@link #write(Writer, String)} methods.
+ * &lt;p&gt;
+ * All Text-like content (printCDATA, printText, and printEntityRef) will
+ * ultimately be output through the the text* methods (and no other content).
+ * &lt;p&gt;
+ *
+ * @see XMLOutputter
+ * @see XMLOutputProcessor
+ * @since JDOM2
+ * @author Rolf Lear
+ */
+<span class="fc" id="L167">public abstract class AbstractXMLOutputProcessor extends AbstractOutputProcessor</span>
+	implements XMLOutputProcessor {
+
+	/** Simple constant for an open-CDATA */
+	protected static final String CDATAPRE = &quot;&lt;![CDATA[&quot;;
+	/** Simple constant for a close-CDATA */
+	protected static final String CDATAPOST = &quot;]]&gt;&quot;;
+
+	
+
+	/* *******************************************
+	 * XMLOutputProcessor implementation.
+	 * *******************************************
+	 */
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.XMLOutputProcessor#process(java.io.Writer,
+	 * org.jdom2.Document, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final Writer out, final Format format,
+			final Document doc) throws IOException {
+<span class="fc" id="L191">		printDocument(out, new FormatStack(format), new NamespaceStack(), doc);</span>
+<span class="fc" id="L192">		out.flush();</span>
+<span class="fc" id="L193">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.XMLOutputProcessor#process(java.io.Writer,
+	 * org.jdom2.DocType, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final Writer out, final Format format,
+			final DocType doctype) throws IOException {
+<span class="fc" id="L204">		printDocType(out, new FormatStack(format), doctype);</span>
+<span class="fc" id="L205">		out.flush();</span>
+<span class="fc" id="L206">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.XMLOutputProcessor#process(java.io.Writer,
+	 * org.jdom2.Element, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final Writer out, final Format format,
+			final Element element) throws IOException {
+		// If this is the root element we could pre-initialize the
+		// namespace stack with the namespaces
+<span class="fc" id="L219">		printElement(out, new FormatStack(format), new NamespaceStack(),</span>
+				element);
+<span class="fc" id="L221">		out.flush();</span>
+<span class="fc" id="L222">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.XMLOutputProcessor#process(java.io.Writer,
+	 * java.util.List, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final Writer out, final Format format,
+			final List&lt;? extends Content&gt; list)
+			throws IOException {
+<span class="fc" id="L234">		FormatStack fstack = new FormatStack(format); </span>
+<span class="fc" id="L235">		Walker walker = buildWalker(fstack, list, true);</span>
+<span class="fc" id="L236">		printContent(out, fstack, new NamespaceStack(), walker);</span>
+<span class="fc" id="L237">		out.flush();</span>
+<span class="fc" id="L238">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.XMLOutputProcessor#process(java.io.Writer,
+	 * org.jdom2.CDATA, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final Writer out, final Format format,
+			final CDATA cdata) throws IOException {
+		// we use the powers of the Walker to manage text-like content.
+<span class="fc" id="L250">		final List&lt;CDATA&gt; list = Collections.singletonList(cdata);</span>
+<span class="fc" id="L251">		FormatStack fstack = new FormatStack(format); </span>
+<span class="fc" id="L252">		final Walker walker = buildWalker(fstack, list, true);</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">		if (walker.hasNext()) {</span>
+<span class="fc" id="L254">			printContent(out, fstack, new NamespaceStack(), walker);</span>
+		}
+<span class="fc" id="L256">		out.flush();</span>
+<span class="fc" id="L257">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.XMLOutputProcessor#process(java.io.Writer,
+	 * org.jdom2.Text, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final Writer out, final Format format,
+			final Text text) throws IOException {
+		// we use the powers of the Walker to manage text-like content.
+<span class="fc" id="L269">		final List&lt;Text&gt; list = Collections.singletonList(text);</span>
+<span class="fc" id="L270">		FormatStack fstack = new FormatStack(format); </span>
+<span class="fc" id="L271">		final Walker walker = buildWalker(fstack, list, true);</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">		if (walker.hasNext()) {</span>
+<span class="fc" id="L273">			printContent(out, fstack, new NamespaceStack(), walker);</span>
+		}
+<span class="fc" id="L275">		out.flush();</span>
+<span class="fc" id="L276">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.XMLOutputProcessor#process(java.io.Writer,
+	 * org.jdom2.Comment, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final Writer out, final Format format,
+			final Comment comment) throws IOException {
+<span class="fc" id="L287">		printComment(out, new FormatStack(format), comment);</span>
+<span class="fc" id="L288">		out.flush();</span>
+<span class="fc" id="L289">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.XMLOutputProcessor#process(java.io.Writer,
+	 * org.jdom2.ProcessingInstruction, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final Writer out, final Format format,
+			final ProcessingInstruction pi) throws IOException {
+<span class="fc" id="L300">		FormatStack fstack = new FormatStack(format);</span>
+		// Output PI verbatim, disregarding TrAX escaping PIs.
+<span class="fc" id="L302">		fstack.setIgnoreTrAXEscapingPIs(true);</span>
+<span class="fc" id="L303">		printProcessingInstruction(out, fstack, pi);</span>
+<span class="fc" id="L304">		out.flush();</span>
+<span class="fc" id="L305">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.XMLOutputProcessor#process(java.io.Writer,
+	 * org.jdom2.EntityRef, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final Writer out, final Format format,
+			final EntityRef entity) throws IOException {
+<span class="fc" id="L316">		printEntityRef(out, new FormatStack(format), entity);</span>
+<span class="fc" id="L317">		out.flush();</span>
+<span class="fc" id="L318">	}</span>
+
+	/*
+	 * ========================================================================
+	 * Methods that actually write data to output. None of the other methods
+	 * should directly write to the output unless they use these methods.
+	 * ========================================================================
+	 */
+
+	/**
+	 * Print some string value to the output. Null values are ignored. This
+	 * ignore-null property is used for a few tricks.
+	 * 
+	 * @param out
+	 *        The Writer to write to.
+	 * @param str
+	 *        The String to write (can be null).
+	 * @throws IOException
+	 *         if the out Writer fails.
+	 */
+	protected void write(final Writer out, final String str) throws IOException {
+<span class="fc bfc" id="L339" title="All 2 branches covered.">		if (str == null) {</span>
+<span class="fc" id="L340">			return;</span>
+		}
+<span class="fc" id="L342">		out.write(str);</span>
+<span class="fc" id="L343">	}</span>
+
+	/**
+	 * Write a single character to the output Writer.
+	 * 
+	 * @param out
+	 *        The Writer to write to.
+	 * @param c
+	 *        The char to write.
+	 * @throws IOException
+	 *         if the Writer fails.
+	 */
+	protected void write(final Writer out, final char c) throws IOException {
+<span class="fc" id="L356">		out.write(c);</span>
+<span class="fc" id="L357">	}</span>
+
+	/*
+	 * ========================================================================
+	 * Support methods for Text-content formatting. Should all be protected. The
+	 * following are used when printing Text-based data. Because of complicated
+	 * multi-sequential text sometimes the requirements are odd. All Text
+	 * content will be output using these methods, which is why there is the None
+	 * version.
+	 * ========================================================================
+	 */
+
+	/**
+	 * This will take the three pre-defined entities in XML 1.0 ('&amp;lt;', '&amp;gt;',
+	 * and '&amp;amp;' - used specifically in XML elements) as well as CR/NL and
+	 * Quote characters which require escaping inside Attribute values and
+	 * convert their character representation to the appropriate entity
+	 * reference suitable for XML attribute content. Further, some special
+	 * characters (e.g. characters that are not valid in the current encoding)
+	 * are converted to escaped representations.
+	 * &lt;p&gt;
+	 * &lt;b&gt;Note:&lt;/b&gt; If {@link FormatStack#getEscapeOutput()} is false then no
+	 * escaping will happen.
+	 * 
+	 * @param out
+	 *        The destination Writer
+	 * @param fstack
+	 *        The {@link FormatStack}
+	 * @param value
+	 *        &lt;code&gt;String&lt;/code&gt; Attribute value to escape.
+	 * @throws IOException
+	 *         if the destination Writer fails.
+	 * @throws IllegalDataException
+	 *         if an entity can not be escaped
+	 */
+	protected void attributeEscapedEntitiesFilter(final Writer out,
+			final FormatStack fstack, final String value) throws IOException {
+		
+<span class="fc bfc" id="L395" title="All 2 branches covered.">		if (!fstack.getEscapeOutput()) {</span>
+			// no escaping...
+<span class="fc" id="L397">			write(out, value);</span>
+<span class="fc" id="L398">			return;</span>
+		}
+		
+<span class="fc" id="L401">		write(out, Format.escapeAttribute(fstack.getEscapeStrategy(), value));</span>
+
+<span class="fc" id="L403">	}</span>
+
+	/**
+	 * Convenience method that simply passes the input str to
+	 * {@link #write(Writer, String)}. This could be useful for subclasses to
+	 * hook in to. All text-type output will come through this or the
+	 * {@link #textRaw(Writer, char)} method.
+	 * 
+	 * @param out
+	 *        the destination writer.
+	 * @param str
+	 *        the String to write.
+	 * @throws IOException
+	 *         if the Writer fails.
+	 */
+	protected void textRaw(final Writer out, final String str) throws IOException {
+<span class="fc" id="L419">		write(out, str);</span>
+<span class="fc" id="L420">	}</span>
+
+	/**
+	 * Convenience method that simply passes the input char to
+	 * {@link #write(Writer, char)}. This could be useful for subclasses to hook
+	 * in to. All text-type output will come through this or the
+	 * {@link #textRaw(Writer, String)} method.
+	 * 
+	 * @param out
+	 *        the destination Writer.
+	 * @param ch
+	 *        the char to write.
+	 * @throws IOException
+	 *         if the Writer fails.
+	 */
+	protected void textRaw(final Writer out, final char ch) throws IOException {
+<span class="fc" id="L436">		write(out, ch);</span>
+<span class="fc" id="L437">	}</span>
+
+	/**
+	 * Write an {@link EntityRef} to the destination.
+	 * 
+	 * @param out
+	 *        the destination Writer.
+	 * @param name
+	 *        the EntityRef's name.
+	 * @throws IOException
+	 *         if the Writer fails.
+	 */
+	protected void textEntityRef(final Writer out, final String name) throws IOException {
+<span class="fc" id="L450">		textRaw(out, '&amp;');</span>
+<span class="fc" id="L451">		textRaw(out, name);</span>
+<span class="fc" id="L452">		textRaw(out, ';');</span>
+<span class="fc" id="L453">	}</span>
+
+	/**
+	 * Write a {@link CDATA} to the destination
+	 * @param out the destination Writer
+	 * @param text the CDATA text
+	 * @throws IOException if the Writer fails.
+	 */
+	protected void textCDATA(final Writer out, final String text) throws IOException {
+<span class="fc" id="L462">		textRaw(out, CDATAPRE);</span>
+<span class="fc" id="L463">		textRaw(out, text);</span>
+<span class="fc" id="L464">		textRaw(out, CDATAPOST);</span>
+<span class="fc" id="L465">	}</span>
+
+	/* *******************************************
+	 * Support methods for output. Should all be protected. All content-type
+	 * print methods have a FormatStack. Only printContent is responsible for
+	 * outputting appropriate indenting and newlines, which are easily available
+	 * using the FormatStack.getLevelIndent() and FormatStack.getLevelEOL().
+	 * *******************************************
+	 */
+
+	/**
+	 * This will handle printing of a {@link Document}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;Writer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param nstack
+	 *        the NamespaceStack
+	 * @param doc
+	 *        &lt;code&gt;Document&lt;/code&gt; to write.
+	 * @throws IOException
+	 *         if the destination Writer fails
+	 */
+	protected void printDocument(final Writer out, final FormatStack fstack,
+			final NamespaceStack nstack, final Document doc) throws IOException {
+
+
+		// If there is no root element then we cannot use the normal ways to
+		// access the ContentList because Document throws an exception.
+		// so we hack it and just access it by index.
+<span class="fc bfc" id="L496" title="All 2 branches covered.">		List&lt;Content&gt; list = doc.hasRootElement() ? doc.getContent() : </span>
+			new ArrayList&lt;Content&gt;(doc.getContentSize());
+<span class="fc bfc" id="L498" title="All 2 branches covered.">		if (list.isEmpty()) {</span>
+<span class="fc" id="L499">			final int sz = doc.getContentSize();</span>
+<span class="fc bfc" id="L500" title="All 2 branches covered.">			for (int i = 0; i &lt; sz; i++) {</span>
+<span class="fc" id="L501">				list.add(doc.getContent(i));</span>
+			}
+		}
+		
+<span class="fc" id="L505">		printDeclaration(out, fstack);</span>
+		
+<span class="fc" id="L507">		Walker walker = buildWalker(fstack, list, true);</span>
+<span class="fc bfc" id="L508" title="All 2 branches covered.">		if (walker.hasNext()) {</span>
+<span class="fc bfc" id="L509" title="All 2 branches covered.">			while (walker.hasNext()) {</span>
+				
+<span class="fc" id="L511">				final Content c = walker.next();</span>
+				// we do not ignore Text-like things in the Document.
+				// the walker creates the indenting for us.
+<span class="fc bfc" id="L514" title="All 2 branches covered.">				if (c == null) {</span>
+					// but, what we do is ensure it is all whitespace, and not CDATA
+<span class="fc" id="L516">					final String padding = walker.text();</span>
+<span class="pc bpc" id="L517" title="3 of 6 branches missed.">					if (padding != null &amp;&amp; Verifier.isAllXMLWhitespace(padding) &amp;&amp; </span>
+							!walker.isCDATA()) {
+						// we do not use the escaping or text* method because this
+						// content is outside of the root element, and thus is not
+						// strict text.
+<span class="fc" id="L522">						write(out, padding);</span>
+					}
+<span class="fc" id="L524">				} else {</span>
+<span class="pc bpc" id="L525" title="2 of 6 branches missed.">					switch (c.getCType()) {</span>
+						case Comment :
+<span class="fc" id="L527">							printComment(out, fstack, (Comment)c);</span>
+<span class="fc" id="L528">							break;</span>
+						case DocType :
+<span class="fc" id="L530">							printDocType(out, fstack, (DocType)c);</span>
+<span class="fc" id="L531">							break;</span>
+						case Element :
+<span class="fc" id="L533">							printElement(out, fstack, nstack, (Element)c);</span>
+<span class="fc" id="L534">							break;</span>
+						case ProcessingInstruction :
+<span class="fc" id="L536">							printProcessingInstruction(out, fstack, </span>
+									(ProcessingInstruction)c);
+<span class="fc" id="L538">							break;</span>
+						case Text :
+<span class="nc" id="L540">							final String padding = ((Text)c).getText();</span>
+<span class="nc bnc" id="L541" title="All 4 branches missed.">							if (padding != null &amp;&amp; Verifier.isAllXMLWhitespace(padding)) {</span>
+								// we do not use the escaping or text* method because this
+								// content is outside of the root element, and thus is not
+								// strict text.
+<span class="nc" id="L545">								write(out, padding);</span>
+							}
+<span class="fc" id="L547">						default :</span>
+							// do nothing.
+					}
+				}
+				
+<span class="fc" id="L552">			}</span>
+			
+<span class="pc bpc" id="L554" title="1 of 2 branches missed.">			if (fstack.getLineSeparator() != null) {</span>
+<span class="fc" id="L555">				write(out, fstack.getLineSeparator());</span>
+			}
+		}
+
+<span class="fc" id="L559">	}</span>
+
+	/**
+	 * This will handle printing of the XML declaration. Assumes XML version 1.0
+	 * since we don't directly know.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;Writer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @throws IOException
+	 *         if the destination Writer fails
+	 */
+	protected void printDeclaration(final Writer out, final FormatStack fstack) throws IOException {
+
+		// Only print the declaration if it's not being omitted
+<span class="fc bfc" id="L575" title="All 2 branches covered.">		if (fstack.isOmitDeclaration()) {</span>
+<span class="fc" id="L576">			return;</span>
+		}
+		// Declaration is never indented.
+		// write(out, fstack.getLevelIndent());
+
+		// Assume 1.0 version
+<span class="fc bfc" id="L582" title="All 2 branches covered.">		if (fstack.isOmitEncoding()) {</span>
+<span class="fc" id="L583">			write(out, &quot;&lt;?xml version=\&quot;1.0\&quot;?&gt;&quot;);</span>
+		} else {
+<span class="fc" id="L585">			write(out, &quot;&lt;?xml version=\&quot;1.0\&quot;&quot;);</span>
+<span class="fc" id="L586">			write(out, &quot; encoding=\&quot;&quot;);</span>
+<span class="fc" id="L587">			write(out, fstack.getEncoding());</span>
+<span class="fc" id="L588">			write(out, &quot;\&quot;?&gt;&quot;);</span>
+		}
+
+		// Print new line after decl always, even if no other new lines
+		// Helps the output look better and is semantically
+		// inconsequential
+		// newline(out, fstack);
+<span class="fc" id="L595">		write(out, fstack.getLineSeparator());</span>
+<span class="fc" id="L596">	}</span>
+
+	/**
+	 * This will handle printing of a {@link DocType}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;Writer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param docType
+	 *        &lt;code&gt;DocType&lt;/code&gt; to write.
+	 * @throws IOException
+	 *         if the destination Writer fails
+	 */
+	protected void printDocType(final Writer out, final FormatStack fstack,
+			final DocType docType) throws IOException {
+
+<span class="fc" id="L613">		final String publicID = docType.getPublicID();</span>
+<span class="fc" id="L614">		final String systemID = docType.getSystemID();</span>
+<span class="fc" id="L615">		final String internalSubset = docType.getInternalSubset();</span>
+<span class="fc" id="L616">		boolean hasPublic = false;</span>
+
+		// Declaration is never indented.
+		// write(out, fstack.getLevelIndent());
+
+<span class="fc" id="L621">		write(out, &quot;&lt;!DOCTYPE &quot;);</span>
+<span class="fc" id="L622">		write(out, docType.getElementName());</span>
+<span class="fc bfc" id="L623" title="All 2 branches covered.">		if (publicID != null) {</span>
+<span class="fc" id="L624">			write(out, &quot; PUBLIC \&quot;&quot;);</span>
+<span class="fc" id="L625">			write(out, publicID);</span>
+<span class="fc" id="L626">			write(out, &quot;\&quot;&quot;);</span>
+<span class="fc" id="L627">			hasPublic = true;</span>
+		}
+<span class="fc bfc" id="L629" title="All 2 branches covered.">		if (systemID != null) {</span>
+<span class="fc bfc" id="L630" title="All 2 branches covered.">			if (!hasPublic) {</span>
+<span class="fc" id="L631">				write(out, &quot; SYSTEM&quot;);</span>
+			}
+<span class="fc" id="L633">			write(out, &quot; \&quot;&quot;);</span>
+<span class="fc" id="L634">			write(out, systemID);</span>
+<span class="fc" id="L635">			write(out, &quot;\&quot;&quot;);</span>
+		}
+<span class="fc bfc" id="L637" title="All 4 branches covered.">		if ((internalSubset != null) &amp;&amp; (!internalSubset.equals(&quot;&quot;))) {</span>
+<span class="fc" id="L638">			write(out, &quot; [&quot;);</span>
+<span class="fc" id="L639">			write(out, fstack.getLineSeparator());</span>
+<span class="fc" id="L640">			write(out, docType.getInternalSubset());</span>
+<span class="fc" id="L641">			write(out, &quot;]&quot;);</span>
+		}
+<span class="fc" id="L643">		write(out, &quot;&gt;&quot;);</span>
+
+<span class="fc" id="L645">	}</span>
+
+	/**
+	 * This will handle printing of a {@link ProcessingInstruction}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;Writer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param pi
+	 *        &lt;code&gt;ProcessingInstruction&lt;/code&gt; to write.
+	 * @throws IOException
+	 *         if the destination Writer fails
+	 */
+	protected void printProcessingInstruction(final Writer out,
+			final FormatStack fstack, final ProcessingInstruction pi)
+			throws IOException {
+<span class="fc" id="L662">		String target = pi.getTarget();</span>
+<span class="fc" id="L663">		boolean piProcessed = false;</span>
+
+<span class="fc bfc" id="L665" title="All 2 branches covered.">		if (fstack.isIgnoreTrAXEscapingPIs() == false) {</span>
+<span class="fc bfc" id="L666" title="All 2 branches covered.">			if (target.equals(Result.PI_DISABLE_OUTPUT_ESCAPING)) {</span>
+				// special case... change the FormatStack
+<span class="fc" id="L668">				fstack.setEscapeOutput(false);</span>
+<span class="fc" id="L669">				piProcessed = true;</span>
+			}
+<span class="fc bfc" id="L671" title="All 2 branches covered.">			else if (target.equals(Result.PI_ENABLE_OUTPUT_ESCAPING)) {</span>
+				// special case... change the FormatStack
+<span class="fc" id="L673">				fstack.setEscapeOutput(true);</span>
+<span class="fc" id="L674">				piProcessed = true;</span>
+			}
+		}
+<span class="fc bfc" id="L677" title="All 2 branches covered.">		if (piProcessed == false) {</span>
+<span class="fc" id="L678">			String rawData = pi.getData();</span>
+
+			// Write &lt;?target data?&gt; or if no data then just &lt;?target?&gt;
+<span class="fc bfc" id="L681" title="All 2 branches covered.">			if (!&quot;&quot;.equals(rawData)) {</span>
+<span class="fc" id="L682">				write(out, &quot;&lt;?&quot;);</span>
+<span class="fc" id="L683">				write(out, target);</span>
+<span class="fc" id="L684">				write(out, &quot; &quot;);</span>
+<span class="fc" id="L685">				write(out, rawData);</span>
+<span class="fc" id="L686">				write(out, &quot;?&gt;&quot;);</span>
+			}
+			else {
+<span class="fc" id="L689">				write(out, &quot;&lt;?&quot;);</span>
+<span class="fc" id="L690">				write(out, target);</span>
+<span class="fc" id="L691">				write(out, &quot;?&gt;&quot;);</span>
+			}
+		}
+<span class="fc" id="L694">	}</span>
+
+	/**
+	 * This will handle printing of a {@link Comment}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;Writer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param comment
+	 *        &lt;code&gt;Comment&lt;/code&gt; to write.
+	 * @throws IOException
+	 *         if the destination Writer fails
+	 */
+	protected void printComment(final Writer out, final FormatStack fstack,
+			final Comment comment) throws IOException {
+<span class="fc" id="L710">		write(out, &quot;&lt;!--&quot;);</span>
+<span class="fc" id="L711">		write(out, comment.getText());</span>
+<span class="fc" id="L712">		write(out, &quot;--&gt;&quot;);</span>
+<span class="fc" id="L713">	}</span>
+
+	/**
+	 * This will handle printing of an {@link EntityRef}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;Writer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param entity
+	 *        &lt;code&gt;EntotyRef&lt;/code&gt; to write.
+	 * @throws IOException
+	 *         if the destination Writer fails
+	 */
+	protected void printEntityRef(final Writer out, final FormatStack fstack,
+			final EntityRef entity) throws IOException {
+		// EntityRefs are treated like text, not indented/newline content.
+<span class="fc" id="L730">		textEntityRef(out, entity.getName());</span>
+<span class="fc" id="L731">	}</span>
+
+	/**
+	 * This will handle printing of a {@link CDATA}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;Writer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param cdata
+	 *        &lt;code&gt;CDATA&lt;/code&gt; to write.
+	 * @throws IOException
+	 *         if the destination Writer fails
+	 */
+	protected void printCDATA(final Writer out, final FormatStack fstack,
+			final CDATA cdata) throws IOException {
+		// CDATAs are treated like text, not indented/newline content.
+<span class="fc" id="L748">		textCDATA(out, cdata.getText());</span>
+<span class="fc" id="L749">	}</span>
+
+	/**
+	 * This will handle printing of a {@link Text}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;Writer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param text
+	 *        &lt;code&gt;Text&lt;/code&gt; to write.
+	 * @throws IOException
+	 *         if the destination Writer fails
+	 */
+	protected void printText(final Writer out, final FormatStack fstack,
+			final Text text) throws IOException {
+<span class="fc bfc" id="L765" title="All 2 branches covered.">		if (fstack.getEscapeOutput()) {</span>
+<span class="fc" id="L766">			textRaw(out, Format.escapeText(fstack.getEscapeStrategy(),</span>
+					fstack.getLineSeparator(), text.getText()));
+
+<span class="fc" id="L769">			return;</span>
+		}
+<span class="fc" id="L771">		textRaw(out, text.getText());</span>
+<span class="fc" id="L772">	}</span>
+
+	/**
+	 * This will handle printing of an {@link Element}.
+	 * &lt;p&gt;
+	 * This method arranges for outputting the Element infrastructure including
+	 * Namespace Declarations and Attributes.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;Writer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param nstack
+	 *        the NamespaceStack
+	 * @param element
+	 *        &lt;code&gt;Element&lt;/code&gt; to write.
+	 * @throws IOException
+	 *         if the destination Writer fails
+	 */
+	protected void printElement(final Writer out, final FormatStack fstack,
+			final NamespaceStack nstack, final Element element) throws IOException {
+
+<span class="fc" id="L794">		nstack.push(element);</span>
+		try {
+<span class="fc" id="L796">			final List&lt;Content&gt; content = element.getContent();</span>
+
+			// Print the beginning of the tag plus attributes and any
+			// necessary namespace declarations
+<span class="fc" id="L800">			write(out, &quot;&lt;&quot;);</span>
+
+<span class="fc" id="L802">			write(out, element.getQualifiedName());</span>
+
+			// Print the element's namespace, if appropriate
+<span class="fc bfc" id="L805" title="All 2 branches covered.">			for (final Namespace ns : nstack.addedForward()) {</span>
+<span class="fc" id="L806">				printNamespace(out, fstack, ns);</span>
+<span class="fc" id="L807">			}</span>
+
+			// Print out attributes
+<span class="fc bfc" id="L810" title="All 2 branches covered.">			if (element.hasAttributes()) {</span>
+<span class="fc bfc" id="L811" title="All 2 branches covered.">				for (final Attribute attribute : element.getAttributes()) {</span>
+<span class="fc" id="L812">					printAttribute(out, fstack, attribute);</span>
+<span class="fc" id="L813">				}</span>
+			}
+
+<span class="fc bfc" id="L816" title="All 2 branches covered.">			if (content.isEmpty()) {</span>
+				// Case content is empty
+<span class="fc bfc" id="L818" title="All 2 branches covered.">				if (fstack.isExpandEmptyElements()) {</span>
+<span class="fc" id="L819">					write(out, &quot;&gt;&lt;/&quot;);</span>
+<span class="fc" id="L820">					write(out, element.getQualifiedName());</span>
+<span class="fc" id="L821">					write(out, &quot;&gt;&quot;);</span>
+				}
+				else {
+<span class="fc" id="L824">					write(out, &quot; /&gt;&quot;);</span>
+				}
+				// nothing more to do.
+				return;
+			}
+			
+			// OK, we have real content to push.
+<span class="fc" id="L831">			fstack.push();</span>
+			try {
+
+				// Check for xml:space and adjust format settings
+<span class="fc" id="L835">				final String space = element.getAttributeValue(&quot;space&quot;,</span>
+						Namespace.XML_NAMESPACE);
+
+<span class="fc bfc" id="L838" title="All 2 branches covered.">				if (&quot;default&quot;.equals(space)) {</span>
+<span class="fc" id="L839">					fstack.setTextMode(fstack.getDefaultMode());</span>
+				}
+<span class="fc bfc" id="L841" title="All 2 branches covered.">				else if (&quot;preserve&quot;.equals(space)) {</span>
+<span class="fc" id="L842">					fstack.setTextMode(TextMode.PRESERVE);</span>
+				}
+				
+				// note we ensure the FStack is right before creating the walker
+<span class="fc" id="L846">				Walker walker = buildWalker(fstack, content, true);</span>
+				
+<span class="fc bfc" id="L848" title="All 2 branches covered.">				if (!walker.hasNext()) {</span>
+					// the walker has formatted out whatever content we had
+<span class="fc bfc" id="L850" title="All 2 branches covered.">					if (fstack.isExpandEmptyElements()) {</span>
+<span class="fc" id="L851">						write(out, &quot;&gt;&lt;/&quot;);</span>
+<span class="fc" id="L852">						write(out, element.getQualifiedName());</span>
+<span class="fc" id="L853">						write(out, &quot;&gt;&quot;);</span>
+					}
+					else {
+<span class="fc" id="L856">						write(out, &quot; /&gt;&quot;);</span>
+					}
+					// nothing more to do.
+					return;
+				}
+				// we have some content.
+<span class="fc" id="L862">				write(out, &quot;&gt;&quot;);</span>
+<span class="fc bfc" id="L863" title="All 2 branches covered.">				if (!walker.isAllText()) {</span>
+					// we need to newline/indent
+<span class="fc" id="L865">					textRaw(out, fstack.getPadBetween());</span>
+				}
+
+<span class="fc" id="L868">				printContent(out, fstack, nstack, walker);</span>
+
+<span class="fc bfc" id="L870" title="All 2 branches covered.">				if (!walker.isAllText()) {</span>
+					// we need to newline/indent
+<span class="fc" id="L872">					textRaw(out, fstack.getPadLast());</span>
+				}
+<span class="fc" id="L874">				write(out, &quot;&lt;/&quot;);</span>
+<span class="fc" id="L875">				write(out, element.getQualifiedName());</span>
+<span class="fc" id="L876">				write(out, &quot;&gt;&quot;);</span>
+				
+			} finally {
+<span class="fc" id="L879">				fstack.pop();</span>
+<span class="fc" id="L880">			}</span>
+		} finally {
+<span class="fc" id="L882">			nstack.pop();</span>
+<span class="fc" id="L883">		}</span>
+
+<span class="fc" id="L885">	}</span>
+
+	/**
+	 * This will handle printing of a List of {@link Content}.
+	 * &lt;p&gt;
+	 * The list of Content is basically processed as one of three types of
+	 * content
+	 * &lt;ol&gt;
+	 * &lt;li&gt;Consecutive text-type (Text, CDATA, and EntityRef) content
+	 * &lt;li&gt;Stand-alone text-type content
+	 * &lt;li&gt;Non-text-type content.
+	 * &lt;/ol&gt;
+	 * Although the code looks complex, the theory is conceptually simple:
+	 * &lt;ol&gt;
+	 * &lt;li&gt;identify one of the three types (consecutive, stand-alone, non-text)
+	 * &lt;li&gt;do indent if any is specified.
+	 * &lt;li&gt;send the type to the respective print* handler (e.g.
+	 * {@link #printCDATA(Writer, FormatStack, CDATA)}, or
+	 * {@link #printComment(Writer, FormatStack, Comment)},
+	 * &lt;li&gt;do a newline if one is specified.
+	 * &lt;li&gt;loop back to 1. until there's no more content to process.
+	 * &lt;/ol&gt;
+	 * 
+	 * @param out
+	 *        &lt;code&gt;Writer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param nstack
+	 *        the NamespaceStack
+	 * @param walker
+	 *        {@link Walker} of &lt;code&gt;Content&lt;/code&gt; to write.
+	 * @throws IOException
+	 *         if the destination Writer fails
+	 */
+	protected void printContent(final Writer out,
+			final FormatStack fstack, final NamespaceStack nstack,
+			final Walker walker)
+			throws IOException {
+
+<span class="fc bfc" id="L924" title="All 2 branches covered.">		while (walker.hasNext()) {</span>
+<span class="fc" id="L925">			Content c = walker.next();</span>
+<span class="fc bfc" id="L926" title="All 2 branches covered.">			if (c == null) {</span>
+				// it is a text value of some sort.
+<span class="fc" id="L928">				final String t = walker.text();</span>
+<span class="fc bfc" id="L929" title="All 2 branches covered.">				if (walker.isCDATA()) {</span>
+<span class="fc" id="L930">					textCDATA(out, t);</span>
+				} else {
+<span class="fc" id="L932">					textRaw(out, t);</span>
+				}
+<span class="fc" id="L934">			} else {</span>
+<span class="pc bpc" id="L935" title="2 of 8 branches missed.">				switch(c.getCType()) {</span>
+					case CDATA:
+<span class="fc" id="L937">						printCDATA(out, fstack, (CDATA)c);</span>
+<span class="fc" id="L938">						break;</span>
+					case Comment:
+<span class="fc" id="L940">						printComment(out, fstack, (Comment)c);</span>
+<span class="fc" id="L941">						break;</span>
+					case DocType:
+<span class="nc" id="L943">						printDocType(out, fstack, (DocType)c);</span>
+<span class="nc" id="L944">						break;</span>
+					case Element:
+<span class="fc" id="L946">						printElement(out, fstack, nstack, (Element)c);</span>
+<span class="fc" id="L947">						break;</span>
+					case EntityRef:
+<span class="fc" id="L949">						printEntityRef(out, fstack, (EntityRef)c);</span>
+<span class="fc" id="L950">						break;</span>
+					case ProcessingInstruction:
+<span class="fc" id="L952">						printProcessingInstruction(out, fstack, </span>
+								(ProcessingInstruction)c);
+<span class="fc" id="L954">						break;</span>
+					case Text:
+<span class="fc" id="L956">						printText(out, fstack, (Text)c);</span>
+						break;
+				}
+			}
+<span class="fc" id="L960">		}</span>
+
+<span class="fc" id="L962">	}</span>
+
+	/**
+	 * This will handle printing of any needed &lt;code&gt;{@link Namespace}&lt;/code&gt;
+	 * declarations.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;Writer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        The current FormatStack
+	 * @param ns
+	 *        &lt;code&gt;Namespace&lt;/code&gt; to print definition of
+	 * @throws IOException
+	 *         if the output fails
+	 */
+	protected void printNamespace(final Writer out, final FormatStack fstack, 
+			final Namespace ns)  throws IOException {
+<span class="fc" id="L979">		final String prefix = ns.getPrefix();</span>
+<span class="fc" id="L980">		final String uri = ns.getURI();</span>
+
+<span class="fc" id="L982">		write(out, &quot; xmlns&quot;);</span>
+<span class="fc bfc" id="L983" title="All 2 branches covered.">		if (!prefix.equals(&quot;&quot;)) {</span>
+<span class="fc" id="L984">			write(out, &quot;:&quot;);</span>
+<span class="fc" id="L985">			write(out, prefix);</span>
+		}
+<span class="fc" id="L987">		write(out, &quot;=\&quot;&quot;);</span>
+<span class="fc" id="L988">		attributeEscapedEntitiesFilter(out, fstack, uri);</span>
+<span class="fc" id="L989">		write(out, &quot;\&quot;&quot;);</span>
+<span class="fc" id="L990">	}</span>
+
+	/**
+	 * This will handle printing of an &lt;code&gt;{@link Attribute}&lt;/code&gt;.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;Writer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        The current FormatStack
+	 * @param attribute
+	 *        &lt;code&gt;Attribute&lt;/code&gt; to output
+	 * @throws IOException
+	 *         if the output fails
+	 */
+	protected void printAttribute(final Writer out, final FormatStack fstack,
+			final Attribute attribute) throws IOException {
+
+<span class="fc bfc" id="L1007" title="All 4 branches covered.">		if (!attribute.isSpecified() &amp;&amp; fstack.isSpecifiedAttributesOnly()) {</span>
+<span class="fc" id="L1008">			return;</span>
+		}
+<span class="fc" id="L1010">		write(out, &quot; &quot;);</span>
+<span class="fc" id="L1011">		write(out, attribute.getQualifiedName());</span>
+<span class="fc" id="L1012">		write(out, &quot;=&quot;);</span>
+
+<span class="fc" id="L1014">		write(out, &quot;\&quot;&quot;);</span>
+<span class="fc" id="L1015">		attributeEscapedEntitiesFilter(out, fstack, attribute.getValue());</span>
+<span class="fc" id="L1016">		write(out, &quot;\&quot;&quot;);</span>
+<span class="fc" id="L1017">	}</span>
+	
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

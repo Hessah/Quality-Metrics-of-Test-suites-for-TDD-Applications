@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>XPathFactory.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.xpath</a> &gt; <span class="el_source">XPathFactory.java</span></div><h1>XPathFactory.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.xpath;
+
+import java.util.Collection;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.jdom2.JDOMConstants;
+import org.jdom2.Namespace;
+import org.jdom2.filter.Filter;
+import org.jdom2.filter.Filters;
+import org.jdom2.internal.ReflectionConstructor;
+import org.jdom2.internal.SystemProperty;
+import org.jdom2.xpath.jaxen.JaxenXPathFactory;
+
+/**
+ * XPathFactory allows JDOM users to configure which XPath implementation to use
+ * when evaluating XPath expressions.
+ * &lt;p&gt;
+ * JDOM does not extend the core Java XPath API (javax.xml.xpath.XPath). Instead
+ * it creates a new API that is more JDOM and Java friendly leading to neater
+ * and more understandable code (in a JDOM context).
+ * &lt;p&gt;
+ * A JDOM XPathFactory instance is able to create JDOM XPathExpression instances
+ * that can be used to evaluate XPath expressions against JDOM Content.
+ * &lt;p&gt;
+ * The XPathFactory allows either default or custom XPathFactory instances to be
+ * created. If you use the {@link #newInstance(String)} method then an
+ * XPathFactory of that specific type will be created. If you use the
+ * {@link #instance()} method then a default XPathFactory instance will be
+ * returned.
+ * &lt;p&gt;
+ * Instances of XPathFactory are specified to be thread-safe. You can reuse an
+ * XPathFactory in multiple threads. Instances of XPathExpression are
+ * &lt;strong&gt;NOT&lt;/strong&gt; thread-safe.
+ * 
+ * @since JDOM2
+ * @author Rolf Lear
+ */
+<span class="fc" id="L93">public abstract class XPathFactory {</span>
+
+<span class="fc" id="L95">	private static final Namespace[] EMPTYNS = new Namespace[0];</span>
+
+	/**
+	 * An atomic reference storing an instance of the default XPathFactory.
+	 */
+<span class="fc" id="L100">	private static final AtomicReference&lt;XPathFactory&gt; defaultreference = new AtomicReference&lt;XPathFactory&gt;();</span>
+
+<span class="fc" id="L102">	private static final String DEFAULTFACTORY = SystemProperty.get(</span>
+			JDOMConstants.JDOM2_PROPERTY_XPATH_FACTORY, null);
+
+	/**
+	 * Obtain an instance of an XPathFactory using the default mechanisms to
+	 * determine what XPathFactory implementation to use.
+	 * &lt;p&gt;
+	 * The exact same XPathFactory instance will be returned from each call.
+	 * &lt;p&gt;
+	 * The default mechanism will inspect the system property (only once)
+	 * {@link JDOMConstants#JDOM2_PROPERTY_XPATH_FACTORY} to determine what
+	 * class should be used for the XPathFactory. If that property is not set
+	 * then JDOM will use the {@link JaxenXPathFactory}.
+	 * 
+	 * @return the default XPathFactory instance
+	 */
+	public static final XPathFactory instance() {
+<span class="fc" id="L119">		final XPathFactory ret = defaultreference.get();</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">		if (ret != null) {</span>
+<span class="fc" id="L121">			return ret;</span>
+		}
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">		XPathFactory fac = DEFAULTFACTORY == null ? new JaxenXPathFactory()</span>
+				: newInstance(DEFAULTFACTORY);
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">		if (defaultreference.compareAndSet(null, fac)) {</span>
+<span class="fc" id="L126">			return fac;</span>
+		}
+		// someone else installed a different instance before we added ours.
+		// return that other instance.
+<span class="nc" id="L130">		return defaultreference.get();</span>
+	}
+
+	/**
+	 * Create a new instance of an explicit XPathFactory. A new instance of the
+	 * specified XPathFactory is created each time. The target XPathFactory
+	 * needs to have a no-argument default constructor.
+	 * &lt;p&gt;
+	 * This method is a convenience mechanism only, and JDOM users are free to
+	 * create a custom XPathFactory instance and use a simple: &lt;br&gt;
+	 * &lt;code&gt;   XPathFactory fac = new MyXPathFactory(arg1, arg2, ...)&lt;/code&gt;
+	 * 
+	 * @param factoryclass
+	 *        The name of the XPathFactory class to create.
+	 * @return An XPathFactory of the specified class.
+	 */
+	public static final XPathFactory newInstance(String factoryclass) {
+<span class="fc" id="L147">		return ReflectionConstructor</span>
+				.construct(factoryclass, XPathFactory.class);
+	}
+
+	/**
+	 * Create a Compiled XPathExpression&amp;lt;&amp;gt; instance from this factory. This
+	 * is the only abstract method on this class. All other compile and evaluate
+	 * methods prepare the data in some way to call this compile method.
+	 * &lt;p&gt;
+	 * XPathFactory implementations override this method to implement support
+	 * for the JDOM/XPath API.
+	 * &lt;p&gt;
+	 * &lt;h2&gt;Namespace&lt;/h2&gt; XPath expressions are always namespace aware, and
+	 * expect to be able to resolve prefixes to namespace URIs. In XPath
+	 * expressions the prefix &quot;&quot; always resolves to the empty Namespace URI &quot;&quot;.
+	 * A prefix in an XPath query is expected to resolve to exactly one URI.
+	 * Multiple different prefixes in the expression may resolve to the same
+	 * URI.
+	 * &lt;p&gt;
+	 * This compile method ensures that these XPath/Namespace rules are followed
+	 * and thus this method will throw IllegalArgumentException if:
+	 * &lt;ul&gt;
+	 * &lt;li&gt;a namespace has the empty-string prefix but has a non-empty URI.
+	 * &lt;li&gt;more than one Namespace has any one prefix.
+	 * &lt;/ul&gt;
+	 * &lt;p&gt;
+	 * &lt;h2&gt;Variables&lt;/h2&gt;
+	 * &lt;p&gt;
+	 * Variables are referenced from XPath expressions using a
+	 * &lt;code&gt;$varname&lt;/code&gt; syntax. The variable name may be a Namespace
+	 * qualified variable name of the form &lt;code&gt;$pfx:localname&lt;/code&gt;.
+	 * Variables &lt;code&gt;$pa:var&lt;/code&gt; and &lt;code&gt;$pb:var&lt;/code&gt; are the identical
+	 * variables if the namespace URI for prefix 'pa' is the same URI as for
+	 * prefix 'pb'.
+	 * &lt;p&gt;
+	 * This compile method expects all variable names to be expressed in a
+	 * prefix-qualified format, where all prefixes have to be available in one
+	 * of the specified Namespace instances.
+	 * &lt;p&gt;
+	 * e.g. if you specify a variable name &quot;ns:var&quot; with value &quot;value&quot;, you also
+	 * need to have some namespace provided with the prefix &quot;ns&quot; such as
+	 * &lt;code&gt;Namespace.getNamespace(&quot;ns&quot;, &quot;http://example.com/nsuri&quot;);&lt;/code&gt;
+	 * &lt;p&gt;
+	 * Some XPath libraries allow null variable values (Jaxen), some do not
+	 * (native Java). This compile method will silently convert any null
+	 * Variable value to an empty string &lt;code&gt;&quot;&quot;&lt;/code&gt;.
+	 * &lt;p&gt;
+	 * Variables are provided in the form of a Map where the key is the variable
+	 * name and the mapped value is the variable value. If the entire map is
+	 * null then the compile Method assumes there are no variables.
+	 * &lt;p&gt;
+	 * In light of the above, this compile method will throw an
+	 * IllegalArgumentException if:
+	 * &lt;ul&gt;
+	 * &lt;li&gt;a variable name is not a valid XML QName.
+	 * &lt;li&gt;The prefix associated with a variable name is not available as a
+	 * Namespace.
+	 * &lt;/ul&gt;
+	 * A NullPointerException will be thrown if the map contains a null variable
+	 * name
+	 * 
+	 * @param &lt;T&gt;
+	 *        The generic type of the results that the XPathExpression will
+	 *        produce.
+	 * @param expression
+	 *        The XPath expression.
+	 * @param filter
+	 *        The Filter that is used to coerce the xpath result data in to the
+	 *        generic-typed results.
+	 * @param variables
+	 *        Any variable values that may be referenced from the query. A null
+	 *        value indicates that there are no variables.
+	 * @param namespaces
+	 *        Any namespaces that may be referenced from the query
+	 * @return an XPathExpression&amp;lt;&amp;gt; instance.
+	 * @throws NullPointerException
+	 *         if the query, filter, any namespace, any variable name or any
+	 *         variable value is null (although the entire variables value may
+	 *         be null).
+	 * @throws IllegalArgumentException
+	 *         if any two Namespace values share the same prefix, or if there is
+	 *         any other reason that the XPath query cannot be compiled.
+	 */
+	public abstract &lt;T&gt; XPathExpression&lt;T&gt; compile(String expression,
+			Filter&lt;T&gt; filter, Map&lt;String, Object&gt; variables,
+			Namespace... namespaces);
+
+	/**
+	 * Create a XPathExpression&amp;lt;&amp;gt; instance from this factory.
+	 * 
+	 * @param &lt;T&gt;
+	 *        The generic type of the results that the XPathExpression will
+	 *        produce.
+	 * @param expression
+	 *        The XPath expression.
+	 * @param filter
+	 *        The Filter that is used to coerce the xpath result data in to the
+	 *        generic-typed results.
+	 * @param variables
+	 *        Any variable values that may be referenced from the query. A null
+	 *        value indicates that there are no variables.
+	 * @param namespaces
+	 *        List of all namespaces that may be referenced from the query
+	 * @return an XPathExpression&amp;lt;T&amp;gt; instance.
+	 * @throws NullPointerException
+	 *         if the query, filter, namespaces, any variable name or any
+	 *         variable value is null (although the entire variables value may
+	 *         be null).
+	 * @throws IllegalArgumentException
+	 *         if any two Namespace values share the same prefix, or if there is
+	 *         any other reason that the XPath query cannot be compiled.
+	 */
+	public &lt;T&gt; XPathExpression&lt;T&gt; compile(String expression, Filter&lt;T&gt; filter,
+			Map&lt;String, Object&gt; variables, Collection&lt;Namespace&gt; namespaces) {
+<span class="fc" id="L261">		return compile(expression, filter, variables, namespaces.toArray(EMPTYNS));</span>
+	}
+
+	/**
+	 * Create a XPathExpression&amp;lt;T&amp;gt; instance from this factory.
+	 * 
+	 * @param &lt;T&gt;
+	 *        The generic type of the results that the XPathExpression will
+	 *        produce.
+	 * @param expression
+	 *        The XPath expression.
+	 * @param filter
+	 *        The Filter that is used to coerce the xpath result data in to the
+	 *        generic-typed results.
+	 * @return an XPathExpression&amp;lt;T&amp;gt; instance.
+	 * @throws NullPointerException
+	 *         if the query or filter is null
+	 * @throws IllegalArgumentException
+	 *         if there is any reason that the XPath query cannot be compiled.
+	 */
+	public &lt;T&gt; XPathExpression&lt;T&gt; compile(String expression, Filter&lt;T&gt; filter) {
+<span class="fc" id="L282">		return compile(expression, filter, null, EMPTYNS);</span>
+	}
+
+	/**
+	 * Create a XPathExpression&amp;lt;Object&amp;gt; instance from this factory.
+	 * 
+	 * @param expression
+	 *        The XPath expression.
+	 * @return an XPathExpression&amp;lt;Object&amp;gt; instance.
+	 * @throws NullPointerException
+	 *         if the query or filter is null
+	 * @throws IllegalArgumentException
+	 *         if there is any reason that the XPath query cannot be compiled.
+	 */
+	public XPathExpression&lt;Object&gt; compile(String expression) {
+<span class="fc" id="L297">		return compile(expression, Filters.fpassthrough(), null, EMPTYNS);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

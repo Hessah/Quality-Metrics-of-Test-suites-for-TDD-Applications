@@ -1,0 +1,604 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>AbstractFormattedWalker.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jdom</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.output.support</a> &gt; <span class="el_source">AbstractFormattedWalker.java</span></div><h1>AbstractFormattedWalker.java</h1><pre class="source lang-java linenums">/*-- 
+
+ Copyright (C) 2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in mtsource and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of mtsource code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows 
+    these conditions in the documentation and/or other materials 
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the 
+ end-user documentation provided with the redistribution and/or in the 
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos 
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many 
+ individuals on behalf of the JDOM Project and was originally 
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.output.support;
+
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+
+import org.jdom2.CDATA;
+import org.jdom2.Content;
+import org.jdom2.internal.ArrayCopy;
+import org.jdom2.output.EscapeStrategy;
+import org.jdom2.output.Format;
+
+/**
+ * This Walker implementation walks a list of Content in a Formatted form of
+ * some sort.
+ * &lt;p&gt;
+ * The JDOM content can be loosely categorised in to 'Text-like' content
+ * (consisting of Text, CDATA, and EntityRef), and everything else. This
+ * distinction is significant for for this class and it's sub-classes.
+ * &lt;p&gt;
+ * There will be text manipulation, and some (but not necessarily 
+ * all) Text-like content will be returned as text() instead of next().
+ * &lt;p&gt;
+ * The trick in this class is that it deals with the regular content, and
+ * delegates the Text-like content to the sub-classes.
+ * &lt;p&gt;
+ * Subclasses are tasked with analysing chunks of Text-like content in the
+ * {@link #analyzeMultiText(MultiText, int, int)}  method. The subclasses are
+ * responsible for adding the relevant text content to the suppliedMultiText
+ * instance in such a way as to result in the correct format.
+ * &lt;p&gt;
+ * The Subclass needs to concern itself with only the text portion because this
+ * abstract class will ensure the Text-like content is appropriately indented.
+ * 
+ * @author Rolf Lear
+ */
+public abstract class AbstractFormattedWalker implements Walker {
+	
+	/*
+	 * We use Text instances to return formatted text to the caller.
+	 * We do not need to validate the Text content... it is 'safe' to
+	 * not use the default Text class.
+	 */
+<span class="fc" id="L98">	private static final CDATA CDATATOKEN = new CDATA(&quot;&quot;);</span>
+	
+	/**
+	 * Indicate how text content should be added
+	 * @author Rolf Lear
+	 *
+	 */
+<span class="pc" id="L105">	protected enum Trim {</span>
+		/** Left Trim */
+<span class="fc" id="L107">		LEFT,</span>
+		/** Right Trim */
+<span class="fc" id="L109">		RIGHT,</span>
+		/** Both Trim */
+<span class="fc" id="L111">		BOTH,</span>
+		/** Trim Both and replace all internal whitespace with a single space*/
+<span class="fc" id="L113">		COMPACT,</span>
+		/** No Trimming at all */
+<span class="fc" id="L115">		NONE</span>
+	}
+	
+<span class="fc" id="L118">	private static final Iterator&lt;Content&gt; EMPTYIT = new Iterator&lt;Content&gt;() {</span>
+		@Override
+		public boolean hasNext() {
+<span class="fc" id="L121">			return false;</span>
+		}
+
+		@Override
+		public Content next() {
+<span class="nc" id="L126">			throw new NoSuchElementException(&quot;Cannot call next() on an empty iterator.&quot;);</span>
+		}
+
+		@Override
+		public void remove() {
+<span class="nc" id="L131">			throw new UnsupportedOperationException(&quot;Cannot remove from an empty iterator.&quot;);</span>
+		}
+	};
+	
+	/**
+	 * Collect together the items that constitute formatted Text-like content.
+	 * 
+	 * @author Rolf Lear
+	 *
+	 */
+	protected final class MultiText {
+		
+		
+		/**
+		 * This is private so only this abstract class can create instances.
+		 */
+<span class="fc" id="L147">		private MultiText() {</span>
+<span class="fc" id="L148">		}</span>
+		
+		/**
+		 * Ensure we have space for at least one more text-like item.
+		 */
+		private void ensurespace() {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">			if (mtsize &gt;= mtdata.length) {</span>
+<span class="fc" id="L155">				mtdata = ArrayCopy.copyOf(mtdata, mtsize + 1 + (mtsize / 2));</span>
+<span class="fc" id="L156">				mttext = ArrayCopy.copyOf(mttext, mtdata.length);</span>
+			}
+<span class="fc" id="L158">		}</span>
+		
+		/**
+		 * Handle the case where we have been accumulating true text content,
+		 * and the next item is not more text.
+		 * @param postspace true if the last char in the text should be a space
+		 */
+		private void closeText() {
+<span class="fc bfc" id="L166" title="All 2 branches covered.">			if (mtbuffer.length() == 0) {</span>
+				// empty text does not need adding at all.
+<span class="fc" id="L168">				return;</span>
+			}
+<span class="fc" id="L170">			ensurespace();</span>
+<span class="fc" id="L171">			mtdata[mtsize] = null;</span>
+<span class="fc" id="L172">			mttext[mtsize++] = mtbuffer.toString();</span>
+<span class="fc" id="L173">			mtbuffer.setLength(0);</span>
+<span class="fc" id="L174">		}</span>
+		
+		/**
+		 * Append some text to the text-like sequence that will be treated as
+		 * plain XML text (PCDATA). If the last content added to this text-like
+		 * sequence then this new text will be appended directly to the previous
+		 * text.
+		 * 
+		 * @param trim How to prepare the Text content
+		 * @param text The actual Text content.
+		 */
+		public void appendText(final Trim trim, final String text) {
+<span class="fc" id="L186">			final int tlen = text.length();</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">			if (tlen == 0) {</span>
+<span class="fc" id="L188">				return;</span>
+			}
+<span class="fc" id="L190">			String toadd = null;</span>
+<span class="pc bpc" id="L191" title="1 of 6 branches missed.">			switch (trim) {</span>
+				case NONE:
+<span class="fc" id="L193">					toadd = text;</span>
+<span class="fc" id="L194">					break;</span>
+				case BOTH:
+<span class="fc" id="L196">					toadd = Format.trimBoth(text);</span>
+<span class="fc" id="L197">					break;</span>
+				case LEFT:
+<span class="fc" id="L199">					toadd = Format.trimLeft(text);</span>
+<span class="fc" id="L200">					break;</span>
+				case RIGHT:
+<span class="fc" id="L202">					toadd = Format.trimRight(text);</span>
+<span class="fc" id="L203">					break;</span>
+				case COMPACT:
+<span class="fc" id="L205">					toadd = Format.compact(text);</span>
+					break;
+			}
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">			if (toadd != null) {</span>
+<span class="fc" id="L209">				toadd = escapeText(toadd);</span>
+<span class="fc" id="L210">				mtbuffer.append(toadd);</span>
+<span class="fc" id="L211">				mtgottext = true;</span>
+			}
+<span class="fc" id="L213">		}</span>
+		
+		private String escapeText(final String text) {
+<span class="fc bfc" id="L216" title="All 4 branches covered.">			if (escape == null || !fstack.getEscapeOutput()) {</span>
+<span class="fc" id="L217">				return text;</span>
+			}
+<span class="fc" id="L219">			return Format.escapeText(escape, endofline, text);</span>
+		}
+
+		private String escapeCDATA(final String text) {
+<span class="fc bfc" id="L223" title="All 2 branches covered.">			if (escape == null) {</span>
+<span class="fc" id="L224">				return text;</span>
+			}
+<span class="fc" id="L226">			return text;</span>
+		}
+		/**
+		 * Append some text to the text-like sequence that will be treated as
+		 * CDATA.
+		 * @param trim How to prepare the CDATA content
+		 * @param text The actual CDATA content.
+		 */
+		public void appendCDATA(final Trim trim, final String text) {
+			// this resets the mtbuffer too.
+<span class="fc" id="L236">			closeText();</span>
+<span class="fc" id="L237">			String toadd = null;</span>
+<span class="pc bpc" id="L238" title="1 of 6 branches missed.">			switch (trim) {</span>
+				case NONE:
+<span class="fc" id="L240">					toadd = text;</span>
+<span class="fc" id="L241">					break;</span>
+				case BOTH:
+<span class="fc" id="L243">					toadd = Format.trimBoth(text);</span>
+<span class="fc" id="L244">					break;</span>
+				case LEFT:
+<span class="fc" id="L246">					toadd = Format.trimLeft(text);</span>
+<span class="fc" id="L247">					break;</span>
+				case RIGHT:
+<span class="fc" id="L249">					toadd = Format.trimRight(text);</span>
+<span class="fc" id="L250">					break;</span>
+				case COMPACT:
+<span class="fc" id="L252">					toadd = Format.compact(text);</span>
+					break;
+			}
+			
+<span class="fc" id="L256">			toadd = escapeCDATA(toadd);</span>
+<span class="fc" id="L257">			ensurespace();</span>
+			// mark this as being CDATA text
+<span class="fc" id="L259">			mtdata[mtsize] = CDATATOKEN;</span>
+<span class="fc" id="L260">			mttext[mtsize++] = toadd;</span>
+
+<span class="fc" id="L262">			mtgottext = true;</span>
+
+<span class="fc" id="L264">		}</span>
+		
+		/**
+		 * Simple method that ensures the text is processed, regardless of
+		 * content, and is never escaped.
+		 * @param text
+		 */
+		private void forceAppend(final String text) {
+<span class="fc" id="L272">			mtgottext = true;</span>
+<span class="fc" id="L273">			mtbuffer.append(text);</span>
+<span class="fc" id="L274">		}</span>
+		
+		/**
+		 * Add some JDOM Content (typically an EntityRef) that will be treated
+		 * as part of the Text-like sequence.
+		 * @param c the content to add.
+		 */
+		public void appendRaw(final Content c) {
+<span class="fc" id="L282">			closeText();</span>
+<span class="fc" id="L283">			ensurespace();</span>
+<span class="fc" id="L284">			mttext[mtsize] = null;</span>
+<span class="fc" id="L285">			mtdata[mtsize++] = c;</span>
+<span class="fc" id="L286">			mtbuffer.setLength(0);</span>
+
+<span class="fc" id="L288">		}</span>
+		
+		/**
+		 * Indicate that there is no further content to be added to the
+		 * text-like sequence.
+		 */
+		public void done() {
+<span class="fc bfc" id="L295" title="All 4 branches covered.">			if (mtpostpad &amp;&amp; newlineindent != null) {</span>
+				// this will be ignored if there was not some content.
+<span class="fc" id="L297">				mtbuffer.append(newlineindent);</span>
+			}
+<span class="fc bfc" id="L299" title="All 2 branches covered.">			if (mtgottext) {</span>
+<span class="fc" id="L300">				closeText();</span>
+			}
+<span class="fc" id="L302">			mtbuffer.setLength(0);</span>
+<span class="fc" id="L303">		}</span>
+
+	}
+	
+	
+	
+	
+<span class="fc" id="L310">	private Content pending = null;</span>
+	private final Iterator&lt;? extends Content&gt; content;
+	private final boolean alltext;
+	private final boolean allwhite;
+	private final String newlineindent;
+	private final String endofline;
+	private final EscapeStrategy escape;
+	private final FormatStack fstack;
+<span class="fc" id="L318">	private boolean hasnext = true;</span>
+
+	
+	// MultiText handling changed in 2.0.5
+	// MultiText is something quite complicated, but it goes something like this:
+	// XML Content is either text-like, or its not. If we encounter text-like content
+	// then we find out how many text-like contents are in a row, and we add them to a
+	// multi-text. We then either get to the end of the content, or a non-text content.
+	// If we complete the multitext, we then move on to the non-text item, and we set multitext
+	// to null. Both multitect and pendingmt are thus null.
+	// If the content following the non-text is then text-like, we populate pendingmt.
+	// bottom line is that multitext and pendingmt can never both be set.
+	// we use one set of variables to back up both of them. This is fast, and safe in a single
+	// threaded environment (which the Walkers are guaranteed to be in).
+	// all MultiText-specific variables have the names mt*
+<span class="fc" id="L333">	private MultiText multitext = null;</span>
+<span class="fc" id="L334">	private MultiText pendingmt = null;</span>
+<span class="fc" id="L335">	private final MultiText holdingmt = new MultiText();</span>
+	
+<span class="fc" id="L337">	private final StringBuilder mtbuffer = new StringBuilder();</span>
+	// if there should be indenting after this text.
+	private boolean mtpostpad;
+	// indicate whether there is something actually added.
+<span class="fc" id="L341">	private boolean mtgottext = false;</span>
+	// the number of mixed content values.
+<span class="fc" id="L343">	private int mtsize = 0;</span>
+<span class="fc" id="L344">	private int mtsourcesize = 0;</span>
+<span class="fc" id="L345">	private Content[] mtsource = new Content[8];</span>
+	// the location of the processed content.
+<span class="fc" id="L347">	private Content[] mtdata = new Content[8];</span>
+	// whether the mixed content should be returned as raw JDOM objects
+<span class="fc" id="L349">	private String[] mttext = new String[8];</span>
+	
+	// the current cursor in the mixed content.
+<span class="fc" id="L352">	private int mtpos = -1;</span>
+	// we cheat here by using Boolean as a three-state option...
+	// we expect it to be null often.
+	private Boolean mtwasescape;
+
+	/**
+	 * Create a Walker that preserves all content in its raw state.
+	 * @param xx the content to walk.
+	 * @param fstack the current FormatStack
+	 * @param doescape Whether Text values should be escaped.
+	 */
+	public AbstractFormattedWalker(final List&lt;? extends Content&gt; xx,
+			final FormatStack fstack, final boolean doescape) {
+<span class="fc" id="L365">		super();</span>
+<span class="fc" id="L366">		this.fstack = fstack;</span>
+<span class="fc bfc" id="L367" title="All 2 branches covered.">		this.content = xx.isEmpty() ? EMPTYIT : xx.iterator();</span>
+<span class="fc bfc" id="L368" title="All 2 branches covered.">		this.escape = doescape ? fstack.getEscapeStrategy() : null;</span>
+<span class="fc" id="L369">		newlineindent = fstack.getPadBetween();</span>
+<span class="fc" id="L370">		endofline = fstack.getLevelEOL();</span>
+<span class="fc bfc" id="L371" title="All 2 branches covered.">		if (!content.hasNext()) {</span>
+<span class="fc" id="L372">			alltext = true;</span>
+<span class="fc" id="L373">			allwhite = true;</span>
+		} else {
+<span class="fc" id="L375">			boolean atext = false;</span>
+<span class="fc" id="L376">			boolean awhite = false;</span>
+<span class="fc" id="L377">			pending = content.next();</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">			if (isTextLike(pending)) {</span>
+				// the first item in the list is Text-like, and we pre-check
+				// to see whether all content is text.... and whether it amounts
+				// to something.
+<span class="fc" id="L382">				pendingmt = buildMultiText(true);</span>
+<span class="fc" id="L383">				analyzeMultiText(pendingmt, 0, mtsourcesize);</span>
+<span class="fc" id="L384">				pendingmt.done();</span>
+
+<span class="fc bfc" id="L386" title="All 2 branches covered.">				if (pending == null) {</span>
+<span class="fc" id="L387">					atext = true;</span>
+<span class="fc bfc" id="L388" title="All 2 branches covered.">					awhite = mtsize == 0;</span>
+				}
+<span class="fc bfc" id="L390" title="All 2 branches covered.">				if (mtsize == 0) {</span>
+					// first content in list is ignorable.
+<span class="fc" id="L392">					pendingmt = null;</span>
+				}
+			}
+<span class="fc" id="L395">			alltext = atext;</span>
+<span class="fc" id="L396">			allwhite = awhite;</span>
+		}
+<span class="fc bfc" id="L398" title="All 4 branches covered.">		hasnext = pendingmt != null || pending != null;</span>
+<span class="fc" id="L399">	}</span>
+
+	@Override
+	public final Content next() {
+		
+<span class="pc bpc" id="L404" title="1 of 2 branches missed.">		if (!hasnext) {</span>
+<span class="nc" id="L405">			throw new NoSuchElementException(&quot;Cannot walk off end of Content&quot;);</span>
+		}
+		
+<span class="fc bfc" id="L408" title="All 4 branches covered.">		if (multitext != null &amp;&amp; mtpos + 1 &gt;= mtsize) {</span>
+			// finished this multitext. need to move on.
+<span class="fc" id="L410">			multitext = null;</span>
+<span class="fc" id="L411">			resetMultiText();</span>
+		}
+<span class="fc bfc" id="L413" title="All 2 branches covered.">		if (pendingmt != null) {</span>
+			// we have a multi-text pending from the last block
+			// this will only be the case when the previous value was non-text.
+<span class="fc bfc" id="L416" title="All 4 branches covered.">			if (mtwasescape != null &amp;&amp; </span>
+					fstack.getEscapeOutput() != mtwasescape.booleanValue()) {
+				// we calculated pending with one escape strategy, but it changed...
+				// we need to recalculate it....
+
+<span class="fc" id="L421">				mtsize = 0;</span>
+<span class="fc" id="L422">				mtwasescape = fstack.getEscapeOutput();</span>
+<span class="fc" id="L423">				analyzeMultiText(pendingmt, 0, mtsourcesize);</span>
+<span class="fc" id="L424">				pendingmt.done();</span>
+			}
+<span class="fc" id="L426">			multitext = pendingmt;</span>
+<span class="fc" id="L427">			pendingmt = null;</span>
+		}
+		
+<span class="fc bfc" id="L430" title="All 2 branches covered.">		if (multitext != null) {</span>
+			
+			// OK, we have text-like content to push back.
+			// and it still has values in it.
+			// advance the cursor
+<span class="fc" id="L435">			mtpos++;</span>
+			
+<span class="fc bfc" id="L437" title="All 2 branches covered.">			final Content ret = mttext[mtpos] == null</span>
+					? mtdata[mtpos] : null;
+
+			
+			// we can calculate the hasnext
+<span class="fc bfc" id="L442" title="All 4 branches covered.">			hasnext = mtpos + 1 &lt; mtsize || </span>
+					pending != null;
+			
+			// return null to indicate text content.
+<span class="fc" id="L446">			return ret;</span>
+		}
+		
+		// non-text, increment and return content.
+<span class="fc" id="L450">		final Content ret = pending;</span>
+<span class="fc bfc" id="L451" title="All 2 branches covered.">		pending = content.hasNext() ? content.next() : null;</span>
+		
+		// OK, we are returning some content.
+		// we need to determine the state of the next loop.
+		// cursor at this point has been advanced!
+<span class="fc bfc" id="L456" title="All 2 branches covered.">		if (pending == null) {</span>
+<span class="fc" id="L457">			hasnext = false;</span>
+		} else {
+			// there is some more content.
+			// we need to inspect it to determine whether it is good
+<span class="fc bfc" id="L461" title="All 2 branches covered.">			if (isTextLike(pending)) {</span>
+				// calculate what this next text-like content looks like.
+<span class="fc" id="L463">				pendingmt = buildMultiText(false);</span>
+<span class="fc" id="L464">				analyzeMultiText(pendingmt, 0, mtsourcesize);</span>
+<span class="fc" id="L465">				pendingmt.done();</span>
+
+<span class="fc bfc" id="L467" title="All 2 branches covered.">				if (mtsize &gt; 0) {</span>
+<span class="fc" id="L468">					hasnext = true;</span>
+				} else {
+					// all white text... perhaps we need indenting anyway.
+					// buildMultiText has moved on the pending value....
+<span class="fc bfc" id="L472" title="All 4 branches covered.">					if (pending != null &amp;&amp; newlineindent != null) {</span>
+						// yes, we need indenting.
+						// redefine the pending.
+<span class="fc" id="L475">						resetMultiText();</span>
+<span class="fc" id="L476">						pendingmt = holdingmt;</span>
+<span class="fc" id="L477">						pendingmt.forceAppend(newlineindent);</span>
+<span class="fc" id="L478">						pendingmt.done();</span>
+<span class="fc" id="L479">						hasnext = true;</span>
+					} else {
+<span class="fc" id="L481">						pendingmt = null;</span>
+<span class="fc bfc" id="L482" title="All 2 branches covered.">						hasnext = pending != null;</span>
+					}
+				}
+			} else {
+				// it is non-text content... we have more content.
+				// but, we just returned non-text content. We may need to indent
+<span class="fc bfc" id="L488" title="All 2 branches covered.">				if (newlineindent != null) {</span>
+<span class="fc" id="L489">					resetMultiText();</span>
+<span class="fc" id="L490">					pendingmt = holdingmt;</span>
+<span class="fc" id="L491">					pendingmt.forceAppend(newlineindent);</span>
+<span class="fc" id="L492">					pendingmt.done();</span>
+				}
+<span class="fc" id="L494">				hasnext = true;</span>
+			}
+		}
+<span class="fc" id="L497">		return ret;</span>
+	}
+
+	private void resetMultiText() {
+<span class="fc" id="L501">		mtsourcesize = 0;</span>
+<span class="fc" id="L502">		mtpos = -1;</span>
+<span class="fc" id="L503">		mtsize = 0;</span>
+<span class="fc" id="L504">		mtgottext = false;</span>
+<span class="fc" id="L505">		mtpostpad = false;</span>
+<span class="fc" id="L506">		mtwasescape = null;</span>
+<span class="fc" id="L507">		mtbuffer.setLength(0);</span>
+<span class="fc" id="L508">	}</span>
+
+	/**
+	 * Add the content at the specified indices to the provided MultiText.
+	 * @param mtext the MultiText to append to.
+	 * @param offset The first Text-like content to add to the MultiText
+	 * @param len The number of Text-like content items to add. 
+	 */
+	protected abstract void analyzeMultiText(MultiText mtext, int offset, int len);
+
+	/**
+	 * Get the content at a position in the input content. Useful for subclasses
+	 * in their {@link #analyzeMultiText(MultiText, int, int)} calls.
+	 * @param index the index to get the content at.
+	 * @return the content at the index.
+	 */
+	protected final Content get(final int index) {
+<span class="fc" id="L525">		return mtsource[index];</span>
+	}
+	
+	@Override
+	public final boolean isAllText() {
+<span class="fc" id="L530">		return alltext;</span>
+	}
+	
+	@Override
+	public final boolean hasNext() {
+<span class="fc" id="L535">		return hasnext;</span>
+	}
+
+	/**
+	 * This method was changed in 2.0.5
+	 * It now is only called when building the content of the variable pendingmt
+	 * This is important, because only pendingmt can be referenced when analyzing
+	 * the MultiText content.
+	 * @param first
+	 * @return
+	 */
+	private final MultiText buildMultiText(final boolean first) {
+		// set up a sequence where the next bunch of stuff is text.
+<span class="fc bfc" id="L548" title="All 4 branches covered.">		if (!first &amp;&amp; newlineindent != null) {</span>
+<span class="fc" id="L549">			mtbuffer.append(newlineindent);</span>
+		}
+<span class="fc" id="L551">		mtsourcesize = 0;</span>
+		do {
+<span class="fc bfc" id="L553" title="All 2 branches covered.">			if (mtsourcesize &gt;= mtsource.length) {</span>
+<span class="fc" id="L554">				mtsource = ArrayCopy.copyOf(mtsource, mtsource.length * 2);</span>
+			}
+<span class="fc" id="L556">			mtsource[mtsourcesize++] = pending;</span>
+<span class="fc bfc" id="L557" title="All 2 branches covered.">			pending = content.hasNext() ? content.next() : null;</span>
+<span class="fc bfc" id="L558" title="All 4 branches covered.">		} while (pending != null &amp;&amp; isTextLike(pending));</span>
+		
+<span class="fc bfc" id="L560" title="All 2 branches covered.">		mtpostpad = pending != null;</span>
+<span class="fc" id="L561">		mtwasescape = fstack.getEscapeOutput();</span>
+<span class="fc" id="L562">		return holdingmt;</span>
+	}
+
+	@Override
+	public final String text() {
+<span class="pc bpc" id="L567" title="2 of 4 branches missed.">		if (multitext == null || mtpos &gt;= mtsize) {</span>
+<span class="nc" id="L568">			return null;</span>
+		}
+<span class="fc" id="L570">		return mttext[mtpos];</span>
+	}
+
+	@Override
+	public final boolean isCDATA() {
+<span class="pc bpc" id="L575" title="2 of 4 branches missed.">		if (multitext == null || mtpos &gt;= mtsize) {</span>
+<span class="nc" id="L576">			return false;</span>
+		}
+<span class="pc bpc" id="L578" title="1 of 2 branches missed.">		if (mttext[mtpos] == null) {</span>
+<span class="nc" id="L579">			return false;</span>
+		}
+		
+<span class="fc bfc" id="L582" title="All 2 branches covered.">		return mtdata[mtpos] == CDATATOKEN;</span>
+	}
+
+	@Override
+	public final boolean isAllWhitespace() {
+<span class="nc" id="L587">		return allwhite;</span>
+	}
+
+	private final boolean isTextLike(final Content c) {
+<span class="pc bfc" id="L591" title="All 2 branches covered.">		switch (c.getCType()) {</span>
+			case Text:
+			case CDATA:
+			case EntityRef:
+<span class="fc" id="L595">				return true;</span>
+			default:
+				// nothing.
+		}
+<span class="fc" id="L599">		return false;</span>
+	}
+
+	
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

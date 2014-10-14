@@ -218,11 +218,11 @@
 
 <!-- I modified this (added) -->
 
-		  <macrodef name="copy-run-local-tests">
+		  <macrodef name="copy1-from-run-local-tests">
 		    <!-- Runs the tests against the local class files -->
 		    <sequential>
-			<mkdir dir="jacocoReport" />
-			<jacoco:coverage destfile="jacocoReport/jacoco.exec">
+		     <mkdir dir="jacocoReport"/>
+		     <jacoco:coverage destfile="jacocoReport/jacoco.exec">
 		      <java classname="org.junit.runner.JUnitCore" fork="true" failonerror="true">
 			<arg value="org.junit.tests.AllTests"/>
 			<classpath>
@@ -235,10 +235,10 @@
 		    </sequential>
 		  </macrodef>
 
-		  <target name="copy-test" depends="build">
-			<copy-run-local-tests />
+		  <target name="test1" depends="build" description="1.Runs the tests against the local class files 2.calculate coverage">
+			<copy1-from-run-local-tests />
 		  </target>
-		<!-- coverage of the obove cause 3 failure !! -->
+		<!-- coverage of the obove cause 3 failure !! ( this runs the test using "java" task) -->
 
 			<path id="build.libs">
 		    	<fileset dir="lib">
@@ -246,35 +246,88 @@
 		    	</fileset>
 			</path>
 		 
-			<target name="test.junit-task" depends="build">
+			<target name="test2">
 		     <mkdir dir="jacocoReport" />
+			<!-- Runs the tests against the local class files -->
 		     <jacoco:coverage destfile="jacocoReport/jacoco.exec">
-			    <junit  showOutput="true" printsummary="true" fork="yes" forkmode="once" haltonerror="true" failureproperty="tests.failed">
-				<formatter type="plain" usefile="false" />
+			    <junit  showOutput="false" printsummary="true" fork="yes" forkmode="once" haltonerror="true" haltonfailure="true">
+
+				<!--<formatter type="plain" usefile="true" />-->
+
 				<classpath>
 				  <pathelement location="${bin}" />
 				  <pathelement location="${testbin}" />
 				  <pathelement location="${hamcrestlib}" />
 				</classpath>
-				<!--<classpath refid="build.libs"/>-->
-				<!--<test name="org.junit.tests.AllTests"/>-->
+
+				<!-- attempt1: -->
+				<!--<test name="org.junit.tests.AllTests"/> -->
+				<!--build successful, Tests run: 620, Failures: 0, Errors: 0 -->
+				<!--BUT when it is warped with the jacoco coverage task, Tests run: 620, Failures: 3, Errors: 0 !-->
+
+				<!-- attempt2: -->
 				<!--<batchtest fork="true">
 					<fileset dir="${testsrc}">
 						<include name="org/junit/tests/AllTests.java"/>
 					</fileset>
-				</batchtest>-->
+				</batchtest> -->
+				<!--build successful, Tests run: 620, Failures: 0, Errors: 0 -->
+				<!--BUT when it is warped with the jacoco coverage task, Tests run: 620, Failures: 3, Errors: 0 !-->
+
+				<!-- attempt3: -->
+				<!--attempt to break down AllTest suite -->
 				<batchtest fork="true">
 					<fileset dir="${testsrc}">
-						<include name="org/junit/tests/*Test.java"/>
-						<include name="org/junit/tests/*Tests.java"/>
+						<include name="org/junit/tests/**/*Test.java"/>
+						<include name="org/junit/tests/**/*Tests.java"/>
+						<include name="org/junit/internal/**/*Test.java"/> 
+
+						<exclude name="org/junit/tests/**/AllTests.java"/> <!-- all the tests in AllTest is already breaded down and included -->
+						<exclude name="org/junit/tests/experimental/rules/TestWatchmanTest.java"/> <!-- it was not in AllTest suite -->
 					</fileset>
 				</batchtest>
-			    </junit>
-		     </jacoco:coverage>
-		  </target>
-		<!-- Also coverage of the obove cause 3 failure !! using all the possible solutions-->
+				<!--
+				[junit] TEST org.junit.internal.MethodSorterTest FAILED. Tests run: 4, Failures: 3, Errors: 0
+				Coverage report: 298 of 1,215 (75%) branch, 3,848 of 17,039 (77%) instruction-->
+				<!-- Then, I changes the MethodSorterTest file based on a solution #555 for issue reported for junit team #551 regarding 					MethodSorterTest: https://github.com/junit-team/junit/pull/555 -->
 
-		<target name="jacoco.report" depends="test.junit-task">
+				<!--FIXED!
+				build successful for attempt1, attempt2 and attempt3, 
+				All tests run. No FAILED tests 
+				coverage report: 305 of 1,215 (75%) branch, 3,897 of 17,039 (77%) instruction -->
+
+			    </junit>
+		    </jacoco:coverage>
+		  </target>
+		<!-- Also coverage of the obove cause 3 failure !! using all the possible solutions ( this runs the test using "junit" task)-->
+
+		<!-- No way to integrate jacoco to junit source and get the correct coverage data. Otherwise it reported 75% branch coverage-->
+		<!-- let's try jacoco agent -->
+
+		<macrodef name="copy2-from-run-local-tests">
+		    <!-- Runs the tests against the local class files (using java) & calculate coverage using (jacoco agnet)-->
+		    <!-- not completed! no need -->
+		    <sequential>
+		     <mkdir dir="jacocoReport" />
+		      <java classname="org.junit.runner.JUnitCore" fork="true" failonerror="true">
+			<jacoco:agent property="agentvmparam" destfile="jacocoReport/jacoco.exec" includes="*" output="file" dumponexit="true" />
+			<arg value="org.junit.tests.AllTests"/>
+			<classpath>
+			  <pathelement location="${bin}" />
+			  <pathelement location="${testbin}" />
+			  <pathelement location="${hamcrestlib}" />
+			</classpath>
+		      </java>  
+		    </sequential>
+		  </macrodef>
+
+		  <target name="test3" depends="build">
+			<copy2-from-run-local-tests />
+		  </target>
+
+                <!--- test2 is the correct one that Runs the tests against the local class files and calculate coverage -->
+ 
+		<target name="jacoco.report" depends="test2">
 			  <jacoco:report>               
 				<executiondata>
 				    <file file="jacocoReport/jacoco.exec"/>
@@ -293,30 +346,39 @@
 				<csv destfile="jacocoReport/site/jacoco/report.csv"/>
 			  </jacoco:report>
 		</target>
-		<!-- No way to integrate jacoco to junit source and get the correct coverage data. Otherwise it reported 75% branch coverage-->
+
 		
 		<target name="mutation-test">
-		  <junit failureproperty="tests.failed"
-			 printsummary="false"
-			 showoutput="false"
+		  <junit printsummary="false" showoutput="false" haltonerror="false" haltonfailure="false"
 			 mutationAnalysis="true"
 			 resultFile="results.csv"
 			 killDetailsFile="killed.csv">
+
 			<classpath>
 			  <pathelement location="${bin}" />
 			  <pathelement location="${testbin}" />
 			  <pathelement location="${hamcrestlib}" />
 			</classpath>
+			
+			<!-- attempt 1 -->
 			<!--<test name="org.junit.tests.AllTests"/>-->
+
+			<!-- attempt 2 -->
 			<!--<batchtest fork="no">
 				<fileset dir="${testsrc}">
 					<include name="org/junit/tests/AllTests.java"/>
 				</fileset>
 			</batchtest>-->
-			<batchtest>
+
+			<!-- attempt 3 -->
+			<batchtest fork="false">
 				<fileset dir="${testsrc}">
-					<include name="org/junit/tests/*Test.java"/>
-					<include name="org/junit/tests/*Tests.java"/>
+					<include name="org/junit/tests/**/*Test.java"/>
+					<include name="org/junit/tests/**/*Tests.java"/>
+					<include name="org/junit/internal/**/*Test.java"/> 
+
+					<exclude name="org/junit/tests/**/AllTests.java"/> <!-- all the tests in AllTest is already breaded down and included -->
+					<exclude name="org/junit/tests/experimental/rules/TestWatchmanTest.java"/> <!-- it was not in AllTest suite -->
 				</fileset>
 			</batchtest>
 		   </junit>

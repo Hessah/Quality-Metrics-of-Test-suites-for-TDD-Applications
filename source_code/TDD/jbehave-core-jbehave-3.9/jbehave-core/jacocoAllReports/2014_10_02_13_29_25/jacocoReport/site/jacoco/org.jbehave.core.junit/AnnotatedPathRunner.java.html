@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>AnnotatedPathRunner.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.junit</a> &gt; <span class="el_source">AnnotatedPathRunner.java</span></div><h1>AnnotatedPathRunner.java</h1><pre class="source lang-java linenums">package org.jbehave.core.junit;
+
+import java.util.List;
+
+import org.jbehave.core.annotations.UsingPaths;
+import org.jbehave.core.configuration.AnnotationBuilder;
+import org.jbehave.core.embedder.Embedder;
+import org.jbehave.core.embedder.EmbedderMonitor;
+import org.jbehave.core.embedder.EmbedderMonitorDecorator;
+import org.jbehave.core.io.StoryNameResolver;
+import org.jbehave.core.io.UnderscoredToCapitalized;
+import org.junit.runner.Description;
+import org.junit.runner.Runner;
+import org.junit.runner.notification.Failure;
+import org.junit.runner.notification.RunNotifier;
+import org.junit.runners.model.InitializationError;
+
+/**
+ * A JUnit {@link Runner} that uses a {@link UsingPaths} annotation to specify
+ * which story paths to run and uses the {@link RunNotifier} to provide a
+ * {@link Description} for each. The story description uses a
+ * {@link StoryNameResolver} (overridable via the {@link #storyNameResolver()}
+ * method) to resolve the story path to a name.
+ */
+public class AnnotatedPathRunner extends AnnotatedEmbedderRunner {
+
+    private final AnnotationBuilder annotationBuilder;
+    private final StoryNameResolver nameResolver;
+    private final List&lt;String&gt; paths;
+
+    /**
+     * Class constructor.
+     * 
+     * @param annotatedClass the annotated {@link Class}.
+     * @throws InitializationError if an error occurs.
+     */
+    public AnnotatedPathRunner(Class&lt;?&gt; annotatedClass) throws InitializationError {
+<span class="nc" id="L38">        super(annotatedClass);</span>
+<span class="nc" id="L39">        this.annotationBuilder = annotationBuilder();</span>
+<span class="nc" id="L40">        this.nameResolver = storyNameResolver();</span>
+<span class="nc" id="L41">        this.paths = annotationBuilder.findPaths();</span>
+<span class="nc" id="L42">    }</span>
+
+    protected StoryNameResolver storyNameResolver() {
+<span class="nc" id="L45">        return new UnderscoredToCapitalized();</span>
+    }
+
+    @Override
+    public Description getDescription() {
+<span class="nc" id="L50">        Description description = Description.createSuiteDescription(testClass());</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">        for (String path : paths)</span>
+<span class="nc" id="L52">            description.addChild(createDescriptionForPath(path));</span>
+
+<span class="nc" id="L54">        return description;</span>
+    }
+
+    private Description createDescriptionForPath(String path) {
+<span class="nc" id="L58">        String name = nameResolver.resolveName(path);</span>
+<span class="nc" id="L59">        return Description.createTestDescription(testClass(), name);</span>
+    }
+
+    @Override
+    protected void collectInitializationErrors(List&lt;Throwable&gt; errors) {
+        // overridden to avoid JUnit-specific errors
+<span class="nc" id="L65">    }</span>
+
+    @Override
+    protected void validateInstanceMethods(List&lt;Throwable&gt; errors) {
+        // overridden to avoid JUnit-specific errors
+<span class="nc" id="L70">    }</span>
+
+    @Override
+    public void run(RunNotifier notifier) {
+<span class="nc" id="L74">        Embedder embedder = annotationBuilder.buildEmbedder();</span>
+<span class="nc" id="L75">        NotifierEmbedderMonitor notifierEmbedderMonitor = new NotifierEmbedderMonitor(embedder.embedderMonitor(),</span>
+                notifier);
+<span class="nc" id="L77">        embedder.useEmbedderMonitor(notifierEmbedderMonitor);</span>
+
+        try {
+<span class="nc" id="L80">            embedder.runStoriesAsPaths(paths);</span>
+        } finally {
+<span class="nc" id="L82">            notifierEmbedderMonitor.storyFinished();</span>
+<span class="nc" id="L83">        }</span>
+<span class="nc" id="L84">    }</span>
+
+    /**
+     * {@link EmbedderMonitor} that reports story updates to a
+     * {@link RunNotifier}.
+     */
+    private final class NotifierEmbedderMonitor extends EmbedderMonitorDecorator {
+        private final RunNotifier notifier;
+        private Description currentStory;
+
+        /**
+         * Creates a NotifierEmbedderMonitor
+         * 
+         * @param delegate the EmbedderMonitor delegate
+         * @param notifier the RunNotifier
+         */
+<span class="nc" id="L100">        private NotifierEmbedderMonitor(EmbedderMonitor delegate, RunNotifier notifier) {</span>
+<span class="nc" id="L101">            super(delegate);</span>
+<span class="nc" id="L102">            this.notifier = notifier;</span>
+<span class="nc" id="L103">        }</span>
+
+        @Override
+        public void runningStory(String path) {
+<span class="nc" id="L107">            super.runningStory(path);</span>
+<span class="nc" id="L108">            storyFinished();</span>
+<span class="nc" id="L109">            currentStory = createDescriptionForPath(path);</span>
+<span class="nc" id="L110">            notifier.fireTestStarted(currentStory);</span>
+<span class="nc" id="L111">        }</span>
+
+        @Override
+        public void storyFailed(String path, Throwable cause) {
+<span class="nc" id="L115">            super.storyFailed(path, cause);</span>
+<span class="nc" id="L116">            notifier.fireTestFailure(new Failure(currentStory, cause));</span>
+<span class="nc" id="L117">            notifier.fireTestFinished(currentStory);</span>
+<span class="nc" id="L118">            currentStory = null;</span>
+<span class="nc" id="L119">        }</span>
+
+        /**
+         * Finishes the last story.
+         */
+        private void storyFinished() {
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            if (currentStory == null) {</span>
+<span class="nc" id="L126">                return;</span>
+            }
+<span class="nc" id="L128">            notifier.fireTestFinished(currentStory);</span>
+<span class="nc" id="L129">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

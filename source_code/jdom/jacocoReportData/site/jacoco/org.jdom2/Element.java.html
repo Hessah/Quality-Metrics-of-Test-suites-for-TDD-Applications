@@ -1,0 +1,2102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Element.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jdom</a> &gt; <a href="index.source.html" class="el_package">org.jdom2</a> &gt; <span class="el_source">Element.java</span></div><h1>Element.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2000-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2;
+
+import static org.jdom2.JDOMConstants.NS_PREFIX_DEFAULT;
+import static org.jdom2.JDOMConstants.NS_PREFIX_XML;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.TreeMap;
+
+import org.jdom2.ContentList.FilterList;
+import org.jdom2.filter.ElementFilter;
+import org.jdom2.filter.Filter;
+import org.jdom2.util.IteratorIterable;
+
+/**
+ * An XML element. Methods allow the user to get and manipulate its child
+ * elements and content, directly access the element's textual content,
+ * manipulate its attributes, and manage namespaces.
+ * &lt;p&gt;
+ * See {@link NamespaceAware} and {@link #getNamespacesInScope()} for more
+ * details on what the Namespace scope is and how it is managed in JDOM and
+ * specifically by this Element class.
+ * 
+ * @see NamespaceAware
+ * @see Content
+ * 
+ * @author  Brett McLaughlin
+ * @author  Jason Hunter
+ * @author  Lucas Gonze
+ * @author  Kevin Regan
+ * @author  Dan Schaffer
+ * @author  Yusuf Goolamabbas
+ * @author  Kent C. Johnson
+ * @author  Jools Enticknap
+ * @author  Alex Rosen
+ * @author  Bradley S. Huffman
+ * @author  Victor Toni
+ * @author  Rolf Lear
+ * 
+ */
+public class Element extends Content implements Parent {
+
+	private static final int INITIAL_ARRAY_SIZE = 5;
+
+	/** The local name of the element */
+	protected String name;
+
+	/** The namespace of the element */
+	protected Namespace namespace;
+
+	/** Additional namespace declarations to store on this element; useful
+	 * during output */
+<span class="fc" id="L117">	transient List&lt;Namespace&gt; additionalNamespaces = null;</span>
+
+	/**
+	 *  The attributes of the element.  Subclassers have to
+	 * track attributes using their own mechanism.
+	 */
+<span class="fc" id="L123">	transient AttributeList attributes = null; // = new AttributeList(this);</span>
+
+	/**
+	 * The content of the element.  Subclassers have to
+	 * track content using their own mechanism.
+	 */
+<span class="fc" id="L129">	transient ContentList content = new ContentList(this);</span>
+
+	/**
+	 * This protected constructor is provided in order to support an Element
+	 * subclass that wants full control over variable initialization. It
+	 * intentionally leaves all instance variables null, allowing a lightweight
+	 * subclass implementation. The subclass is responsible for ensuring all the
+	 * get and set methods on Element behave as documented.
+	 * &lt;p&gt;
+	 * When implementing an Element subclass which doesn't require full control
+	 * over variable initialization, be aware that simply calling super() (or
+	 * letting the compiler add the implicit super() call) will not initialize
+	 * the instance variables which will cause many of the methods to throw a
+	 * NullPointerException. Therefore, the constructor for these subclasses
+	 * should call one of the public constructors so variable initialization is
+	 * handled automatically.
+	 */
+	protected Element() {
+<span class="fc" id="L147">		super(CType.Element);</span>
+<span class="fc" id="L148">	}</span>
+
+	/**
+	 * Creates a new element with the supplied (local) name and namespace. If
+	 * the provided namespace is null, the element will have no namespace.
+	 *
+	 * @param  name                 local name of the element
+	 * @param  namespace            namespace for the element
+	 * @throws IllegalNameException if the given name is illegal as an element
+	 *                              name
+	 */
+	public Element(final String name, final Namespace namespace) {
+<span class="fc" id="L160">		super(CType.Element);</span>
+<span class="fc" id="L161">		setName(name);</span>
+<span class="fc" id="L162">		setNamespace(namespace);</span>
+<span class="fc" id="L163">	}</span>
+
+	/**
+	 * Create a new element with the supplied (local) name and no namespace.
+	 *
+	 * @param  name                 local name of the element
+	 * @throws IllegalNameException if the given name is illegal as an element
+	 *                              name.
+	 */
+	public Element(final String name) {
+<span class="fc" id="L173">		this(name, (Namespace) null);</span>
+<span class="fc" id="L174">	}</span>
+
+	/**
+	 * Creates a new element with the supplied (local) name and a namespace
+	 * given by a URI. The element will be put into the unprefixed (default)
+	 * namespace.
+	 *
+	 * @param  name                 name of the element
+	 * @param  uri                  namespace URI for the element
+	 * @throws IllegalNameException if the given name is illegal as an element
+	 *                              name or the given URI is illegal as a
+	 *                              namespace URI
+	 */
+	public Element(final String name, final String uri) {
+<span class="fc" id="L188">		this(name, Namespace.getNamespace(NS_PREFIX_DEFAULT, uri));</span>
+<span class="fc" id="L189">	}</span>
+
+	/**
+	 * Creates a new element with the supplied (local) name and a namespace
+	 * given by the supplied prefix and URI combination.
+	 *
+	 * @param  name                 local name of the element
+	 * @param  prefix               namespace prefix
+	 * @param  uri                  namespace URI for the element
+	 * @throws IllegalNameException if the given name is illegal as an element
+	 *                              name, the given prefix is illegal as a
+	 *                              namespace prefix, or the given URI is
+	 *                              illegal as a namespace URI
+	 */
+	public Element(final String name, final String prefix, final String uri) {
+<span class="fc" id="L204">		this(name, Namespace.getNamespace(prefix, uri));</span>
+<span class="fc" id="L205">	}</span>
+
+	/**
+	 * Returns the (local) name of the element (without any namespace prefix).
+	 *
+	 * @return                     local element name
+	 */
+	public String getName() {
+<span class="fc" id="L213">		return name;</span>
+	}
+
+	/**
+	 * Sets the (local) name of the element.
+	 *
+	 * @param  name                 the new (local) name of the element
+	 * @return                      the target element
+	 * @throws IllegalNameException if the given name is illegal as an Element
+	 *                              name
+	 */
+	public Element setName(final String name) {
+<span class="fc" id="L225">		final String reason = Verifier.checkElementName(name);</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">		if (reason != null) {</span>
+<span class="fc" id="L227">			throw new IllegalNameException(name, &quot;element&quot;, reason);</span>
+		}
+<span class="fc" id="L229">		this.name = name;</span>
+<span class="fc" id="L230">		return this;</span>
+	}
+
+	/**
+	 * Returns the element's {@link Namespace}.
+	 *
+	 * @return                     the element's namespace
+	 */
+	public Namespace getNamespace() {
+<span class="fc" id="L239">		return namespace;</span>
+	}
+
+	/**
+	 * Sets the element's {@link Namespace}. If the provided namespace is null,
+	 * the element will have no namespace.
+	 *
+	 * @param  namespace           the new namespace. A null implies Namespace.NO_NAMESPACE.
+	 * @return                     the target element
+	 * @throws IllegalAddException if there is a Namespace conflict
+	 */
+	public Element setNamespace(Namespace namespace) {
+<span class="fc bfc" id="L251" title="All 2 branches covered.">		if (namespace == null) {</span>
+<span class="fc" id="L252">			namespace = Namespace.NO_NAMESPACE;</span>
+		}
+
+<span class="fc bfc" id="L255" title="All 2 branches covered.">		if (additionalNamespaces != null) {</span>
+<span class="fc" id="L256">			final String reason = Verifier.checkNamespaceCollision(namespace, </span>
+					getAdditionalNamespaces());
+<span class="fc bfc" id="L258" title="All 2 branches covered.">			if (reason != null) {</span>
+<span class="fc" id="L259">				throw new IllegalAddException(this, namespace, reason);</span>
+			}
+		}
+<span class="fc bfc" id="L262" title="All 2 branches covered.">		if (hasAttributes()) {</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">			for (Attribute a : getAttributes()) {</span>
+<span class="fc" id="L264">				final String reason = </span>
+						Verifier.checkNamespaceCollision(namespace, a);
+<span class="fc bfc" id="L266" title="All 2 branches covered.">				if (reason != null) {</span>
+<span class="fc" id="L267">					throw new IllegalAddException(this, namespace, reason);</span>
+				}
+<span class="fc" id="L269">			}</span>
+		}
+		
+<span class="fc" id="L272">		this.namespace = namespace;</span>
+<span class="fc" id="L273">		return this;</span>
+	}
+
+	/**
+	 * Returns the namespace prefix of the element or an empty string if none
+	 * exists.
+	 *
+	 * @return                     the namespace prefix
+	 */
+	public String getNamespacePrefix() {
+<span class="fc" id="L283">		return namespace.getPrefix();</span>
+	}
+
+	/**
+	 * Returns the namespace URI mapped to this element's prefix (or the
+	 * in-scope default namespace URI if no prefix). If no mapping is found, an
+	 * empty string is returned.
+	 *
+	 * @return                     the namespace URI for this element
+	 */
+	public String getNamespaceURI() {
+<span class="fc" id="L294">		return namespace.getURI();</span>
+	}
+
+	/**
+	 * Returns the {@link Namespace} corresponding to the given prefix in scope
+	 * for this element. This involves searching up the tree, so the results
+	 * depend on the current location of the element. Returns null if there is
+	 * no namespace in scope with the given prefix at this point in the
+	 * document.
+	 *
+	 * @param  prefix              namespace prefix to look up
+	 * @return                     the Namespace for this prefix at this
+	 *                             location, or null if none
+	 */
+	public Namespace getNamespace(final String prefix) {
+<span class="fc bfc" id="L309" title="All 2 branches covered.">		if (prefix == null) {</span>
+<span class="fc" id="L310">			return null;</span>
+		}
+
+<span class="fc bfc" id="L313" title="All 2 branches covered.">		if (NS_PREFIX_XML.equals(prefix)) {</span>
+			// Namespace &quot;xml&quot; is always bound.
+<span class="fc" id="L315">			return Namespace.XML_NAMESPACE;</span>
+		}
+
+		// Check if the prefix is the prefix for this element
+<span class="fc bfc" id="L319" title="All 2 branches covered.">		if (prefix.equals(getNamespacePrefix())) {</span>
+<span class="fc" id="L320">			return getNamespace();</span>
+		}
+
+		// Scan the additional namespaces
+<span class="fc bfc" id="L324" title="All 2 branches covered.">		if (additionalNamespaces != null) {</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">			for (int i = 0; i &lt; additionalNamespaces.size(); i++) {</span>
+<span class="fc" id="L326">				final Namespace ns = additionalNamespaces.get(i);</span>
+<span class="fc bfc" id="L327" title="All 2 branches covered.">				if (prefix.equals(ns.getPrefix())) {</span>
+<span class="fc" id="L328">					return ns;</span>
+				}
+			}
+		}
+
+<span class="fc bfc" id="L333" title="All 2 branches covered.">		if (attributes != null) {</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">			for (final Attribute a : attributes) {</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">				if (prefix.equals(a.getNamespacePrefix())) {</span>
+<span class="fc" id="L336">					return a.getNamespace();</span>
+				}
+<span class="fc" id="L338">			}</span>
+		}
+
+		// If we still don't have a match, ask the parent
+<span class="fc bfc" id="L342" title="All 2 branches covered.">		if (parent instanceof Element) {</span>
+<span class="fc" id="L343">			return ((Element)parent).getNamespace(prefix);</span>
+		}
+
+<span class="fc" id="L346">		return null;</span>
+	}
+
+	/**
+	 * Returns the full name of the element, in the form
+	 * [namespacePrefix]:[localName]. If the element does not have a namespace
+	 * prefix, then the local name is returned.
+	 *
+	 * @return                     qualified name of the element (including
+	 *                             namespace prefix)
+	 */
+	public String getQualifiedName() {
+		// Note: Any changes here should be reflected in
+		// XMLOutputter.printQualifiedName()
+<span class="fc bfc" id="L360" title="All 2 branches covered.">		if (&quot;&quot;.equals(namespace.getPrefix())) {</span>
+<span class="fc" id="L361">			return getName();</span>
+		}
+
+<span class="fc" id="L364">		return new StringBuilder(namespace.getPrefix())</span>
+		.append(':')
+		.append(name)
+		.toString();
+	}
+
+	/**
+	 * Adds a namespace declarations to this element. This should &lt;i&gt;not&lt;/i&gt; be
+	 * used to add the declaration for this element itself; that should be
+	 * assigned in the construction of the element. Instead, this is for adding
+	 * namespace declarations on the element not relating directly to itself.
+	 * It's used during output to for stylistic reasons move namespace
+	 * declarations higher in the tree than they would have to be.
+	 *
+	 * @param  additionalNamespace namespace to add
+	 * @return true if the namespace is added (false if it was previously added)
+	 * @throws IllegalAddException if the namespace prefix collides with another
+	 *                             namespace prefix on the element
+	 */
+	public boolean addNamespaceDeclaration(final Namespace additionalNamespace) {
+
+<span class="fc bfc" id="L385" title="All 2 branches covered.">		if (additionalNamespaces == null) {</span>
+<span class="fc" id="L386">			additionalNamespaces = new ArrayList&lt;Namespace&gt;(INITIAL_ARRAY_SIZE);</span>
+		}
+		
+<span class="fc bfc" id="L389" title="All 2 branches covered.">		for (Namespace ns : additionalNamespaces) {</span>
+<span class="fc bfc" id="L390" title="All 2 branches covered.">			if (ns == additionalNamespace) {</span>
+<span class="fc" id="L391">				return false;</span>
+			}
+<span class="fc" id="L393">		}</span>
+
+		// Verify the new namespace prefix doesn't collide with another
+		// declared namespace, an attribute prefix, or this element's prefix
+<span class="fc" id="L397">		final String reason = Verifier.checkNamespaceCollision(additionalNamespace, this);</span>
+<span class="fc bfc" id="L398" title="All 2 branches covered.">		if (reason != null) {</span>
+<span class="fc" id="L399">			throw new IllegalAddException(this, additionalNamespace, reason);</span>
+		}
+
+<span class="fc" id="L402">		return additionalNamespaces.add(additionalNamespace);</span>
+	}
+
+	/**
+	 * Removes an additional namespace declarations from this element. This
+	 * should &lt;i&gt;not&lt;/i&gt; be used to remove the declaration for this element
+	 * itself; that should be handled in the construction of the element.
+	 * Instead, this is for removing namespace declarations on the element not
+	 * relating directly to itself. If the declaration is not present, this
+	 * method does nothing.
+	 *
+	 * @param additionalNamespace namespace to remove. A null Namespace does nothing.
+	 */
+	public void removeNamespaceDeclaration(final Namespace additionalNamespace) {
+<span class="fc bfc" id="L416" title="All 2 branches covered.">		if (additionalNamespaces == null) {</span>
+<span class="fc" id="L417">			return;</span>
+		}
+<span class="fc" id="L419">		additionalNamespaces.remove(additionalNamespace);</span>
+<span class="fc" id="L420">	}</span>
+
+	/**
+	 * Returns a list of the additional namespace declarations on this element.
+	 * This includes only additional namespace, not the namespace of the element
+	 * itself, which can be obtained through {@link #getNamespace()}. If there
+	 * are no additional declarations, this returns an empty list. Note, the
+	 * returned list is unmodifiable.
+	 *
+	 * @return                     a List of the additional namespace
+	 *                             declarations
+	 */
+	public List&lt;Namespace&gt; getAdditionalNamespaces() {
+		// Not having the returned list be live allows us to avoid creating a
+		// new list object when XMLOutputter calls this method on an element
+		// with an empty list.
+<span class="fc bfc" id="L436" title="All 2 branches covered.">		if (additionalNamespaces == null) {</span>
+<span class="fc" id="L437">			return Collections.emptyList();</span>
+		}
+<span class="fc" id="L439">		return Collections.unmodifiableList(additionalNamespaces);</span>
+	}
+
+	/**
+	 * Returns the XPath 1.0 string value of this element, which is the
+	 * complete, ordered content of all text node descendants of this element
+	 * (i&amp;#46;e&amp;#46; the text that's left after all references are resolved
+	 * and all other markup is stripped out.)
+	 *
+	 * @return a concatentation of all text node descendants
+	 */
+	@Override
+	public String getValue() {
+<span class="fc" id="L452">		final StringBuilder buffer = new StringBuilder();</span>
+
+<span class="fc bfc" id="L454" title="All 2 branches covered.">		for (Content child : getContent()) {</span>
+<span class="fc bfc" id="L455" title="All 4 branches covered.">			if (child instanceof Element || child instanceof Text) {</span>
+<span class="fc" id="L456">				buffer.append(child.getValue());</span>
+			}
+<span class="fc" id="L458">		}</span>
+<span class="fc" id="L459">		return buffer.toString();</span>
+	}
+
+	/**
+	 * Returns whether this element is a root element. This can be used in
+	 * tandem with {@link #getParent} to determine if an element has any
+	 * &quot;attachments&quot; to a parent element or document.
+	 * &lt;p&gt;
+	 * An element is a root element when it has a parent and that parent is a
+	 * Document. In particular, this means that detatched Elements are &lt;b&gt;not&lt;/b&gt;
+	 * root elements.
+	 *
+	 * @return                     whether this is a root element
+	 */
+	public boolean isRootElement() {
+<span class="fc" id="L474">		return parent instanceof Document;</span>
+	}
+
+	@Override
+	public int getContentSize() {
+<span class="fc" id="L479">		return content.size();</span>
+	}
+
+	@Override
+	public int indexOf(final Content child) {
+<span class="fc" id="L484">		return content.indexOf(child);</span>
+	}
+
+	//    private int indexOf(int start, Filter filter) {
+	//        int size = getContentSize();
+	//        for (int i = start; i &lt; size; i++) {
+	//            if (filter.matches(getContent(i))) {
+	//                return i;
+	//            }
+	//        }
+	//        return -1;
+	//    }
+
+
+	/**
+	 * Returns the textual content directly held under this element as a string.
+	 * This includes all text within this single element, including whitespace
+	 * and CDATA sections if they exist. It's essentially the concatenation of
+	 * all {@link Text} and {@link CDATA} nodes returned by {@link #getContent}.
+	 * The call does not recurse into child elements. If no textual value exists
+	 * for the element, an empty string is returned.
+	 *
+	 * @return                     text content for this element, or empty
+	 *                             string if none
+	 */
+	public String getText() {
+<span class="fc bfc" id="L510" title="All 2 branches covered.">		if (content.size() == 0) {</span>
+<span class="fc" id="L511">			return &quot;&quot;;</span>
+		}
+
+		// If we hold only a Text or CDATA, return it directly
+<span class="fc bfc" id="L515" title="All 2 branches covered.">		if (content.size() == 1) {</span>
+<span class="fc" id="L516">			final Object obj = content.get(0);</span>
+<span class="fc bfc" id="L517" title="All 2 branches covered.">			if (obj instanceof Text) {</span>
+<span class="fc" id="L518">				return ((Text) obj).getText();</span>
+			}
+<span class="fc" id="L520">			return &quot;&quot;;</span>
+		}
+
+		// Else build String up
+<span class="fc" id="L524">		final StringBuilder textContent = new StringBuilder();</span>
+<span class="fc" id="L525">		boolean hasText = false;</span>
+
+<span class="fc bfc" id="L527" title="All 2 branches covered.">		for (int i = 0; i &lt; content.size(); i++) {</span>
+<span class="fc" id="L528">			final Object obj = content.get(i);</span>
+<span class="fc bfc" id="L529" title="All 2 branches covered.">			if (obj instanceof Text) {</span>
+<span class="fc" id="L530">				textContent.append(((Text) obj).getText());</span>
+<span class="fc" id="L531">				hasText = true;</span>
+			}
+		}
+
+<span class="fc bfc" id="L535" title="All 2 branches covered.">		if (!hasText) {</span>
+<span class="fc" id="L536">			return &quot;&quot;;</span>
+		}
+<span class="fc" id="L538">		return textContent.toString();</span>
+	}
+
+	/**
+	 * Returns the textual content of this element with all surrounding
+	 * whitespace removed. If no textual value exists for the element, or if
+	 * only whitespace exists, the empty string is returned.
+	 *
+	 * @return                     trimmed text content for this element, or
+	 *                             empty string if none
+	 */
+	public String getTextTrim() {
+<span class="fc" id="L550">		return getText().trim();</span>
+	}
+
+	/**
+	 * Returns the textual content of this element with all surrounding
+	 * whitespace removed and internal whitespace normalized to a single space.
+	 * If no textual value exists for the element, or if only whitespace exists,
+	 * the empty string is returned.
+	 *
+	 * @return                     normalized text content for this element, or
+	 *                             empty string if none
+	 */
+	public String getTextNormalize() {
+<span class="fc" id="L563">		return Text.normalizeString(getText());</span>
+	}
+
+	/**
+	 * Returns the textual content of the named child element, or null if
+	 * there's no such child. This method is a convenience because calling
+	 * &lt;code&gt;getChild().getText()&lt;/code&gt; can throw a NullPointerException.
+	 *
+	 * @param  cname                the name of the child
+	 * @return                     text content for the named child, or null if
+	 *                             no such child
+	 */
+	public String getChildText(final String cname) {
+<span class="fc" id="L576">		final Element child = getChild(cname);</span>
+<span class="fc bfc" id="L577" title="All 2 branches covered.">		if (child == null) {</span>
+<span class="fc" id="L578">			return null;</span>
+		}
+<span class="fc" id="L580">		return child.getText();</span>
+	}
+
+	/**
+	 * Returns the trimmed textual content of the named child element, or null
+	 * if there's no such child. See &lt;code&gt;{@link #getTextTrim()}&lt;/code&gt; for
+	 * details of text trimming.
+	 *
+	 * @param  cname                the name of the child
+	 * @return                     trimmed text content for the named child, or
+	 *                             null if no such child
+	 */
+	public String getChildTextTrim(final String cname) {
+<span class="fc" id="L593">		final Element child = getChild(cname);</span>
+<span class="fc bfc" id="L594" title="All 2 branches covered.">		if (child == null) {</span>
+<span class="fc" id="L595">			return null;</span>
+		}
+<span class="fc" id="L597">		return child.getTextTrim();</span>
+	}
+
+	/**
+	 * Returns the normalized textual content of the named child element, or
+	 * null if there's no such child. See &lt;code&gt;{@link
+	 * #getTextNormalize()}&lt;/code&gt; for details of text normalizing.
+	 *
+	 * @param  cname                the name of the child
+	 * @return                     normalized text content for the named child,
+	 *                             or null if no such child
+	 */
+	public String getChildTextNormalize(final String cname) {
+<span class="fc" id="L610">		final Element child = getChild(cname);</span>
+<span class="fc bfc" id="L611" title="All 2 branches covered.">		if (child == null) {</span>
+<span class="fc" id="L612">			return null;</span>
+		}
+<span class="fc" id="L614">		return child.getTextNormalize();</span>
+	}
+
+	/**
+	 * Returns the textual content of the named child element, or null if
+	 * there's no such child.
+	 * 
+	 * @param cname
+	 *        the name of the child
+	 * @param ns
+	 *        the namespace of the child. A null implies Namespace.NO_NAMESPACE.
+	 * @return text content for the named child, or null if no such child
+	 */
+	public String getChildText(final String cname, final Namespace ns) {
+<span class="fc" id="L628">		final Element child = getChild(cname, ns);</span>
+<span class="fc bfc" id="L629" title="All 2 branches covered.">		if (child == null) {</span>
+<span class="fc" id="L630">			return null;</span>
+		}
+<span class="fc" id="L632">		return child.getText();</span>
+	}
+
+	/**
+	 * Returns the trimmed textual content of the named child element, or null
+	 * if there's no such child.
+	 * 
+	 * @param cname
+	 *        the name of the child
+	 * @param ns
+	 *        the namespace of the child. A null implies Namespace.NO_NAMESPACE.
+	 * @return trimmed text content for the named child, or null if no such
+	 *         child
+	 */
+	public String getChildTextTrim(final String cname, final Namespace ns) {
+<span class="fc" id="L647">		final Element child = getChild(cname, ns);</span>
+<span class="fc bfc" id="L648" title="All 2 branches covered.">		if (child == null) {</span>
+<span class="fc" id="L649">			return null;</span>
+		}
+<span class="fc" id="L651">		return child.getTextTrim();</span>
+	}
+
+	/**
+	 * Returns the normalized textual content of the named child element, or
+	 * null if there's no such child.
+	 * 
+	 * @param cname
+	 *        the name of the child
+	 * @param ns
+	 *        the namespace of the child. A null implies Namespace.NO_NAMESPACE.
+	 * @return normalized text content for the named child, or null if no such
+	 *         child
+	 */
+	public String getChildTextNormalize(final String cname, final Namespace ns) {
+<span class="fc" id="L666">		final Element child = getChild(cname, ns);</span>
+<span class="fc bfc" id="L667" title="All 2 branches covered.">		if (child == null) {</span>
+<span class="fc" id="L668">			return null;</span>
+		}
+<span class="fc" id="L670">		return child.getTextNormalize();</span>
+	}
+
+	/**
+	 * Sets the content of the element to be the text given. All existing text
+	 * content and non-text context is removed. If this element should have both
+	 * textual content and nested elements, use &lt;code&gt;{@link #setContent}&lt;/code&gt;
+	 * instead. Setting a null text value is equivalent to setting an empty
+	 * string value.
+	 *
+	 * @param  text                 new text content for the element
+	 * @return                      the target element
+	 * @throws IllegalDataException if the assigned text contains an illegal
+	 *                              character such as a vertical tab (as
+	 *                              determined by {@link
+	 *                              org.jdom2.Verifier#checkCharacterData})
+	 */
+	public Element setText(final String text) {
+<span class="fc" id="L688">		content.clear();</span>
+
+<span class="fc bfc" id="L690" title="All 2 branches covered.">		if (text != null) {</span>
+<span class="fc" id="L691">			addContent(new Text(text));</span>
+		}
+
+<span class="fc" id="L694">		return this;</span>
+	}
+	
+	/**
+	 * Adjacent Text content is merged into the first Text in document order,
+	 * and the redundant Text items are removed (including any empty Text).
+	 * 
+	 * @param recursively
+	 *        true if you want the text of child elements coalesced too. False
+	 *        if you only want to coalesce this Element's Text.
+	 * @return true if any content was changed by this operation.
+	 */
+	public boolean coalesceText(boolean recursively) {
+<span class="fc bfc" id="L707" title="All 2 branches covered.">		final Iterator&lt;Content&gt; it = recursively ? getDescendants()</span>
+				: content.iterator();
+<span class="fc" id="L709">		Text tfirst = null;</span>
+<span class="fc" id="L710">		boolean changed = false;</span>
+<span class="fc bfc" id="L711" title="All 2 branches covered.">		while (it.hasNext()) {</span>
+<span class="fc" id="L712">			final Content c = it.next();</span>
+<span class="fc bfc" id="L713" title="All 2 branches covered.">			if (c.getCType() == CType.Text) {</span>
+				// Text, and no CDATA!
+<span class="fc" id="L715">				final Text text = (Text)c;</span>
+<span class="fc bfc" id="L716" title="All 2 branches covered.">				if (&quot;&quot;.equals(text.getValue())) {</span>
+<span class="fc" id="L717">					it.remove();</span>
+<span class="fc" id="L718">					changed = true;</span>
+<span class="fc bfc" id="L719" title="All 4 branches covered.">				} else if (tfirst == null || </span>
+						tfirst.getParent() != text.getParent()) {
+					// previous item in the iterator was not text, or
+					// we are the next Text item after coming up the tree.
+<span class="fc" id="L723">					tfirst = text;</span>
+				} else {
+					// add our text to the first in the sequence
+<span class="fc" id="L726">					tfirst.append(text.getValue());</span>
+					// remove us from the sequence 
+<span class="fc" id="L728">					it.remove();</span>
+<span class="fc" id="L729">					changed = true;</span>
+				}
+<span class="fc" id="L731">			} else {</span>
+				// the end of the sequence
+<span class="fc" id="L733">				tfirst = null;</span>
+			}
+<span class="fc" id="L735">		}</span>
+<span class="fc" id="L736">		return changed;</span>
+	}
+
+	/**
+	 * This returns the full content of the element as a List which
+	 * may contain objects of type &lt;code&gt;Text&lt;/code&gt;, &lt;code&gt;Element&lt;/code&gt;,
+	 * &lt;code&gt;Comment&lt;/code&gt;, &lt;code&gt;ProcessingInstruction&lt;/code&gt;,
+	 * &lt;code&gt;CDATA&lt;/code&gt;, and &lt;code&gt;EntityRef&lt;/code&gt;.
+	 * The List returned is &quot;live&quot; in document order and modifications
+	 * to it affect the element's actual contents.  Whitespace content is
+	 * returned in its entirety.
+	 *
+	 * &lt;p&gt;
+	 * Sequential traversal through the List is best done with an Iterator
+	 * since the underlying implement of List.size() may require walking the
+	 * entire list.
+	 * &lt;/p&gt;
+	 *
+	 * @return a &lt;code&gt;List&lt;/code&gt; containing the mixed content of the
+	 *         element: may contain &lt;code&gt;Text&lt;/code&gt;,
+	 *         &lt;code&gt;{@link Element}&lt;/code&gt;, &lt;code&gt;{@link Comment}&lt;/code&gt;,
+	 *         &lt;code&gt;{@link ProcessingInstruction}&lt;/code&gt;,
+	 *         &lt;code&gt;{@link CDATA}&lt;/code&gt;, and
+	 *         &lt;code&gt;{@link EntityRef}&lt;/code&gt; objects.
+	 */
+	@Override
+	public List&lt;Content&gt; getContent() {
+<span class="fc" id="L763">		return content;</span>
+	}
+
+	/**
+	 * Return a filter view of this &lt;code&gt;Element&lt;/code&gt;'s content.
+	 *
+	 * &lt;p&gt;
+	 * Sequential traversal through the List is best done with a Iterator
+	 * since the underlying implement of List.size() may require walking the
+	 * entire list.
+	 * &lt;/p&gt;
+	 *
+	 * @param filter &lt;code&gt;Filter&lt;/code&gt; to apply
+	 * @return &lt;code&gt;List&lt;/code&gt; - filtered Element content
+	 */
+	@Override
+	public &lt;E extends Content&gt; List&lt;E&gt; getContent(final Filter&lt;E&gt; filter) {
+<span class="fc" id="L780">		return content.getView(filter);</span>
+	}
+
+	/**
+	 * Removes all child content from this parent.
+	 *
+	 * @return list of the old children detached from this parent
+	 */
+	@Override
+	public List&lt;Content&gt; removeContent() {
+<span class="fc" id="L790">		final List&lt;Content&gt; old = new ArrayList&lt;Content&gt;(content);</span>
+<span class="fc" id="L791">		content.clear();</span>
+<span class="fc" id="L792">		return old;</span>
+	}
+
+	/**
+	 * Remove all child content from this parent matching the supplied filter.
+	 *
+	 * @param filter filter to select which content to remove
+	 * @return list of the old children detached from this parent
+	 */
+	@Override
+	public &lt;F extends Content&gt; List&lt;F&gt; removeContent(final Filter&lt;F&gt; filter) {
+<span class="fc" id="L803">		final List&lt;F&gt; old = new ArrayList&lt;F&gt;();</span>
+<span class="fc" id="L804">		final Iterator&lt;F&gt; iter = content.getView(filter).iterator();</span>
+<span class="fc bfc" id="L805" title="All 2 branches covered.">		while (iter.hasNext()) {</span>
+<span class="fc" id="L806">			final F child = iter.next();</span>
+<span class="fc" id="L807">			old.add(child);</span>
+<span class="fc" id="L808">			iter.remove();</span>
+<span class="fc" id="L809">		}</span>
+<span class="fc" id="L810">		return old;</span>
+	}
+
+	/**
+	 * This sets the content of the element.  The supplied List should
+	 * contain only objects of type &lt;code&gt;Element&lt;/code&gt;, &lt;code&gt;Text&lt;/code&gt;,
+	 * &lt;code&gt;CDATA&lt;/code&gt;, &lt;code&gt;Comment&lt;/code&gt;,
+	 * &lt;code&gt;ProcessingInstruction&lt;/code&gt;, and &lt;code&gt;EntityRef&lt;/code&gt;.
+	 *
+	 * &lt;p&gt;
+	 * When all objects in the supplied List are legal and before the new
+	 * content is added, all objects in the old content will have their
+	 * parentage set to null (no parent) and the old content list will be
+	 * cleared. This has the effect that any active list (previously obtained
+	 * with a call to {@link #getContent} or {@link #getChildren}) will also
+	 * change to reflect the new content.  In addition, all objects in the
+	 * supplied List will have their parentage set to this element, but the
+	 * List itself will not be &quot;live&quot; and further removals and additions will
+	 * have no effect on this elements content. If the user wants to continue
+	 * working with a &quot;live&quot; list, then a call to setContent should be
+	 * followed by a call to {@link #getContent} or {@link #getChildren} to
+	 * obtain a &quot;live&quot; version of the content.
+	 * &lt;/p&gt;
+	 *
+	 * &lt;p&gt;
+	 * Passing a null or empty List clears the existing content.
+	 * &lt;/p&gt;
+	 *
+	 * &lt;p&gt;
+	 * In event of an exception the original content will be unchanged and
+	 * the objects in the supplied content will be unaltered.
+	 * &lt;/p&gt;
+	 *
+	 * @param newContent &lt;code&gt;Collection&lt;/code&gt; of content to set
+	 * @return this element modified
+	 * @throws IllegalAddException if the List contains objects of
+	 *         illegal types or with existing parentage.
+	 */
+	public Element setContent(final Collection&lt;? extends Content&gt; newContent) {
+<span class="fc" id="L849">		content.clearAndSet(newContent);</span>
+<span class="fc" id="L850">		return this;</span>
+	}
+
+	/**
+	 * Replace the current child the given index with the supplied child.
+	 * &lt;p&gt;
+	 * In event of an exception the original content will be unchanged and
+	 * the supplied child will be unaltered.
+	 * &lt;/p&gt;
+	 *
+	 * @param index - index of child to replace.
+	 * @param child - child to add.
+	 * @return element on which this method was invoked
+	 * @throws IllegalAddException if the supplied child is already attached
+	 *                             or not legal content for this parent.
+	 * @throws IndexOutOfBoundsException if index is negative or greater
+	 *         than the current number of children.
+	 */
+	public Element setContent(final int index, final Content child) {
+<span class="fc" id="L869">		content.set(index, child);</span>
+<span class="fc" id="L870">		return this;</span>
+	}
+
+	/**
+	 * Replace the child at the given index whith the supplied
+	 * collection.
+	 * &lt;p&gt;
+	 * In event of an exception the original content will be unchanged and
+	 * the content in the supplied collection will be unaltered.
+	 * &lt;/p&gt;
+	 *
+	 * @param index - index of child to replace.
+	 * @param newContent - &lt;code&gt;Collection&lt;/code&gt; of content to replace child.
+	 * @return object on which this method was invoked
+	 * @throws IllegalAddException if the collection contains objects of
+	 *         illegal types.
+	 * @throws IndexOutOfBoundsException if index is negative or greater
+	 *         than the current number of children.
+	 */
+	public Parent setContent(final int index, final Collection&lt;? extends Content&gt; newContent) {
+<span class="fc" id="L890">		content.remove(index);</span>
+<span class="fc" id="L891">		content.addAll(index, newContent);</span>
+<span class="fc" id="L892">		return this;</span>
+	}
+
+	/**
+	 * This adds text content to this element.  It does not replace the
+	 * existing content as does &lt;code&gt;setText()&lt;/code&gt;.
+	 *
+	 * @param str &lt;code&gt;String&lt;/code&gt; to add
+	 * @return this element modified
+	 * @throws IllegalDataException if &lt;code&gt;str&lt;/code&gt; contains an
+	 *         illegal character such as a vertical tab (as determined
+	 *         by {@link org.jdom2.Verifier#checkCharacterData})
+	 */
+	public Element addContent(final String str) {
+<span class="fc" id="L906">		return addContent(new Text(str));</span>
+	}
+
+	/**
+	 * Appends the child to the end of the element's content list.
+	 *
+	 * @param child   child to append to end of content list
+	 * @return        the element on which the method was called
+	 * @throws IllegalAddException if the given child already has a parent.     */
+	@Override
+	public Element addContent(final Content child) {
+<span class="fc" id="L917">		content.add(child);</span>
+<span class="fc" id="L918">		return this;</span>
+	}
+
+	/**
+	 * Appends all children in the given collection to the end of
+	 * the content list.  In event of an exception during add the
+	 * original content will be unchanged and the objects in the supplied
+	 * collection will be unaltered.
+	 *
+	 * @param newContent &lt;code&gt;Collection&lt;/code&gt; of content to append
+	 * @return           the element on which the method was called
+	 * @throws IllegalAddException if any item in the collection
+	 *         already has a parent or is of an inappropriate type.
+	 */
+	@Override
+	public Element addContent(final Collection&lt;? extends Content&gt; newContent) {
+<span class="fc" id="L934">		content.addAll(newContent);</span>
+<span class="fc" id="L935">		return this;</span>
+	}
+
+	/**
+	 * Inserts the child into the content list at the given index.
+	 *
+	 * @param index location for adding the collection
+	 * @param child      child to insert
+	 * @return           the parent on which the method was called
+	 * @throws IndexOutOfBoundsException if index is negative or beyond
+	 *         the current number of children
+	 * @throws IllegalAddException if the given child already has a parent.
+	 */
+	@Override
+	public Element addContent(final int index, final Content child) {
+<span class="fc" id="L950">		content.add(index, child);</span>
+<span class="fc" id="L951">		return this;</span>
+	}
+
+	/**
+	 * Inserts the content in a collection into the content list
+	 * at the given index.  In event of an exception the original content
+	 * will be unchanged and the objects in the supplied collection will be
+	 * unaltered.
+	 *
+	 * @param index location for adding the collection
+	 * @param newContent  &lt;code&gt;Collection&lt;/code&gt; of content to insert
+	 * @return            the parent on which the method was called
+	 * @throws IndexOutOfBoundsException if index is negative or beyond
+	 *         the current number of children
+	 * @throws IllegalAddException if any item in the collection
+	 *         already has a parent or is of an inappropriate type.
+	 */
+	@Override
+	public Element addContent(final int index, final Collection&lt;? extends Content&gt; newContent) {
+<span class="fc" id="L970">		content.addAll(index, newContent);</span>
+<span class="fc" id="L971">		return this;</span>
+	}
+
+	@Override
+	public List&lt;Content&gt; cloneContent() {
+<span class="fc" id="L976">		final int size = getContentSize();</span>
+<span class="fc" id="L977">		final List&lt;Content&gt; list = new ArrayList&lt;Content&gt;(size);</span>
+<span class="fc bfc" id="L978" title="All 2 branches covered.">		for (int i = 0; i &lt; size; i++) {</span>
+<span class="fc" id="L979">			final Content child = getContent(i);</span>
+<span class="fc" id="L980">			list.add(child.clone());</span>
+		}
+<span class="fc" id="L982">		return list;</span>
+	}
+
+	@Override
+	public Content getContent(final int index) {
+<span class="fc" id="L987">		return content.get(index);</span>
+	}
+
+	//    public Content getChild(Filter filter) {
+	//        int i = indexOf(0, filter);
+	//        return (i &lt; 0) ? null : getContent(i);
+	//    }
+
+	@Override
+	public boolean removeContent(final Content child) {
+<span class="fc" id="L997">		return content.remove(child);</span>
+	}
+
+	@Override
+	public Content removeContent(final int index) {
+<span class="fc" id="L1002">		return content.remove(index);</span>
+	}
+
+	/**
+	 * Set this element's content to be the supplied child.
+	 * &lt;p&gt;
+	 * If the supplied child is legal content for this parent and before
+	 * it is added, all content in the current content list will
+	 * be cleared and all current children will have their parentage set to
+	 * null.
+	 * &lt;p&gt;
+	 * This has the effect that any active list (previously obtained with
+	 * a call to one of the {@link #getContent} methods will also change
+	 * to reflect the new content.  In addition, all content in the supplied
+	 * collection will have their parentage set to this parent.  If the user
+	 * wants to continue working with a &lt;b&gt;&quot;live&quot;&lt;/b&gt; list of this parent's
+	 * child, then a call to setContent should be followed by a call to one
+	 * of the {@link #getContent} methods to obtain a &lt;b&gt;&quot;live&quot;&lt;/b&gt;
+	 * version of the children.
+	 * &lt;p&gt;
+	 * Passing a null child clears the existing content.
+	 * &lt;p&gt;
+	 * In event of an exception the original content will be unchanged and
+	 * the supplied child will be unaltered.
+	 *
+	 * @param child new content to replace existing content
+	 * @return           the parent on which the method was called
+	 * @throws IllegalAddException if the supplied child is already attached
+	 *                             or not legal content for an Element
+	 */
+	public Element setContent(final Content child) {
+<span class="fc" id="L1033">		content.clear();</span>
+<span class="fc" id="L1034">		content.add(child);</span>
+<span class="fc" id="L1035">		return this;</span>
+	}
+
+
+	/**
+	 * Determines if this element is the ancestor of another element.
+	 *
+	 * @param element &lt;code&gt;Element&lt;/code&gt; to check against
+	 * @return &lt;code&gt;true&lt;/code&gt; if this element is the ancestor of the
+	 *         supplied element
+	 */
+	public boolean isAncestor(final Element element) {
+<span class="fc" id="L1047">		Parent p = element.getParent();</span>
+<span class="fc bfc" id="L1048" title="All 2 branches covered.">		while (p instanceof Element) {</span>
+<span class="fc bfc" id="L1049" title="All 2 branches covered.">			if (p == this) {</span>
+<span class="fc" id="L1050">				return true;</span>
+			}
+<span class="fc" id="L1052">			p = p.getParent();</span>
+		}
+<span class="fc" id="L1054">		return false;</span>
+	}
+	
+	/**
+	 * Indicate whether this Element has any attributes.
+	 * Where possible you should call this method before calling getAttributes()
+	 * because calling getAttributes() will create the necessary Attribute List
+	 * memory structures, even if there are no Attributes attached to the
+	 * Element. Calling hasAttributes() first can save memory.
+	 * @return true if this Element has attributes.
+	 */
+	public boolean hasAttributes() {
+<span class="fc bfc" id="L1066" title="All 4 branches covered.">		return attributes != null &amp;&amp; !attributes.isEmpty();</span>
+	}
+	
+	/**
+	 * Indicate whether this Element has any additional Namespace declarations.
+	 * Where possible you should call this method before calling
+	 * {@link #getAdditionalNamespaces()} because calling getAttributes() will
+	 * create an unnecessary List even if there are no Additional Namespaces
+	 * attached to the Element. Calling this method first can save memory and
+	 * time.
+	 * @return true if this Element has additional Namespaces.
+	 */
+	public boolean hasAdditionalNamespaces() {
+<span class="fc bfc" id="L1079" title="All 4 branches covered.">		return additionalNamespaces != null &amp;&amp; !additionalNamespaces.isEmpty();</span>
+	}
+	
+	/**
+	 * Lazy initialiser for the Attribute list.
+	 * @return this Element's Attribute List (creating it if necessary).
+	 */
+	AttributeList getAttributeList() {
+<span class="fc bfc" id="L1087" title="All 2 branches covered.">		if (attributes == null) {</span>
+<span class="fc" id="L1088">			attributes = new AttributeList(this);</span>
+		}
+<span class="fc" id="L1090">		return attributes;</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This returns the complete set of attributes for this element, as a
+	 * &lt;code&gt;List&lt;/code&gt; of &lt;code&gt;Attribute&lt;/code&gt; objects in no particular
+	 * order, or an empty list if there are none.
+	 * &lt;/p&gt;
+	 * The returned list is &quot;live&quot; and changes to it affect the
+	 * element's actual attributes.
+	 * &lt;/p&gt;
+	 * Use the methods {@link #hasAttributes()} or {@link #getAttributesSize()}
+	 * if you just want to see whether there are attributes. Calling this method
+	 * may be inefficient if there are no Attributes.
+	 *
+	 * @return attributes for the element
+	 */
+	public List&lt;Attribute&gt; getAttributes() {
+<span class="fc" id="L1109">		return getAttributeList();</span>
+	}
+
+
+	/**
+	 * Get the number of Attributes currently attached to this Element.
+	 * @return the number of Attributes attached.
+	 */
+	public int getAttributesSize() {
+<span class="fc bfc" id="L1118" title="All 2 branches covered.">		return attributes == null ? 0 : attributes.size();</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This returns the attribute for this element with the given name
+	 * and within no namespace, or null if no such attribute exists.
+	 * &lt;/p&gt;
+	 *
+	 * @param attname name of the attribute to return
+	 * @return attribute for the element
+	 */
+	public Attribute getAttribute(final String attname) {
+<span class="fc" id="L1131">		return getAttribute(attname, Namespace.NO_NAMESPACE);</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This returns the attribute for this element with the given name
+	 * and within the given Namespace, or null if no such attribute exists.
+	 * &lt;/p&gt;
+	 *
+	 * @param attname name of the attribute to return
+	 * @param ns &lt;code&gt;Namespace&lt;/code&gt; to search within. A null implies Namespace.NO_NAMESPACE.
+	 * @return attribute for the element
+	 */
+	public Attribute getAttribute(final String attname, final Namespace ns) {
+<span class="fc bfc" id="L1145" title="All 2 branches covered.">		if (attributes == null) {</span>
+<span class="fc" id="L1146">			return null;</span>
+		}
+<span class="fc" id="L1148">		return getAttributeList().get(attname, ns);</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This returns the attribute value for the attribute with the given name
+	 * and within no namespace, null if there is no such attribute, and the
+	 * empty string if the attribute value is empty.
+	 * &lt;/p&gt;
+	 *
+	 * @param attname name of the attribute whose value to be returned
+	 * @return the named attribute's value, or null if no such attribute
+	 */
+	public String getAttributeValue(final String attname) {
+<span class="fc bfc" id="L1162" title="All 2 branches covered.">		if (attributes == null) {</span>
+<span class="fc" id="L1163">			return null;</span>
+		}
+<span class="fc" id="L1165">		return getAttributeValue(attname, Namespace.NO_NAMESPACE);</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This returns the attribute value for the attribute with the given name
+	 * and within no namespace, or the passed-in default if there is no
+	 * such attribute.
+	 * &lt;/p&gt;
+	 *
+	 * @param attname name of the attribute whose value to be returned
+	 * @param def a default value to return if the attribute does not exist
+	 * @return the named attribute's value, or the default if no such attribute
+	 */
+	public String getAttributeValue(final String attname, final String def) {
+<span class="fc bfc" id="L1180" title="All 2 branches covered.">		if (attributes == null) {</span>
+<span class="fc" id="L1181">			return def;</span>
+		}
+<span class="fc" id="L1183">		return getAttributeValue(attname, Namespace.NO_NAMESPACE, def);</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This returns the attribute value for the attribute with the given name
+	 * and within the given Namespace, null if there is no such attribute, and
+	 * the empty string if the attribute value is empty.
+	 * &lt;/p&gt;
+	 *
+	 * @param attname name of the attribute whose valud is to be returned
+	 * @param ns &lt;code&gt;Namespace&lt;/code&gt; to search within. A null implies Namespace.NO_NAMESPACE.
+	 * @return the named attribute's value, or null if no such attribute
+	 */
+	public String getAttributeValue(final String attname, final Namespace ns) {
+<span class="fc bfc" id="L1198" title="All 2 branches covered.">		if (attributes == null) {</span>
+<span class="fc" id="L1199">			return null;</span>
+		}
+<span class="fc" id="L1201">		return getAttributeValue(attname, ns, null);</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This returns the attribute value for the attribute with the given name
+	 * and within the given Namespace, or the passed-in default if there is no
+	 * such attribute.
+	 * &lt;/p&gt;
+	 *
+	 * @param attname name of the attribute whose valud is to be returned
+	 * @param ns &lt;code&gt;Namespace&lt;/code&gt; to search within. A null implies Namespace.NO_NAMESPACE.
+	 * @param def a default value to return if the attribute does not exist
+	 * @return the named attribute's value, or the default if no such attribute
+	 */
+	public String getAttributeValue(final String attname, final Namespace ns, final String def) {
+<span class="fc bfc" id="L1217" title="All 2 branches covered.">		if (attributes == null) {</span>
+<span class="fc" id="L1218">			return def;</span>
+		}
+<span class="fc" id="L1220">		final Attribute attribute = getAttributeList().get(attname, ns);</span>
+<span class="fc bfc" id="L1221" title="All 2 branches covered.">		if (attribute == null) {</span>
+<span class="fc" id="L1222">			return def;</span>
+		}
+
+<span class="fc" id="L1225">		return attribute.getValue();</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This sets the attributes of the element.  The supplied Collection should
+	 * contain only objects of type &lt;code&gt;Attribute&lt;/code&gt;.
+	 * &lt;/p&gt;
+	 *
+	 * &lt;p&gt;
+	 * When all objects in the supplied List are legal and before the new
+	 * attributes are added, all old attributes will have their
+	 * parentage set to null (no parent) and the old attribute list will be
+	 * cleared. This has the effect that any active attribute list (previously
+	 * obtained with a call to {@link #getAttributes}) will also change to
+	 * reflect the new attributes.  In addition, all attributes in the supplied
+	 * List will have their parentage set to this element, but the List itself
+	 * will not be &quot;live&quot; and further removals and additions will have no
+	 * effect on this elements attributes. If the user wants to continue
+	 * working with a &quot;live&quot; attribute list, then a call to setAttributes
+	 * should be followed by a call to {@link #getAttributes} to obtain a
+	 * &quot;live&quot; version of the attributes.
+	 * &lt;/p&gt;
+	 *
+	 * &lt;p&gt;
+	 * Passing a null or empty List clears the existing attributes.
+	 * &lt;/p&gt;
+	 *
+	 * &lt;p&gt;
+	 * In cases where the List contains duplicate attributes, only the last
+	 * one will be retained.  This has the same effect as calling
+	 * {@link #setAttribute(Attribute)} sequentially.
+	 * &lt;/p&gt;
+	 *
+	 * &lt;p&gt;
+	 * In event of an exception the original attributes will be unchanged and
+	 * the attributes in the supplied attributes will be unaltered.
+	 * &lt;/p&gt;
+	 *
+	 * @param newAttributes &lt;code&gt;Collection&lt;/code&gt; of attributes to set
+	 * @return this element modified
+	 * @throws IllegalAddException if the List contains objects
+	 *         that are not instances of &lt;code&gt;Attribute&lt;/code&gt;,
+	 *         or if any of the &lt;code&gt;Attribute&lt;/code&gt; objects have
+	 *         conflicting namespace prefixes.
+	 */
+	public Element setAttributes(final Collection&lt;? extends Attribute&gt; newAttributes) {
+<span class="fc" id="L1272">		getAttributeList().clearAndSet(newAttributes);</span>
+<span class="fc" id="L1273">		return this;</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This sets an attribute value for this element.  Any existing attribute
+	 * with the same name and namespace URI is removed.
+	 * &lt;/p&gt;
+	 *
+	 * @param name name of the attribute to set
+	 * @param value value of the attribute to set
+	 * @return this element modified
+	 * @throws IllegalNameException if the given name is illegal as an
+	 *         attribute name.
+	 * @throws IllegalDataException if the given attribute value is
+	 *         illegal character data (as determined by
+	 *         {@link org.jdom2.Verifier#checkCharacterData}).
+	 */
+	public Element setAttribute(final String name, final String value) {
+<span class="fc" id="L1292">		final Attribute attribute = getAttribute(name);</span>
+<span class="fc bfc" id="L1293" title="All 2 branches covered.">		if (attribute == null) {</span>
+<span class="fc" id="L1294">			final Attribute newAttribute = new Attribute(name, value);</span>
+<span class="fc" id="L1295">			setAttribute(newAttribute);</span>
+<span class="fc" id="L1296">		} else {</span>
+<span class="fc" id="L1297">			attribute.setValue(value);</span>
+		}
+
+<span class="fc" id="L1300">		return this;</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This sets an attribute value for this element.  Any existing attribute
+	 * with the same name and namespace URI is removed.
+	 * &lt;/p&gt;
+	 *
+	 * @param name name of the attribute to set
+	 * @param value value of the attribute to set
+	 * @param ns namespace of the attribute to set. A null implies Namespace.NO_NAMESPACE.
+	 * @return this element modified
+	 * @throws IllegalNameException if the given name is illegal as an
+	 *         attribute name, or if the namespace is an unprefixed default
+	 *         namespace
+	 * @throws IllegalDataException if the given attribute value is
+	 *         illegal character data (as determined by
+	 *         {@link org.jdom2.Verifier#checkCharacterData}).
+	 * @throws IllegalAddException if the attribute namespace prefix
+	 *         collides with another namespace prefix on the element.
+	 */
+	public Element setAttribute(final String name, final String value, final Namespace ns) {
+<span class="fc" id="L1323">		final Attribute attribute = getAttribute(name, ns);</span>
+<span class="fc bfc" id="L1324" title="All 2 branches covered.">		if (attribute == null) {</span>
+<span class="fc" id="L1325">			final Attribute newAttribute = new Attribute(name, value, ns);</span>
+<span class="fc" id="L1326">			setAttribute(newAttribute);</span>
+<span class="fc" id="L1327">		} else {</span>
+<span class="fc" id="L1328">			attribute.setValue(value);</span>
+		}
+
+<span class="fc" id="L1331">		return this;</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This sets an attribute value for this element.  Any existing attribute
+	 * with the same name and namespace URI is removed.
+	 * &lt;/p&gt;
+	 *
+	 * @param attribute &lt;code&gt;Attribute&lt;/code&gt; to set
+	 * @return this element modified
+	 * @throws IllegalAddException if the attribute being added already has a
+	 *   parent or if the attribute namespace prefix collides with another
+	 *   namespace prefix on the element.
+	 */
+	public Element setAttribute(final Attribute attribute) {
+<span class="fc" id="L1347">		getAttributeList().add(attribute);</span>
+<span class="fc" id="L1348">		return this;</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This removes the attribute with the given name and within no
+	 * namespace. If no such attribute exists, this method does nothing.
+	 * &lt;/p&gt;
+	 *
+	 * @param attname name of attribute to remove
+	 * @return whether the attribute was removed
+	 */
+	public boolean removeAttribute(final String attname) {
+<span class="fc" id="L1361">		return removeAttribute(attname, Namespace.NO_NAMESPACE);</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This removes the attribute with the given name and within the
+	 * given Namespace.  If no such attribute exists, this method does
+	 * nothing.
+	 * &lt;/p&gt;
+	 *
+	 * @param attname name of attribute to remove
+	 * @param ns namespace URI of attribute to remove. A null implies Namespace.NO_NAMESPACE.
+	 * @return whether the attribute was removed
+	 */
+	public boolean removeAttribute(final String attname, final Namespace ns) {
+<span class="fc bfc" id="L1376" title="All 2 branches covered.">		if (attributes == null) {</span>
+<span class="fc" id="L1377">			return false;</span>
+		}
+<span class="fc" id="L1379">		return getAttributeList().remove(attname, ns);</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This removes the supplied Attribute should it exist.
+	 * &lt;/p&gt;
+	 *
+	 * @param attribute Reference to the attribute to be removed.
+	 * @return whether the attribute was removed
+	 */
+	public boolean removeAttribute(final Attribute attribute) {
+<span class="fc bfc" id="L1391" title="All 2 branches covered.">		if (attributes == null) {</span>
+<span class="fc" id="L1392">			return false;</span>
+		}
+<span class="fc" id="L1394">		return getAttributeList().remove(attribute);</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 *  This returns a &lt;code&gt;String&lt;/code&gt; representation of the
+	 *    &lt;code&gt;Element&lt;/code&gt;, suitable for debugging. If the XML
+	 *    representation of the &lt;code&gt;Element&lt;/code&gt; is desired,
+	 *    {@link org.jdom2.output.XMLOutputter#outputString(Element)}
+	 *    should be used.
+	 * &lt;/p&gt;
+	 *
+	 * @return &lt;code&gt;String&lt;/code&gt; - information about the
+	 *         &lt;code&gt;Element&lt;/code&gt;
+	 */
+	@Override
+	public String toString() {
+<span class="fc" id="L1411">		final StringBuilder stringForm = new StringBuilder(64)</span>
+		.append(&quot;[Element: &lt;&quot;)
+		.append(getQualifiedName());
+
+<span class="fc" id="L1415">		final String nsuri = getNamespaceURI();</span>
+<span class="fc bfc" id="L1416" title="All 2 branches covered.">		if (!&quot;&quot;.equals(nsuri)) {</span>
+<span class="fc" id="L1417">			stringForm</span>
+			.append(&quot; [Namespace: &quot;)
+			.append(nsuri)
+			.append(&quot;]&quot;);
+		}
+<span class="fc" id="L1422">		stringForm.append(&quot;/&gt;]&quot;);</span>
+
+<span class="fc" id="L1424">		return stringForm.toString();</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 *  This returns a deep clone of this element.
+	 *  The new element is detached from its parent, and getParent()
+	 *  on the clone will return null.
+	 * &lt;/p&gt;
+	 *
+	 * @return the clone of this element
+	 */
+	@Override
+	public Element clone() {
+
+		// Ken Rune Helland &lt;kenh@csc.no&gt; is our local clone() guru
+
+<span class="fc" id="L1441">		final Element element = (Element) super.clone();</span>
+
+		// name and namespace are references to immutable objects
+		// so super.clone() handles them ok
+
+		// Reference to parent is copied by super.clone()
+		// (Object.clone()) so we have to remove it
+		// Actually, super is a Content, which has already detached in the
+		// clone().
+		// element.parent = null;
+
+		// Reference to content list and attribute lists are copyed by
+		// super.clone() so we set it new lists if the original had lists
+<span class="fc" id="L1454">		element.content = new ContentList(element);</span>
+<span class="fc bfc" id="L1455" title="All 2 branches covered.">		element.attributes = attributes == null ? null : new AttributeList(element);</span>
+
+		// Cloning attributes
+<span class="fc bfc" id="L1458" title="All 2 branches covered.">		if (attributes != null) {</span>
+<span class="fc bfc" id="L1459" title="All 2 branches covered.">			for(int i = 0; i &lt; attributes.size(); i++) {</span>
+<span class="fc" id="L1460">				final Attribute attribute = attributes.get(i);</span>
+<span class="fc" id="L1461">				element.attributes.add(attribute.clone());</span>
+			}
+		}
+
+		// Cloning additional namespaces
+<span class="fc bfc" id="L1466" title="All 2 branches covered.">		if (additionalNamespaces != null) {</span>
+<span class="fc" id="L1467">			element.additionalNamespaces = new ArrayList&lt;Namespace&gt;(additionalNamespaces);</span>
+		}
+
+		// Cloning content
+<span class="fc bfc" id="L1471" title="All 2 branches covered.">		for(int i = 0; i &lt; content.size(); i++) {</span>
+<span class="fc" id="L1472">			final Content c = content.get(i);</span>
+<span class="fc" id="L1473">			element.content.add(c.clone());</span>
+		}
+
+<span class="fc" id="L1476">		return element;</span>
+	}
+
+
+	/**
+	 * Returns an iterator that walks over all descendants in document order.
+	 *
+	 * @return an iterator to walk descendants
+	 */
+	@Override
+	public IteratorIterable&lt;Content&gt; getDescendants() {
+<span class="fc" id="L1487">		return new DescendantIterator(this);</span>
+	}
+
+	/**
+	 * Returns an iterator that walks over all descendants in document order
+	 * applying the Filter to return only content that match the filter rule.
+	 * With filters you can match only Elements, only Comments, Elements or
+	 * Comments, only Elements with a given name and/or prefix, and so on.
+	 *
+	 * @param filter filter to select which descendants to see
+	 * @return an iterator to walk descendants within a filter
+	 */
+	@Override
+	public &lt;F extends Content&gt; IteratorIterable&lt;F&gt; getDescendants(final Filter&lt;F&gt; filter) {
+<span class="fc" id="L1501">		return new FilterIterator&lt;F&gt;(new DescendantIterator(this), filter);</span>
+	}
+
+
+
+	/**
+	 * This returns a &lt;code&gt;List&lt;/code&gt; of all the child elements
+	 * nested directly (one level deep) within this element, as
+	 * &lt;code&gt;Element&lt;/code&gt; objects.  If this target element has no nested
+	 * elements, an empty List is returned.  The returned list is &quot;live&quot;
+	 * in document order and changes to it affect the element's actual
+	 * contents.
+	 *
+	 * &lt;p&gt;
+	 * Sequential traversal through the List is best done with a Iterator
+	 * since the underlying implement of List.size() may not be the most
+	 * efficient.
+	 * &lt;/p&gt;
+	 *
+	 * &lt;p&gt;
+	 * No recursion is performed, so elements nested two levels deep
+	 * would have to be obtained with:
+	 * &lt;pre&gt;
+	 * &lt;code&gt;
+	 *   Iterator itr = (currentElement.getChildren()).iterator();
+	 *   while(itr.hasNext()) {
+	 *     Element oneLevelDeep = (Element)itr.next();
+	 *     List twoLevelsDeep = oneLevelDeep.getChildren();
+	 *     // Do something with these children
+	 *   }
+	 * &lt;/code&gt;
+	 * &lt;/pre&gt;
+	 * &lt;/p&gt;
+	 *
+	 * @return list of child &lt;code&gt;Element&lt;/code&gt; objects for this element
+	 */
+	public List&lt;Element&gt; getChildren() {
+<span class="fc" id="L1538">		return content.getView(new ElementFilter());</span>
+	}
+
+	/**
+	 * This returns a &lt;code&gt;List&lt;/code&gt; of all the child elements
+	 * nested directly (one level deep) within this element with the given
+	 * local name and belonging to no namespace, returned as
+	 * &lt;code&gt;Element&lt;/code&gt; objects.  If this target element has no nested
+	 * elements with the given name outside a namespace, an empty List
+	 * is returned.  The returned list is &quot;live&quot; in document order
+	 * and changes to it affect the element's actual contents.
+	 * &lt;p&gt;
+	 * Please see the notes for &lt;code&gt;{@link #getChildren}&lt;/code&gt;
+	 * for a code example.
+	 * &lt;/p&gt;
+	 *
+	 * @param cname local name for the children to match
+	 * @return all matching child elements
+	 */
+	public List&lt;Element&gt; getChildren(final String cname) {
+<span class="fc" id="L1558">		return getChildren(cname, Namespace.NO_NAMESPACE);</span>
+	}
+
+	/**
+	 * This returns a &lt;code&gt;List&lt;/code&gt; of all the child elements
+	 * nested directly (one level deep) within this element with the given
+	 * local name and belonging to the given Namespace, returned as
+	 * &lt;code&gt;Element&lt;/code&gt; objects.  If this target element has no nested
+	 * elements with the given name in the given Namespace, an empty List
+	 * is returned.  The returned list is &quot;live&quot; in document order
+	 * and changes to it affect the element's actual contents.
+	 * &lt;p&gt;
+	 * Please see the notes for &lt;code&gt;{@link #getChildren}&lt;/code&gt;
+	 * for a code example.
+	 * &lt;/p&gt;
+	 *
+	 * @param cname local name for the children to match
+	 * @param ns &lt;code&gt;Namespace&lt;/code&gt; to search within. A null implies Namespace.NO_NAMESPACE.
+	 * @return all matching child elements
+	 */
+	public List&lt;Element&gt; getChildren(final String cname, final Namespace ns) {
+<span class="fc" id="L1579">		return content.getView(new ElementFilter(cname, ns));</span>
+	}
+
+	/**
+	 * This returns the first child element within this element with the
+	 * given local name and belonging to the given namespace.
+	 * If no elements exist for the specified name and namespace, null is
+	 * returned.
+	 *
+	 * @param cname local name of child element to match
+	 * @param ns &lt;code&gt;Namespace&lt;/code&gt; to search within. A null implies Namespace.NO_NAMESPACE.
+	 * @return the first matching child element, or null if not found
+	 */
+	public Element getChild(final String cname, final Namespace ns) {
+<span class="fc" id="L1593">		final List&lt;Element&gt; elements = content.getView(new ElementFilter(cname, ns));</span>
+<span class="fc" id="L1594">		final Iterator&lt;Element&gt; iter = elements.iterator();</span>
+<span class="fc bfc" id="L1595" title="All 2 branches covered.">		if (iter.hasNext()) {</span>
+<span class="fc" id="L1596">			return iter.next();</span>
+		}
+<span class="fc" id="L1598">		return null;</span>
+	}
+
+	/**
+	 * This returns the first child element within this element with the
+	 * given local name and belonging to no namespace.
+	 * If no elements exist for the specified name and namespace, null is
+	 * returned.
+	 *
+	 * @param cname local name of child element to match
+	 * @return the first matching child element, or null if not found
+	 */
+	public Element getChild(final String cname) {
+<span class="fc" id="L1611">		return getChild(cname, Namespace.NO_NAMESPACE);</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This removes the first child element (one level deep) with the
+	 * given local name and belonging to no namespace.
+	 * Returns true if a child was removed.
+	 * &lt;/p&gt;
+	 *
+	 * @param cname the name of child elements to remove
+	 * @return whether deletion occurred
+	 */
+	public boolean removeChild(final String cname) {
+<span class="fc" id="L1625">		return removeChild(cname, Namespace.NO_NAMESPACE);</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This removes the first child element (one level deep) with the
+	 * given local name and belonging to the given namespace.
+	 * Returns true if a child was removed.
+	 * &lt;/p&gt;
+	 *
+	 * @param cname the name of child element to remove
+	 * @param ns &lt;code&gt;Namespace&lt;/code&gt; to search within. A null implies Namespace.NO_NAMESPACE.
+	 * @return whether deletion occurred
+	 */
+	public boolean removeChild(final String cname, final Namespace ns) {
+<span class="fc" id="L1640">		final ElementFilter filter = new ElementFilter(cname, ns);</span>
+<span class="fc" id="L1641">		final List&lt;Element&gt; old = content.getView(filter);</span>
+<span class="fc" id="L1642">		final Iterator&lt;Element&gt; iter = old.iterator();</span>
+<span class="fc bfc" id="L1643" title="All 2 branches covered.">		if (iter.hasNext()) {</span>
+<span class="fc" id="L1644">			iter.next();</span>
+<span class="fc" id="L1645">			iter.remove();</span>
+<span class="fc" id="L1646">			return true;</span>
+		}
+
+<span class="fc" id="L1649">		return false;</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This removes all child elements (one level deep) with the
+	 * given local name and belonging to no namespace.
+	 * Returns true if any were removed.
+	 * &lt;/p&gt;
+	 *
+	 * @param cname the name of child elements to remove
+	 * @return whether deletion occurred
+	 */
+	public boolean removeChildren(final String cname) {
+<span class="fc" id="L1663">		return removeChildren(cname, Namespace.NO_NAMESPACE);</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This removes all child elements (one level deep) with the
+	 * given local name and belonging to the given namespace.
+	 * Returns true if any were removed.
+	 * &lt;/p&gt;
+	 *
+	 * @param cname the name of child elements to remove
+	 * @param ns &lt;code&gt;Namespace&lt;/code&gt; to search within. A null implies Namespace.NO_NAMESPACE.
+	 * @return whether deletion occurred
+	 */
+	public boolean removeChildren(final String cname, final Namespace ns) {
+<span class="fc" id="L1678">		boolean deletedSome = false;</span>
+
+<span class="fc" id="L1680">		final ElementFilter filter = new ElementFilter(cname, ns);</span>
+<span class="fc" id="L1681">		final List&lt;Element&gt; old = content.getView(filter);</span>
+<span class="fc" id="L1682">		final Iterator&lt;Element&gt; iter = old.iterator();</span>
+<span class="fc bfc" id="L1683" title="All 2 branches covered.">		while (iter.hasNext()) {</span>
+<span class="fc" id="L1684">			iter.next();</span>
+<span class="fc" id="L1685">			iter.remove();</span>
+<span class="fc" id="L1686">			deletedSome = true;</span>
+		}
+
+<span class="fc" id="L1689">		return deletedSome;</span>
+	}
+
+	/**
+	 * Get the Namespaces that are in-scope on this Element. Element has the
+	 * most complex rules for the namespaces-in-scope.
+	 * &lt;p&gt;
+	 * The scope is built up from a number of sources following the rules of
+	 * XML namespace inheritence as follows:
+	 * &lt;ul&gt;
+	 * &lt;li&gt;The {@link Namespace#XML_NAMESPACE} is added
+	 * &lt;li&gt;The element's namespace is added (commonly 
+	 * {@link Namespace#NO_NAMESPACE})
+	 * &lt;li&gt;All the attributes are inspected and their Namespaces are included
+	 * &lt;li&gt;All Namespaces declared on this Element using
+	 * {@link #addNamespaceDeclaration(Namespace)} are included.
+	 * &lt;li&gt;If the element has a parent then the parent's Namespace scope is
+	 * inspected, and any prefixes in the parent scope that are not yet bound
+	 * in this Element's scope are included.
+	 * &lt;li&gt;If the default Namespace (the no-prefix namespace) has not been
+	 * encountered for this Element then {@link Namespace#NO_NAMESPACE} is
+	 * included.
+	 * &lt;/ul&gt; 
+	 * The Element's Namespace scope consist of it's inherited Namespaces and
+	 * any modifications to that scope derived from the Element itself. If the
+	 * element is detached then it's inherited scope consists of just 
+	 * If an element has no parent then 
+	 * &lt;p&gt;
+	 * Note that the Element's Namespace will always be reported first.
+	 * &lt;p&gt;
+	 * &lt;strong&gt;Description copied from&lt;/strong&gt;
+	 * {@link NamespaceAware#getNamespacesInScope()}:
+	 * &lt;p&gt;
+	 * {@inheritDoc}
+	 * 
+	 * @see NamespaceAware
+	 */
+	@Override
+	public List&lt;Namespace&gt; getNamespacesInScope() {
+		// The assumption here is that all namespaces are valid,
+		// that there are no namespace collisions on this element
+
+		// This method is also the 'anchor' of the three getNamespaces*() methods
+		// It does not make reference to this Element instance's other
+		// getNamespace*() methods
+
+<span class="fc" id="L1735">		TreeMap&lt;String,Namespace&gt; namespaces = new TreeMap&lt;String, Namespace&gt;();</span>
+<span class="fc" id="L1736">		namespaces.put(Namespace.XML_NAMESPACE.getPrefix(), Namespace.XML_NAMESPACE);</span>
+<span class="fc" id="L1737">		namespaces.put(getNamespacePrefix(), getNamespace());</span>
+<span class="fc bfc" id="L1738" title="All 2 branches covered.">		if (additionalNamespaces != null) {</span>
+<span class="fc bfc" id="L1739" title="All 2 branches covered.">			for (Namespace ns : getAdditionalNamespaces()) {</span>
+<span class="fc bfc" id="L1740" title="All 2 branches covered.">				if (!namespaces.containsKey(ns.getPrefix())) {</span>
+<span class="fc" id="L1741">					namespaces.put(ns.getPrefix(), ns);</span>
+				}
+<span class="fc" id="L1743">			}</span>
+		}
+<span class="fc bfc" id="L1745" title="All 2 branches covered.">		if (attributes != null) {</span>
+<span class="fc bfc" id="L1746" title="All 2 branches covered.">			for (Attribute att : getAttributes()) {</span>
+<span class="fc" id="L1747">				Namespace ns = att.getNamespace();</span>
+<span class="fc bfc" id="L1748" title="All 2 branches covered.">				if (!namespaces.containsKey(ns.getPrefix())) {</span>
+<span class="fc" id="L1749">					namespaces.put(ns.getPrefix(), ns);</span>
+				}
+<span class="fc" id="L1751">			}</span>
+		}
+		// Right, we now have all the namespaces that are current on this ELement.
+		// Include any other namespaces that are inherited.
+<span class="fc" id="L1755">		final Element pnt = getParentElement();</span>
+<span class="fc bfc" id="L1756" title="All 2 branches covered.">		if (pnt != null) {</span>
+<span class="fc bfc" id="L1757" title="All 2 branches covered.">			for (Namespace ns : pnt.getNamespacesInScope()) {</span>
+<span class="fc bfc" id="L1758" title="All 2 branches covered.">				if (!namespaces.containsKey(ns.getPrefix())) {</span>
+<span class="fc" id="L1759">					namespaces.put(ns.getPrefix(), ns);</span>
+				}
+<span class="fc" id="L1761">			}</span>
+		}
+
+<span class="fc bfc" id="L1764" title="All 4 branches covered.">		if (pnt == null &amp;&amp; !namespaces.containsKey(&quot;&quot;)) {</span>
+			// we are the root element, and there is no 'default' namespace.
+<span class="fc" id="L1766">			namespaces.put(Namespace.NO_NAMESPACE.getPrefix(), Namespace.NO_NAMESPACE);</span>
+		}
+
+<span class="fc" id="L1769">		ArrayList&lt;Namespace&gt; al = new ArrayList&lt;Namespace&gt;(namespaces.size());</span>
+<span class="fc" id="L1770">		al.add(getNamespace());</span>
+<span class="fc" id="L1771">		namespaces.remove(getNamespacePrefix());</span>
+<span class="fc" id="L1772">		al.addAll(namespaces.values());</span>
+
+<span class="fc" id="L1774">		return Collections.unmodifiableList(al);</span>
+	}
+
+	@Override
+	public List&lt;Namespace&gt; getNamespacesInherited() {
+<span class="fc bfc" id="L1779" title="All 2 branches covered.">		if (getParentElement() == null) {</span>
+<span class="fc" id="L1780">			ArrayList&lt;Namespace&gt; ret = new ArrayList&lt;Namespace&gt;(getNamespacesInScope());</span>
+<span class="fc bfc" id="L1781" title="All 2 branches covered.">			for (Iterator&lt;Namespace&gt; it = ret.iterator(); it.hasNext();) {</span>
+<span class="fc" id="L1782">				Namespace ns = it.next();</span>
+<span class="fc bfc" id="L1783" title="All 4 branches covered.">				if (ns == Namespace.NO_NAMESPACE || ns == Namespace.XML_NAMESPACE) {</span>
+<span class="fc" id="L1784">					continue;</span>
+				}
+<span class="fc" id="L1786">				it.remove();</span>
+<span class="fc" id="L1787">			}</span>
+<span class="fc" id="L1788">			return Collections.unmodifiableList(ret);</span>
+		}
+
+		// OK, the things we inherit are the prefixes we have in scope that
+		// are also in our parent's scope.
+<span class="fc" id="L1793">		HashMap&lt;String,Namespace&gt; parents = new HashMap&lt;String, Namespace&gt;();</span>
+<span class="fc bfc" id="L1794" title="All 2 branches covered.">		for (Namespace ns : getParentElement().getNamespacesInScope()) {</span>
+<span class="fc" id="L1795">			parents.put(ns.getPrefix(), ns);</span>
+<span class="fc" id="L1796">		}</span>
+
+<span class="fc" id="L1798">		ArrayList&lt;Namespace&gt; al = new ArrayList&lt;Namespace&gt;();</span>
+<span class="fc bfc" id="L1799" title="All 2 branches covered.">		for (Namespace ns : getNamespacesInScope()) {</span>
+<span class="fc bfc" id="L1800" title="All 2 branches covered.">			if (ns == parents.get(ns.getPrefix())) {</span>
+				// inherited
+<span class="fc" id="L1802">				al.add(ns);</span>
+			}
+<span class="fc" id="L1804">		}</span>
+
+<span class="fc" id="L1806">		return Collections.unmodifiableList(al);</span>
+	}
+
+	@Override
+	public List&lt;Namespace&gt; getNamespacesIntroduced() {
+<span class="fc bfc" id="L1811" title="All 2 branches covered.">		if (getParentElement() == null) {</span>
+			// we introduce everything... except Namespace.XML_NAMESPACE
+<span class="fc" id="L1813">			List&lt;Namespace&gt; ret = new ArrayList&lt;Namespace&gt;(getNamespacesInScope());</span>
+<span class="fc bfc" id="L1814" title="All 2 branches covered.">			for (Iterator&lt;Namespace&gt; it = ret.iterator(); it.hasNext(); ) {</span>
+<span class="fc" id="L1815">				Namespace ns = it.next();</span>
+<span class="fc bfc" id="L1816" title="All 4 branches covered.">				if (ns == Namespace.XML_NAMESPACE || ns == Namespace.NO_NAMESPACE) {</span>
+<span class="fc" id="L1817">					it.remove();</span>
+				}
+<span class="fc" id="L1819">			}</span>
+<span class="fc" id="L1820">			return Collections.unmodifiableList(ret);</span>
+		}
+
+		// OK, the things we introduce are the prefixes we have in scope that
+		// are *not* in our parent's scope.
+<span class="fc" id="L1825">		HashMap&lt;String,Namespace&gt; parents = new HashMap&lt;String, Namespace&gt;();</span>
+<span class="fc bfc" id="L1826" title="All 2 branches covered.">		for (Namespace ns : getParentElement().getNamespacesInScope()) {</span>
+<span class="fc" id="L1827">			parents.put(ns.getPrefix(), ns);</span>
+<span class="fc" id="L1828">		}</span>
+
+<span class="fc" id="L1830">		ArrayList&lt;Namespace&gt; al = new ArrayList&lt;Namespace&gt;();</span>
+<span class="fc bfc" id="L1831" title="All 2 branches covered.">		for (Namespace ns : getNamespacesInScope()) {</span>
+<span class="fc bfc" id="L1832" title="All 4 branches covered.">			if (!parents.containsKey(ns.getPrefix()) || ns != parents.get(ns.getPrefix())) {</span>
+				// introduced
+<span class="fc" id="L1834">				al.add(ns);</span>
+			}
+<span class="fc" id="L1836">		}</span>
+
+<span class="fc" id="L1838">		return Collections.unmodifiableList(al);</span>
+	}
+
+	@Override
+	public Element detach() {
+<span class="fc" id="L1843">		return (Element)super.detach();</span>
+	}
+
+	@Override
+	public void canContainContent(Content child, int index, boolean replace) throws IllegalAddException {
+<span class="fc bfc" id="L1848" title="All 2 branches covered.">		if (child instanceof DocType) {</span>
+<span class="fc" id="L1849">			throw new IllegalAddException(</span>
+					&quot;A DocType is not allowed except at the document level&quot;);
+		}
+<span class="fc" id="L1852">	}</span>
+	
+	/**
+	 * Sort the contents of this Element using a mechanism that is safe for JDOM
+	 * content. See the notes on {@link #sortContent(Filter, Comparator)} for
+	 * how the algorithm works.
+	 * &lt;p&gt;
+	 * {@link Collections#sort(List, Comparator)} is not appropriate for sorting
+	 * the Lists returned from {@link Element#getContent()} because those are
+	 * 'live' lists, and the Collections.sort() method uses an algorithm that
+	 * adds the content in the new location before removing it from the old.
+	 * That creates validation issues with content attempting to attach to a
+	 * parent before detaching first.
+	 * &lt;p&gt;
+	 * This method provides a safe means to conveniently sort the content.
+	 * 
+	 * @param comparator The Comparator to use for the sorting.
+	 */
+	public void sortContent(Comparator&lt;? super Content&gt; comparator) {
+<span class="fc" id="L1871">		content.sort(comparator);</span>
+<span class="fc" id="L1872">	}</span>
+	
+	/**
+	 * Sort the child Elements of this Element using a mechanism that is safe
+	 * for JDOM content. Other child content will be unaffected. See the notes
+	 * on {@link #sortContent(Filter, Comparator)} for how the algorithm works.
+	 * &lt;p&gt;
+	 * {@link Collections#sort(List, Comparator)} is not appropriate for sorting
+	 * the Lists returned from {@link Element#getContent()} because those are
+	 * 'live' lists, and the Collections.sort() method uses an algorithm that
+	 * adds the content in the new location before removing it from the old.
+	 * This creates validation issues with content attempting to attach to a
+	 * parent before detaching first.
+	 * &lt;p&gt;
+	 * This method provides a safe means to conveniently sort the content.
+	 * 
+	 * @param comparator The Comparator to use for the sorting.
+	 */
+	public void sortChildren(Comparator &lt;? super Element&gt; comparator) {
+<span class="fc" id="L1891">		((FilterList&lt;Element&gt;)getChildren()).sort(comparator);</span>
+<span class="fc" id="L1892">	}</span>
+	
+	/**
+	 * Sort the Attributes of this Element using a mechanism that is safe
+	 * for JDOM. Other child content will be unaffected. See the notes
+	 * on {@link #sortContent(Filter, Comparator)} for how the algorithm works.
+	 * &lt;p&gt;
+	 * {@link Collections#sort(List, Comparator)} is not appropriate for sorting
+	 * the Lists returned from {@link Element#getContent()} because those are
+	 * 'live' lists, and the Collections.sort() method uses an algorithm that
+	 * adds the content in the new location before removing it from the old.
+	 * This creates validation issues with content attempting to attach to a
+	 * parent before detaching first.
+	 * &lt;p&gt;
+	 * This method provides a safe means to conveniently sort the content.
+	 * 
+	 * @param comparator The Comparator to use for the sorting.
+	 */
+	public void sortAttributes(Comparator &lt;? super Attribute&gt; comparator) {
+<span class="fc bfc" id="L1911" title="All 2 branches covered.">		if (attributes != null) {</span>
+<span class="fc" id="L1912">			attributes.sort(comparator);</span>
+		}
+<span class="fc" id="L1914">	}</span>
+	
+	/**
+	 * Sort the child content of this Element that matches the Filter, using a
+	 * mechanism that is safe for JDOM content. Other child content (that does
+	 * not match the filter) will be unaffected.
+	 * &lt;p&gt;
+	 * The algorithm used for sorting affects the child content in the following
+	 * ways:
+	 * &lt;ol&gt;
+	 * &lt;li&gt;Items not matching the Filter will be unchanged. This includes the
+	 * absolute position of that content in this Element. i.e. if child content
+	 * &lt;code&gt;cc&lt;/code&gt; does not match the Filter, then &lt;code&gt;indexOf(cc)&lt;/code&gt;
+	 * will not be changed by this sort.
+	 * &lt;li&gt;Items matching the Filter will be reordered according to the
+	 * comparator. Only the relative order of the Filtered data will change.
+	 * &lt;li&gt;Items that compare as 'equals' using the comparator will keep the
+	 * the same relative order as before the sort. 
+	 * &lt;/ol&gt;
+	 * &lt;p&gt;
+	 * {@link Collections#sort(List, Comparator)} is not appropriate for sorting
+	 * the Lists returned from {@link Element#getContent()} because those are
+	 * 'live' lists, and the Collections.sort() method uses an algorithm that
+	 * adds the content in the new location before removing it from the old.
+	 * This creates validation issues with content attempting to attach to a
+	 * parent before detaching first.
+	 * &lt;p&gt;
+	 * This method provides a safe means to conveniently sort the content.
+	 * @param &lt;E&gt; The generic type of the Filter used to select the content to
+	 * sort. 
+	 * @param filter The Filter used to select which child content to sort.
+	 * @param comparator The Comparator to use for the sorting.
+	 */
+	public &lt;E extends Content&gt; void sortContent(Filter&lt;E&gt; filter, Comparator &lt;? super E&gt; comparator) {
+<span class="fc" id="L1948">		final FilterList&lt;E&gt; list = (FilterList&lt;E&gt;)getContent(filter);</span>
+<span class="fc" id="L1949">		list.sort(comparator);</span>
+		
+<span class="fc" id="L1951">	}</span>
+	
+
+	/**
+	 * Simple method that supports getXMLBaseURI().
+	 * @param uri 'currently' URI as a string
+	 * @param relative the relative URI we are trying to make absolute
+	 * @return the resulting URI, may be null.
+	 * @throws URISyntaxException for URI problems.
+	 */
+	private final URI resolve(String uri, URI relative)
+			throws URISyntaxException {
+<span class="fc bfc" id="L1963" title="All 2 branches covered.">		if (uri == null) {</span>
+<span class="fc" id="L1964">			return relative;</span>
+		}
+<span class="fc" id="L1966">		final URI n = new URI(uri);</span>
+<span class="fc bfc" id="L1967" title="All 2 branches covered.">		if (relative == null) {</span>
+<span class="fc" id="L1968">			return n;</span>
+		}
+<span class="fc" id="L1970">		return n.resolve(relative);</span>
+	}
+
+	/**
+	 * Calculate the XMLBase URI for this Element using the rules defined in the
+	 * XMLBase specification, as well as the values supplied in the xml:base
+	 * attributes on this Element and its ancestry.
+	 * &lt;p&gt;
+	 * This method assumes that all values in &lt;code&gt;xml:base&lt;/code&gt; attributes
+	 * are valid URI values according to the &lt;code&gt;java.net.URI&lt;/code&gt;
+	 * implementation. The same implementation is used to resolve relative URI
+	 * values, and thus this code follows the assumptions in java.net.URI.
+	 * &lt;p&gt;
+	 * This technically deviates from the XMLBase spec because to fully support
+	 * legacy HTML the xml:base attribute could contain what is called a 'LIERI'
+	 * which is a superset of true URI values, but for practical purposes JDOM
+	 * users should never encounter such values because they are not processing
+	 * raw HTML (but xhtml maybe). 
+	 * 
+	 * @return a URI representing the XMLBase value for the supplied Element, or
+	 *         null if one could not be calculated.
+	 * @throws URISyntaxException
+	 *         if it is not possible to create java.net.URI values from the data
+	 *         in the &lt;code&gt;xml:base&lt;/code&gt; attributes.
+	 */
+	public URI getXMLBaseURI() throws URISyntaxException {
+<span class="fc" id="L1996">		Parent p = this;</span>
+<span class="fc" id="L1997">		URI ret = null;</span>
+<span class="fc bfc" id="L1998" title="All 2 branches covered.">		while (p != null) {</span>
+<span class="fc bfc" id="L1999" title="All 2 branches covered.">			if (p instanceof Element) {</span>
+<span class="fc" id="L2000">				ret = resolve(((Element) p).getAttributeValue(&quot;base&quot;,</span>
+						Namespace.XML_NAMESPACE), ret);
+			} else {
+<span class="fc" id="L2003">				ret = resolve(((Document) p).getBaseURI(), ret);</span>
+			}
+<span class="fc bfc" id="L2005" title="All 4 branches covered.">			if (ret != null &amp;&amp; ret.isAbsolute()) {</span>
+<span class="fc" id="L2006">				return ret;</span>
+			}
+<span class="fc" id="L2008">			p = p.getParent();</span>
+		}
+<span class="fc" id="L2010">		return ret;</span>
+	}
+
+
+
+	/**
+	 * JDOM2 Serialization. In this case, DocType is simple. 
+	 */
+	private static final long serialVersionUID = 200L;
+
+	/**
+	 * Serialize out the Element.
+	 * 
+	 * @serialData
+	 * The Stream protocol is:
+	 * &lt;ol&gt;
+	 *   &lt;li&gt;The Element name and Namespace using default Serialization.
+	 *   &lt;li&gt;The count of additional Namespace Declarations.
+	 *   &lt;li&gt;The actual additional Namespace Declarations.
+	 *   &lt;li&gt;The count of Attributes.
+	 *   &lt;li&gt;The actual Attributes.
+	 *   &lt;li&gt;The count of child Content
+	 *   &lt;li&gt;The actual Child Content.
+	 * &lt;/ol&gt;
+	 * 
+	 * @param out where to write the Element to.
+	 * @throws IOException if there is a writing problem.
+	 */
+	private void writeObject(final ObjectOutputStream out) throws IOException {
+		// sends out the name and namespace.
+<span class="fc" id="L2040">		out.defaultWriteObject();</span>
+<span class="fc bfc" id="L2041" title="All 2 branches covered.">		if (hasAdditionalNamespaces()) {</span>
+<span class="fc" id="L2042">			final int ans = additionalNamespaces.size();</span>
+<span class="fc" id="L2043">			out.writeInt(ans);</span>
+<span class="fc bfc" id="L2044" title="All 2 branches covered.">			for (int i = 0; i &lt; ans; i++) {</span>
+<span class="fc" id="L2045">				out.writeObject(additionalNamespaces.get(i));</span>
+			}
+<span class="fc" id="L2047">		} else {</span>
+<span class="fc" id="L2048">			out.writeInt(0);</span>
+		}
+<span class="fc bfc" id="L2050" title="All 2 branches covered.">		if (hasAttributes()) {</span>
+<span class="fc" id="L2051">			final int ans = attributes.size();</span>
+<span class="fc" id="L2052">			out.writeInt(ans);</span>
+<span class="fc bfc" id="L2053" title="All 2 branches covered.">			for (int i = 0; i &lt; ans; i++) {</span>
+<span class="fc" id="L2054">				out.writeObject(attributes.get(i));</span>
+			}
+<span class="fc" id="L2056">		} else {</span>
+<span class="fc" id="L2057">			out.writeInt(0);</span>
+		}
+		
+<span class="fc" id="L2060">		final int cs = content.size();</span>
+<span class="fc" id="L2061">		out.writeInt(cs);</span>
+<span class="fc bfc" id="L2062" title="All 2 branches covered.">		for (int i = 0; i &lt; cs; i++) {</span>
+<span class="fc" id="L2063">			out.writeObject(content.get(i));</span>
+		}
+
+<span class="fc" id="L2066">	}</span>
+
+	/**
+	 * Read an Element off the ObjectInputStream.
+	 * 
+	 * @see #writeObject(ObjectOutputStream)
+	 * @param in where to read the Element from.
+	 * @throws IOException if there is a reading problem.
+	 * @throws ClassNotFoundException when a class cannot be found
+	 */
+	private void readObject(final ObjectInputStream in)
+			throws IOException, ClassNotFoundException {
+
+<span class="fc" id="L2079">		in.defaultReadObject();</span>
+		
+<span class="fc" id="L2081">		content = new ContentList(this);</span>
+
+<span class="fc" id="L2083">		int nss = in.readInt();</span>
+		
+<span class="fc bfc" id="L2085" title="All 2 branches covered.">		while (--nss &gt;= 0) {</span>
+<span class="fc" id="L2086">			addNamespaceDeclaration((Namespace)in.readObject());</span>
+		}
+		
+<span class="fc" id="L2089">		int ats = in.readInt();</span>
+<span class="fc bfc" id="L2090" title="All 2 branches covered.">		while (--ats &gt;= 0) {</span>
+<span class="fc" id="L2091">			setAttribute((Attribute)in.readObject());</span>
+		}
+		
+<span class="fc" id="L2094">		int cs = in.readInt();</span>
+<span class="fc bfc" id="L2095" title="All 2 branches covered.">		while (--cs &gt;= 0) {</span>
+<span class="fc" id="L2096">			addContent((Content)in.readObject());</span>
+		}
+
+<span class="fc" id="L2099">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

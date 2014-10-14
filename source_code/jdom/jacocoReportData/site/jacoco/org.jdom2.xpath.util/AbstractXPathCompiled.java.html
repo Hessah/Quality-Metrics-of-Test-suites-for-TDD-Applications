@@ -1,0 +1,380 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>AbstractXPathCompiled.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jdom</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.xpath.util</a> &gt; <span class="el_source">AbstractXPathCompiled.java</span></div><h1>AbstractXPathCompiled.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.xpath.util;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.jdom2.Namespace;
+import org.jdom2.Verifier;
+import org.jdom2.filter.Filter;
+import org.jdom2.xpath.XPathExpression;
+import org.jdom2.xpath.XPathDiagnostic;
+
+/**
+ * A mostly-implemented XPathExpression that only needs two methods to be
+ * implemented in order to satisfy the complete API. Subclasses of this
+ * &lt;strong&gt;MUST&lt;/strong&gt; correctly override the clone() method which in turn
+ * should call &lt;code&gt;super.clone();&lt;/code&gt;
+ * 
+ * @param &lt;T&gt;
+ *        The generic type of the returned values.
+ * @author Rolf Lear
+ */
+public abstract class AbstractXPathCompiled&lt;T&gt; implements XPathExpression&lt;T&gt; {
+	
+<span class="fc" id="L82">	private static final class NamespaceComparator implements Comparator&lt;Namespace&gt; {</span>
+		@Override
+		public int compare(Namespace ns1, Namespace ns2) {
+<span class="fc" id="L85">			return ns1.getPrefix().compareTo(ns2.getPrefix());</span>
+		}
+	}
+	
+<span class="fc" id="L89">	private static final NamespaceComparator NSSORT = new NamespaceComparator();</span>
+
+<span class="fc" id="L91">	private final Map&lt;String, Namespace&gt; xnamespaces = new HashMap&lt;String, Namespace&gt;();</span>
+	// Not final to support cloning.
+<span class="fc" id="L93">	private Map&lt;String, Map&lt;String, Object&gt;&gt; xvariables = new HashMap&lt;String, Map&lt;String, Object&gt;&gt;();</span>
+	private final String xquery;
+	private final Filter&lt;T&gt; xfilter;
+
+	/**
+	 * Construct an XPathExpression.
+	 * 
+	 * @see XPathExpression for conditions which throw
+	 *      {@link NullPointerException} or {@link IllegalArgumentException}.
+	 * @param query
+	 *        The XPath query
+	 * @param filter
+	 *        The coercion filter.
+	 * @param variables
+	 *        A map of variables.
+	 * @param namespaces
+	 *        The namespaces referenced from the query.
+	 */
+	public AbstractXPathCompiled(final String query, final Filter&lt;T&gt; filter,
+<span class="fc" id="L112">			final Map&lt;String, Object&gt; variables, final Namespace[] namespaces) {</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">		if (query == null) {</span>
+<span class="fc" id="L114">			throw new NullPointerException(&quot;Null query&quot;);</span>
+		}
+<span class="fc bfc" id="L116" title="All 2 branches covered.">		if (filter == null) {</span>
+<span class="fc" id="L117">			throw new NullPointerException(&quot;Null filter&quot;);</span>
+		}
+<span class="fc" id="L119">		xnamespaces.put(Namespace.NO_NAMESPACE.getPrefix(),</span>
+				Namespace.NO_NAMESPACE);
+<span class="fc bfc" id="L121" title="All 2 branches covered.">		if (namespaces != null) {</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">			for (Namespace ns : namespaces) {</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">				if (ns == null) {</span>
+<span class="fc" id="L124">					throw new NullPointerException(&quot;Null namespace&quot;);</span>
+				}
+<span class="fc" id="L126">				final Namespace oldns = xnamespaces.put(ns.getPrefix(), ns);</span>
+<span class="fc bfc" id="L127" title="All 4 branches covered.">				if (oldns != null &amp;&amp; oldns != ns) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">					if (oldns == Namespace.NO_NAMESPACE) {</span>
+<span class="fc" id="L129">						throw new IllegalArgumentException(</span>
+								&quot;The default (no prefix) Namespace URI for XPath queries is always&quot; +
+								&quot; '' and it cannot be redefined to '&quot; + ns.getURI() + &quot;'.&quot;);
+					}
+<span class="fc" id="L133">					throw new IllegalArgumentException(</span>
+							&quot;A Namespace with the prefix '&quot; + ns.getPrefix()
+									+ &quot;' has already been declared.&quot;);
+				}
+			}
+		}
+
+<span class="fc bfc" id="L140" title="All 2 branches covered.">		if (variables != null) {</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">			for (Map.Entry&lt;String, Object&gt; me : variables.entrySet()) {</span>
+<span class="fc" id="L142">				final String qname = me.getKey();</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">				if (qname == null) {</span>
+<span class="fc" id="L144">					throw new NullPointerException(&quot;Variable with a null name&quot;);</span>
+				}
+<span class="fc" id="L146">				final int p = qname.indexOf(':');</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">				final String pfx = p &lt; 0 ? &quot;&quot; : qname.substring(0, p);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">				final String lname = p &lt; 0 ? qname : qname.substring(p + 1);</span>
+
+<span class="fc" id="L150">				final String vpfxmsg = Verifier.checkNamespacePrefix(pfx);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">				if (vpfxmsg != null) {</span>
+<span class="fc" id="L152">					throw new IllegalArgumentException(&quot;Prefix '&quot; + pfx</span>
+							+ &quot;' for variable &quot; + qname + &quot; is illegal: &quot;
+							+ vpfxmsg);
+				}
+<span class="fc" id="L156">				final String vnamemsg = Verifier.checkXMLName(lname);</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">				if (vnamemsg != null) {</span>
+<span class="fc" id="L158">					throw new IllegalArgumentException(&quot;Variable name '&quot;</span>
+							+ lname + &quot;' for variable &quot; + qname
+							+ &quot; is illegal: &quot; + vnamemsg);
+				}
+
+<span class="fc" id="L163">				final Namespace ns = xnamespaces.get(pfx);</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">				if (ns == null) {</span>
+<span class="fc" id="L165">					throw new IllegalArgumentException(&quot;Prefix '&quot; + pfx</span>
+							+ &quot;' for variable &quot; + qname
+							+ &quot; has not been assigned a Namespace.&quot;);
+				}
+
+<span class="fc" id="L170">				Map&lt;String, Object&gt; vmap = xvariables.get(ns.getURI());</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">				if (vmap == null) {</span>
+<span class="fc" id="L172">					vmap = new HashMap&lt;String, Object&gt;();</span>
+<span class="fc" id="L173">					xvariables.put(ns.getURI(), vmap);</span>
+				}
+
+<span class="fc bfc" id="L176" title="All 2 branches covered.">				if (vmap.put(lname, me.getValue()) != null) {</span>
+<span class="fc" id="L177">					throw new IllegalArgumentException(&quot;Variable with name &quot;</span>
+							+ me.getKey() + &quot;' has already been defined.&quot;);
+				}
+<span class="fc" id="L180">			}</span>
+		}
+<span class="fc" id="L182">		xquery = query;</span>
+<span class="fc" id="L183">		xfilter = filter;</span>
+<span class="fc" id="L184">	}</span>
+
+	/**
+	 * Subclasses of this AbstractXPathCompile class must call super.clone() in
+	 * their clone methods!
+	 * &lt;p&gt;
+	 * This would be a sample clone method from a subclass:
+	 * 
+	 * 
+	 * &lt;code&gt;&lt;pre&gt;
+	 * 		public XPathExpression&amp;lt;T&amp;gt; clone() {
+	 * 			{@literal @}SuppressWarnings(&quot;unchecked&quot;)
+	 * 			final MyXPathCompiled&amp;lt;T&amp;gt; ret = (MyXPathCompiled&amp;lt;T&amp;gt;)super.clone();
+	 * 			// change any fields that need to be cloned.
+	 * 			....
+	 * 			return ret;
+	 * 		}
+	 * &lt;/pre&gt;&lt;/code&gt;
+	 * 
+	 * Here's the documentation from {@link XPathExpression#clone()}
+	 * &lt;p&gt;
+	 * {@inheritDoc}
+	 */
+	@Override
+	public XPathExpression&lt;T&gt; clone() {
+<span class="fc" id="L209">		AbstractXPathCompiled&lt;T&gt; ret = null;</span>
+		try {
+			@SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L212">			final AbstractXPathCompiled&lt;T&gt; c = (AbstractXPathCompiled&lt;T&gt;) super</span>
+					.clone();
+<span class="fc" id="L214">			ret = c;</span>
+<span class="nc" id="L215">		} catch (CloneNotSupportedException cnse) {</span>
+<span class="nc" id="L216">			throw new IllegalStateException(</span>
+					&quot;Should never be getting a CloneNotSupportedException!&quot;,
+					cnse);
+<span class="fc" id="L219">		}</span>
+<span class="fc" id="L220">		Map&lt;String, Map&lt;String, Object&gt;&gt; vmt = new HashMap&lt;String, Map&lt;String, Object&gt;&gt;();</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">		for (Map.Entry&lt;String, Map&lt;String, Object&gt;&gt; me : xvariables.entrySet()) {</span>
+<span class="fc" id="L222">			final Map&lt;String, Object&gt; cmap = new HashMap&lt;String, Object&gt;();</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">			for (Map.Entry&lt;String, Object&gt; ne : me.getValue().entrySet()) {</span>
+<span class="fc" id="L224">				cmap.put(ne.getKey(), ne.getValue());</span>
+<span class="fc" id="L225">			}</span>
+<span class="fc" id="L226">			vmt.put(me.getKey(), cmap);</span>
+<span class="fc" id="L227">		}</span>
+<span class="fc" id="L228">		ret.xvariables = vmt;</span>
+<span class="fc" id="L229">		return ret;</span>
+	}
+
+	@Override
+	public final String getExpression() {
+<span class="fc" id="L234">		return xquery;</span>
+	}
+
+	@Override
+	public final Namespace getNamespace(final String prefix) {
+<span class="fc" id="L239">		final Namespace ns = xnamespaces.get(prefix);</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">		if (ns == null) {</span>
+<span class="fc" id="L241">			throw new IllegalArgumentException(&quot;Namespace with prefix '&quot;</span>
+					+ prefix + &quot;' has not been declared.&quot;);
+		}
+<span class="fc" id="L244">		return ns;</span>
+	}
+	
+	@Override
+	public Namespace[] getNamespaces() {
+<span class="fc" id="L249">		final Namespace[] nsa = xnamespaces.values().toArray(</span>
+				new Namespace[xnamespaces.size()]);
+<span class="fc" id="L251">		Arrays.sort(nsa, NSSORT);</span>
+<span class="fc" id="L252">		return nsa;</span>
+	}
+
+	@Override
+	public final Object getVariable(final String name, Namespace uri) {
+<span class="fc bfc" id="L257" title="All 2 branches covered.">		final Map&lt;String, Object&gt; vmap =</span>
+				xvariables.get(uri == null ? &quot;&quot; : uri.getURI());
+<span class="fc bfc" id="L259" title="All 2 branches covered.">		if (vmap == null) {</span>
+<span class="fc" id="L260">			throw new IllegalArgumentException(&quot;Variable with name '&quot; + name</span>
+					+ &quot;' in namespace '&quot; + uri.getURI() + &quot;' has not been declared.&quot;);
+		}
+<span class="fc" id="L263">		final Object ret = vmap.get(name);</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">		if (ret == null) {</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">			if (!vmap.containsKey(name)) {</span>
+<span class="fc" id="L266">				throw new IllegalArgumentException(&quot;Variable with name '&quot;</span>
+						+ name + &quot;' in namespace '&quot; + uri.getURI()
+						+ &quot;' has not been declared.&quot;);
+			}
+			// leave translating null variable values to the implementation.
+<span class="fc" id="L271">			return null;</span>
+		}
+<span class="fc" id="L273">		return ret;</span>
+	}
+
+	@Override
+	public Object getVariable(String qname) {
+<span class="fc bfc" id="L278" title="All 2 branches covered.">		if (qname == null) {</span>
+<span class="fc" id="L279">			throw new NullPointerException(</span>
+					&quot;Cannot get variable value for null qname&quot;);
+		}
+<span class="fc" id="L282">		final int pos = qname.indexOf(':');</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">		if (pos &gt;= 0) {</span>
+<span class="fc" id="L284">			return getVariable(qname.substring(pos + 1), </span>
+					getNamespace(qname.substring(0,  pos)));
+		}
+<span class="fc" id="L287">		return getVariable(qname, Namespace.NO_NAMESPACE);</span>
+	}
+
+	@Override
+	public Object setVariable(String name, Namespace uri, Object value) {
+<span class="fc" id="L292">		final Object ret = getVariable(name, uri);</span>
+		// if that succeeded then we have it easy....
+<span class="fc" id="L294">		xvariables.get(uri.getURI()).put(name, value);</span>
+<span class="fc" id="L295">		return ret;</span>
+	}
+	
+	@Override
+	public Object setVariable(String qname, Object value) {
+<span class="fc bfc" id="L300" title="All 2 branches covered.">		if (qname == null) {</span>
+<span class="fc" id="L301">			throw new NullPointerException(</span>
+					&quot;Cannot get variable value for null qname&quot;);
+		}
+<span class="fc" id="L304">		final int pos = qname.indexOf(':');</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">		if (pos &gt;= 0) {</span>
+<span class="fc" id="L306">			return setVariable(qname.substring(pos + 1), </span>
+					getNamespace(qname.substring(0,  pos)), value);
+		}
+<span class="fc" id="L309">		return setVariable(qname, Namespace.NO_NAMESPACE, value);</span>
+	}
+
+	@Override
+	public final Filter&lt;T&gt; getFilter() {
+<span class="fc" id="L314">		return xfilter;</span>
+	}
+
+	@Override
+	public List&lt;T&gt; evaluate(Object context) {
+<span class="fc" id="L319">		return xfilter.filter(evaluateRawAll(context));</span>
+	}
+
+	/**
+	 * 
+	 */
+	@Override
+	public T evaluateFirst(Object context) {
+<span class="fc" id="L327">		Object raw = evaluateRawFirst(context);</span>
+<span class="fc bfc" id="L328" title="All 2 branches covered.">		if (raw == null) {</span>
+<span class="fc" id="L329">			return null;</span>
+		}
+<span class="fc" id="L331">		return xfilter.filter(raw);</span>
+	}
+
+	@Override
+	public XPathDiagnostic&lt;T&gt; diagnose(Object context, boolean firstonly) {
+<span class="fc bfc" id="L336" title="All 2 branches covered.">		final List&lt;?&gt; result = firstonly ? Collections</span>
+				.singletonList(evaluateRawFirst(context))
+				: evaluateRawAll(context);
+<span class="fc" id="L339">		return new XPathDiagnosticImpl&lt;T&gt;(context, this, result, firstonly);</span>
+	}
+
+	@Override
+	public String toString() {
+<span class="fc" id="L344">		int nscnt = xnamespaces.size();</span>
+<span class="fc" id="L345">		int vcnt = 0;</span>
+<span class="fc bfc" id="L346" title="All 2 branches covered.">		for (Map&lt;String, Object&gt; cmap : xvariables.values()) {</span>
+<span class="fc" id="L347">			vcnt += cmap.size();</span>
+<span class="fc" id="L348">		}</span>
+<span class="fc" id="L349">		return String.format(</span>
+				&quot;[XPathExpression: %d namespaces and %d variables for query %s]&quot;,
+				nscnt, vcnt, getExpression());
+	}
+
+	/**
+	 * This is the raw expression evaluator to be implemented by the back-end
+	 * XPath library.
+	 * 
+	 * @param context
+	 *        The context against which to evaluate the query
+	 * @return A list of XPath results.
+	 */
+	protected abstract List&lt;?&gt; evaluateRawAll(Object context);
+
+	/**
+	 * This is the raw expression evaluator to be implemented by the back-end
+	 * XPath library. When this method is processed the implementing library is
+	 * free to stop processing when the result that would be the first result is
+	 * retrieved.
+	 * &lt;p&gt;
+	 * Only the first value in the result will be processed (if any).
+	 * 
+	 * @param context
+	 *        The context against which to evaluate the query
+	 * @return The first item in the XPath results, or null if there are no
+	 *         results.
+	 */
+	protected abstract Object evaluateRawFirst(Object context);
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

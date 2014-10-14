@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>JaxenCompiled.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.xpath.jaxen</a> &gt; <span class="el_source">JaxenCompiled.java</span></div><h1>JaxenCompiled.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.xpath.jaxen;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
+import org.jaxen.BaseXPath;
+import org.jaxen.JaxenException;
+import org.jaxen.NamespaceContext;
+import org.jaxen.UnresolvableException;
+import org.jaxen.VariableContext;
+import org.jaxen.XPath;
+
+import org.jdom2.Namespace;
+import org.jdom2.filter.Filter;
+import org.jdom2.xpath.util.AbstractXPathCompiled;
+
+/**
+ * Jaxen specific code for XPath management.
+ * 
+ * @author Rolf Lear
+ * @param &lt;T&gt;
+ *        The generic type of returned data.
+ */
+class JaxenCompiled&lt;T&gt; extends AbstractXPathCompiled&lt;T&gt; implements
+		NamespaceContext, VariableContext {
+
+	/**
+	 * Same story, need to be able to strip NamespaceContainer instances from
+	 * Namespace content.
+	 * 
+	 * @param o
+	 *        A result object which could potentially be a NamespaceContainer
+	 * @return The input parameter unless it is a NamespaceContainer in which
+	 *         case return the wrapped Namespace
+	 */
+	private static final Object unWrapNS(Object o) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">		if (o instanceof NamespaceContainer) {</span>
+<span class="fc" id="L94">			return ((NamespaceContainer) o).getNamespace();</span>
+		}
+<span class="fc" id="L96">		return o;</span>
+	}
+
+	/**
+	 * Same story, need to be able to replace NamespaceContainer instances with
+	 * Namespace content.
+	 * 
+	 * @param results
+	 *        A list potentially containing NamespaceContainer instances
+	 * @return The parameter list with NamespaceContainer instances replaced by
+	 *         the wrapped Namespace instances.
+	 */
+	private static final List&lt;Object&gt; unWrap(List&lt;?&gt; results) {
+<span class="fc" id="L109">		final ArrayList&lt;Object&gt; ret = new ArrayList&lt;Object&gt;(results.size());</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">		for (Iterator&lt;?&gt; it = results.iterator(); it.hasNext();) {</span>
+<span class="fc" id="L111">			ret.add(unWrapNS(it.next()));</span>
+		}
+<span class="fc" id="L113">		return ret;</span>
+	}
+
+	/**
+	 * The compiled XPath object to select nodes. This attribute can not be made
+	 * final as it needs to be set upon object deserialization.
+	 */
+	private final XPath xPath;
+
+	/**
+	 * The current context for XPath expression evaluation. The navigator is
+	 * responsible for exposing JDOM content to Jaxen, including the wrapping of
+	 * Namespace instances in NamespaceContainer
+	 * &lt;p&gt;
+	 * Because of the need to wrap Namespace, we also need to unwrap namespace.
+	 * Further, we can't re-use the details from one 'selectNodes' to another
+	 * because the Document tree may have been modfied between, and also, we do
+	 * not want to be holding on to memory.
+	 * &lt;p&gt;
+	 * Finally, we want to pre-load the NamespaceContext with the namespaces
+	 * that are in scope for the contextNode being searched.
+	 * &lt;p&gt;
+	 * So, we need to reset the Navigator before and after each use. try{}
+	 * finally {} to the rescue.
+	 */
+<span class="fc" id="L138">	private final JDOM2Navigator navigator = new JDOM2Navigator();</span>
+
+	/**
+	 * @param expression The XPath expression
+	 * @param filter The coercion filter
+	 * @param variables The XPath variable context
+	 * @param namespaces The XPath namespace context
+	 */
+	public JaxenCompiled(String expression, Filter&lt;T&gt; filter,
+			Map&lt;String, Object&gt; variables, Namespace[] namespaces) {
+<span class="fc" id="L148">		super(expression, filter, variables, namespaces);</span>
+		try {
+<span class="fc" id="L150">			xPath = new BaseXPath(expression, navigator);</span>
+<span class="fc" id="L151">		} catch (JaxenException e) {</span>
+<span class="fc" id="L152">			throw new IllegalArgumentException(&quot;Unable to compile '&quot; + expression</span>
+					+ &quot;'. See Cause.&quot;, e);
+<span class="fc" id="L154">		}</span>
+<span class="fc" id="L155">		xPath.setNamespaceContext(this);</span>
+<span class="fc" id="L156">		xPath.setVariableContext(this);</span>
+<span class="fc" id="L157">	}</span>
+
+	/**
+	 * Make a copy-constructor available to the clone() method.
+	 * This is simpler than trying to do a deep clone anyway.
+	 * 
+	 * @param toclone The JaxenCompiled instance to clone
+	 */
+	private JaxenCompiled(JaxenCompiled&lt;T&gt; toclone) {
+<span class="fc" id="L166">		this(toclone.getExpression(), toclone.getFilter(), toclone.getVariables(), toclone.getNamespaces());</span>
+<span class="fc" id="L167">	}</span>
+
+	@Override
+	public String translateNamespacePrefixToUri(String prefix) {
+<span class="fc" id="L171">		return getNamespace(prefix).getURI();</span>
+	}
+	
+	@Override
+	public Object getVariableValue(String namespaceURI, String prefix,
+			String localName) throws UnresolvableException {
+<span class="fc bfc" id="L177" title="All 2 branches covered.">		if (namespaceURI == null) {</span>
+<span class="fc" id="L178">			namespaceURI = &quot;&quot;;</span>
+		}
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">		if (prefix == null) {</span>
+<span class="nc" id="L181">			prefix = &quot;&quot;;</span>
+		}
+		try {
+<span class="fc bfc" id="L184" title="All 2 branches covered.">			if (&quot;&quot;.equals(namespaceURI)) {</span>
+<span class="fc" id="L185">				namespaceURI = getNamespace(prefix).getURI();</span>
+			}
+<span class="fc" id="L187">			return getVariable(localName, Namespace.getNamespace(namespaceURI));</span>
+<span class="fc" id="L188">		} catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L189">			throw new UnresolvableException(&quot;Unable to resolve variable &quot; + </span>
+					localName + &quot; in namespace '&quot; + namespaceURI + 
+					&quot;' to a vaulue.&quot;);
+		}
+	}
+
+	@Override
+	protected List&lt;?&gt; evaluateRawAll(Object context) {
+		try {
+<span class="fc" id="L198">			return unWrap(xPath.selectNodes(context));</span>
+<span class="fc" id="L199">		} catch (JaxenException e) {</span>
+<span class="fc" id="L200">			throw new IllegalStateException(</span>
+					&quot;Unable to evaluate expression. See cause&quot;, e);
+		}
+	}
+
+	@Override
+	protected Object evaluateRawFirst(Object context) {
+		try {
+<span class="fc" id="L208">			return unWrapNS(xPath.selectSingleNode(context));</span>
+<span class="fc" id="L209">		} catch (JaxenException e) {</span>
+<span class="fc" id="L210">			throw new IllegalStateException(</span>
+					&quot;Unable to evaluate expression. See cause&quot;, e);
+		}
+	}
+	
+	@Override
+	public JaxenCompiled&lt;T&gt; clone() {
+		// Use a copy-constructor instead of a deep clone.
+		// we have a couple of final variables on this class that we cannot share
+		// between instances, and the Jaxen xpath variable is pretty complicated to reconstruct
+		// anyway. Easier to just reconstruct it.
+<span class="fc" id="L221">		return new JaxenCompiled&lt;T&gt;(this);</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

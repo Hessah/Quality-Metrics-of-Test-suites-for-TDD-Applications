@@ -1,0 +1,760 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StAXStreamWriter.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jdom</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.input</a> &gt; <span class="el_source">StAXStreamWriter.java</span></div><h1>StAXStreamWriter.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2000-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+package org.jdom2.input;
+
+import java.util.ArrayList;
+import java.util.LinkedList;
+
+import javax.xml.namespace.NamespaceContext;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamWriter;
+
+import org.jdom2.DefaultJDOMFactory;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.JDOMConstants;
+import org.jdom2.JDOMFactory;
+import org.jdom2.Namespace;
+import org.jdom2.Parent;
+import org.jdom2.Text;
+import org.jdom2.util.JDOMNamespaceContext;
+import org.jdom2.util.NamespaceStack;
+
+/**
+ * An {@link XMLStreamWriter} implementation that writes XML data to a new JDOM
+ * {@link Document}. The document can be retrieved using {@link #getDocument() }.
+ * &lt;p&gt;
+ * This class is the inverse of the class {@link StAXStreamBuilder} in the sense that
+ * this class is written to (it's an XMLStreamWriter implementation) to create a JDOM
+ * Document whereas the StAXStreamBuilder &lt;strong&gt;reads from&lt;/strong&gt; a user-supplied
+ * XMLStreamReader. It is the difference between a 'push' concept and a 'pull' concept.
+ * &lt;p&gt;
+ * An interesting read for people using this class:
+ * &lt;a href=&quot;http://ws.apache.org/axiom/devguide/ch05.html&quot;&gt;Apache Axiom notes on setPrefix()&lt;/a&gt;.
+ * 
+ * @author gordon burgett https://github.com/gburgett
+ * @author Rolf Lear
+ * @since JDOM 2.1
+ */
+public class StAXStreamWriter implements XMLStreamWriter {
+
+<span class="fc" id="L92">	private static final DefaultJDOMFactory DEFFAC = new DefaultJDOMFactory();</span>
+
+	// The optional global namespace context for namespace bindings.
+<span class="fc" id="L95">	private NamespaceContext globalcontext = null;</span>
+
+	// The active Element NamespaceStack of actual used Namespaces.
+<span class="fc" id="L98">	private NamespaceStack usednsstack = new NamespaceStack();</span>
+	// The stack of namespace bindings which may not necessarily be used in an element
+<span class="fc" id="L100">	private NamespaceStack boundstack = new NamespaceStack();</span>
+	
+	// The namespaces pending in the current Element that need to be actively bound.
+<span class="fc" id="L103">	private LinkedList&lt;Namespace&gt; pendingns = new LinkedList&lt;Namespace&gt;();</span>
+
+	// Are we throwing exceptions for namespace problems, or fixing them.
+	private final boolean repairnamespace;
+
+<span class="fc" id="L108">	private Document document = null;</span>
+<span class="fc" id="L109">	private boolean done = false;</span>
+<span class="fc" id="L110">	private Parent parent = null;</span>
+<span class="fc" id="L111">	private Element activeelement = null;</span>
+<span class="fc" id="L112">	private boolean isempty = false;</span>
+<span class="fc" id="L113">	private Text activetext = null;</span>
+	
+<span class="fc" id="L115">	private int genprefix = 0;</span>
+	
+	private final JDOMFactory factory;
+
+	/**
+	 * Create a StAXStreamWriter with the default JDOMFactory for creating JDOM
+	 * Content.
+	 */
+	public StAXStreamWriter() {
+<span class="fc" id="L124">		this(DEFFAC, true);</span>
+<span class="fc" id="L125">	}</span>
+
+	/**
+	 * Create a StAXStreamWriter with the specified JDOMFactory for creating
+	 * JDOM Content.
+	 * 
+	 * @param fac
+	 *        The JDOMFactory to use.
+	 * @param repairnamespace
+	 *        If true, then repair namespace errors.
+	 */
+<span class="fc" id="L136">	public StAXStreamWriter(final JDOMFactory fac, final boolean repairnamespace) {</span>
+<span class="fc" id="L137">		this.factory = fac;</span>
+<span class="fc" id="L138">		this.repairnamespace = repairnamespace;</span>
+		// create an empty level in the namespace stack.
+<span class="fc" id="L140">		boundstack.push(new Namespace[0]);</span>
+<span class="fc" id="L141">	}</span>
+
+	/**
+	 * Gets the {@link Document} that was created by this writer. Only available
+	 * after {@link #writeEndDocument() } has been called, and before the Writer
+	 * is closed.
+	 * 
+	 * @return The created {@link Document}
+	 */
+	public Document getDocument() {
+<span class="pc bpc" id="L151" title="2 of 4 branches missed.">		if (done &amp;&amp; document != null) {</span>
+<span class="fc" id="L152">			return document;</span>
+		}
+		
+<span class="nc bnc" id="L155" title="All 2 branches missed.">		if (done) {</span>
+<span class="nc" id="L156">			throw new IllegalStateException(&quot;Writer is closed&quot;);</span>
+		}
+
+<span class="nc" id="L159">		throw new IllegalStateException(</span>
+				&quot;Cannot get Document until writer has ended the document&quot;);
+
+	}
+
+	@Override
+	public void writeStartDocument() throws XMLStreamException {
+<span class="fc" id="L166">		this.writeStartDocument(null, null);</span>
+<span class="fc" id="L167">	}</span>
+
+	@Override
+	public void writeStartDocument(final String version)
+			throws XMLStreamException {
+<span class="fc" id="L172">		this.writeStartDocument(null, version);</span>
+<span class="fc" id="L173">	}</span>
+
+	@Override
+	public void writeStartDocument(final String encoding, final String version)
+			throws XMLStreamException {
+		
+		// JDOM has no support for XML Version specification/handling
+		// ignore version.
+		
+<span class="pc bpc" id="L182" title="2 of 4 branches missed.">		if (done || document != null) {</span>
+<span class="nc" id="L183">			throw new IllegalStateException(</span>
+					&quot;Cannot write start document twice.&quot;);
+		}
+
+<span class="fc" id="L187">		document = factory.document(null);</span>
+<span class="fc" id="L188">		parent = document;</span>
+<span class="pc bpc" id="L189" title="1 of 4 branches missed.">		if (encoding != null &amp;&amp; !&quot;&quot;.equals(encoding))</span>
+<span class="fc" id="L190">			this.document.setProperty(&quot;ENCODING&quot;, encoding);</span>
+
+<span class="fc" id="L192">		activeelement = null;</span>
+<span class="fc" id="L193">	}</span>
+
+	@Override
+	public void setNamespaceContext(final NamespaceContext context)
+			throws XMLStreamException {
+<span class="nc bnc" id="L198" title="All 4 branches missed.">		if (document == null || document.hasRootElement()) {</span>
+<span class="nc" id="L199">			throw new XMLStreamException(&quot;Can only set the NamespaceContext at the Document start&quot;);</span>
+		}
+<span class="nc" id="L201">		globalcontext = context;</span>
+<span class="nc" id="L202">	}</span>
+
+	@Override
+	public String getPrefix(final String uri) throws XMLStreamException {
+<span class="nc bnc" id="L206" title="All 2 branches missed.">		if (document == null) {</span>
+<span class="nc" id="L207">			return null;</span>
+		}
+<span class="nc" id="L209">		final Namespace n = boundstack.getFirstNamespaceForURI(uri);</span>
+<span class="nc bnc" id="L210" title="All 2 branches missed.">		if (n != null) {</span>
+<span class="nc" id="L211">			return n.getPrefix();</span>
+		}
+<span class="nc bnc" id="L213" title="All 2 branches missed.">		if (globalcontext != null) {</span>
+<span class="nc" id="L214">			return globalcontext.getPrefix(uri);</span>
+		}
+<span class="nc" id="L216">		return null;</span>
+	}
+
+	@Override
+	public void setPrefix(final String prefix, final String uri)
+			throws XMLStreamException {
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">		if (prefix == null) {</span>
+<span class="nc" id="L223">			throw new IllegalArgumentException(&quot;prefix may not be null&quot;);</span>
+		}
+<span class="fc bfc" id="L225" title="All 2 branches covered.">		if (prefix.equals(JDOMConstants.NS_PREFIX_XMLNS)) {</span>
+<span class="fc" id="L226">			return;</span>
+		}
+<span class="pc bpc" id="L228" title="2 of 4 branches missed.">		if (document == null || done) {</span>
+<span class="nc" id="L229">			throw new IllegalStateException(</span>
+					&quot;Attempt to set prefix at an illegal stream state.&quot;);
+		}
+		
+		/*
+		 * Setting a prefix (or a default namespace) is not the same as writing the namespace.
+		 * It is only a 'binding' of the URI to a prefix. This binding is used for two purposes:
+		 * - any prefixes bound in here are used if a prefix is not specified in the startelement
+		 * - if repairnamespace is false, then all used namespaces must first be pre-bound
+		 * This method is specified to allow a null URI. This makes no sense unless the prefix is &quot;&quot;
+		 * and will cause a Namespace exception if the prefix is not &quot;&quot;.
+		 */
+
+<span class="fc" id="L242">		final Namespace ns = Namespace.getNamespace(prefix, uri);</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">		if (!boundstack.isInScope(ns)) {</span>
+<span class="fc" id="L244">			final ArrayList&lt;Namespace&gt; al = new ArrayList&lt;Namespace&gt;();</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">			for (Namespace n : boundstack) {</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">				if (n.getPrefix().equals(prefix)) {</span>
+					// do not rebind the same prefix with the old URI.
+<span class="fc" id="L248">					continue;</span>
+				}
+<span class="fc" id="L250">				al.add(n);</span>
+<span class="fc" id="L251">			}</span>
+			// bind the new URI to the prefix.
+<span class="fc" id="L253">			al.add(ns);</span>
+			// kill the previous bindings.
+<span class="fc" id="L255">			boundstack.pop();</span>
+			// reset the binding.
+<span class="fc" id="L257">			boundstack.push(al);</span>
+		}
+<span class="fc" id="L259">	}</span>
+
+	@Override
+	public void setDefaultNamespace(final String uri) throws XMLStreamException {
+<span class="fc" id="L263">		setPrefix(JDOMConstants.NS_PREFIX_DEFAULT, uri);</span>
+<span class="fc" id="L264">	}</span>
+
+	@Override
+	public void writeDTD(final String dtd) throws XMLStreamException {
+		// FIXME to do ... ?
+<span class="nc" id="L269">		throw new UnsupportedOperationException(&quot;not supported yet&quot;);</span>
+	}
+
+	@Override
+	public void writeStartElement(final String localName) throws XMLStreamException {
+<span class="fc" id="L274">		final int pos = localName.indexOf(':');</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">		if (pos &gt;= 0) {</span>
+<span class="fc" id="L276">			writeStartElement(localName.substring(0, pos), localName.substring(pos + 1));</span>
+		} else {
+<span class="fc" id="L278">			writeStartElement(&quot;&quot;, localName);</span>
+		}
+<span class="fc" id="L280">	}</span>
+
+	@Override
+	public void writeStartElement(final String namespaceURI, final String localName) 
+			throws XMLStreamException {
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">		if (namespaceURI == null) {</span>
+<span class="nc" id="L286">			throw new XMLStreamException(&quot;Cannot have a null namespaceURI&quot;);</span>
+		}
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">		if (localName == null) {</span>
+<span class="nc" id="L289">			throw new XMLStreamException(&quot;Cannot have a null localname&quot;);</span>
+		}
+<span class="fc" id="L291">		final int pos = localName.indexOf(':');</span>
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">		if (pos &gt;= 0) {</span>
+<span class="nc" id="L293">			this.buildElement(localName.substring(0, pos), localName.substring(pos + 1), namespaceURI, false, false);</span>
+		} else {
+<span class="fc" id="L295">			this.buildElement(&quot;&quot;, localName, namespaceURI, false, false);</span>
+		}
+<span class="fc" id="L297">	}</span>
+
+	@Override
+	public void writeStartElement(final String prefix, final String localName,
+			final String namespaceURI) throws XMLStreamException {
+<span class="pc bpc" id="L302" title="1 of 2 branches missed.">		if (prefix == null) {</span>
+<span class="nc" id="L303">			throw new XMLStreamException(&quot;Cannot have a null prefix&quot;);</span>
+		}
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">		if (localName == null) {</span>
+<span class="nc" id="L306">			throw new XMLStreamException(&quot;Cannot have a null localName&quot;);</span>
+		}
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">		if (namespaceURI == null) {</span>
+<span class="nc" id="L309">			throw new XMLStreamException(&quot;Cannot have a null namespaceURI&quot;);</span>
+		}
+<span class="fc" id="L311">		buildElement(prefix, localName, namespaceURI, true, false);</span>
+<span class="fc" id="L312">	}</span>
+
+	@Override
+	public void writeEmptyElement(final String localName)
+			throws XMLStreamException {
+<span class="pc bpc" id="L317" title="1 of 2 branches missed.">		if (localName == null) {</span>
+<span class="nc" id="L318">			throw new XMLStreamException(&quot;Cannot have a null localname&quot;);</span>
+		}
+<span class="fc" id="L320">		this.buildElement(&quot;&quot;, localName, &quot;&quot;, false, true);</span>
+<span class="fc" id="L321">	}</span>
+
+	@Override
+	public void writeEmptyElement(final String namespaceURI,
+			final String localName) throws XMLStreamException {
+<span class="nc bnc" id="L326" title="All 2 branches missed.">		if (namespaceURI == null) {</span>
+<span class="nc" id="L327">			throw new XMLStreamException(&quot;Cannot have a null namespaceURI&quot;);</span>
+		}
+<span class="nc bnc" id="L329" title="All 2 branches missed.">		if (localName == null) {</span>
+<span class="nc" id="L330">			throw new XMLStreamException(&quot;Cannot have a null localname&quot;);</span>
+		}
+<span class="nc" id="L332">		this.buildElement(&quot;&quot;, localName, namespaceURI, false, true);</span>
+<span class="nc" id="L333">	}</span>
+
+	@Override
+	public void writeEmptyElement(final String prefix, final String localName,
+			final String namespaceURI) throws XMLStreamException {
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">		if (prefix == null) {</span>
+<span class="nc" id="L339">			throw new XMLStreamException(&quot;Cannot have a null prefix&quot;);</span>
+		}
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">		if (localName == null) {</span>
+<span class="nc" id="L342">			throw new XMLStreamException(&quot;Cannot have a null localname&quot;);</span>
+		}
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">		if (namespaceURI == null) {</span>
+<span class="nc" id="L345">			throw new XMLStreamException(&quot;Cannot have a null namespaceURI&quot;);</span>
+		}
+<span class="fc" id="L347">		buildElement(prefix, localName, namespaceURI, true, true);</span>
+<span class="fc" id="L348">	}</span>
+	
+	@Override
+	public void writeDefaultNamespace(final String namespaceURI)
+			throws XMLStreamException {
+<span class="fc" id="L353">		this.writeNamespace(&quot;&quot;, namespaceURI);</span>
+<span class="fc" id="L354">	}</span>
+
+	@Override
+	public void writeNamespace(final String prefix, final String namespaceURI)
+			throws XMLStreamException {
+<span class="pc bpc" id="L359" title="1 of 2 branches missed.">		if (activeelement == null) {</span>
+<span class="nc" id="L360">			throw new IllegalStateException(&quot;Can only write a Namespace after starting an Element&quot; +</span>
+					&quot; and before adding content to that Element.&quot;);
+		}
+<span class="pc bpc" id="L363" title="1 of 4 branches missed.">		if (prefix == null || JDOMConstants.NS_PREFIX_XMLNS.equals(prefix)) {</span>
+			// recurse with the &quot;&quot; prefix.
+			// yet another special case....
+			// if the element itself was written out without a prefix, and without a namespace
+			// then we update the element to have the same namespace as we have here.
+			// this is required to support some native Java Transform engines that do not
+			// supply content in the right order.
+<span class="pc bpc" id="L370" title="1 of 2 branches missed.">			if (&quot;&quot;.equals(activeelement.getNamespacePrefix())) {</span>
+<span class="fc" id="L371">				activeelement.setNamespace(Namespace.getNamespace(&quot;&quot;, namespaceURI));</span>
+			}
+<span class="fc" id="L373">			writeNamespace(&quot;&quot;, namespaceURI);</span>
+		} else {
+<span class="fc" id="L375">			pendingns.add(Namespace.getNamespace(prefix, namespaceURI));</span>
+		}
+<span class="fc" id="L377">	}</span>
+
+	@Override
+	public void writeAttribute(final String localName, final String value)
+			throws XMLStreamException {
+<span class="fc" id="L382">		buildAttribute(&quot;&quot;, &quot;&quot;, localName, value, false);</span>
+<span class="fc" id="L383">	}</span>
+
+	@Override
+	public void writeAttribute(final String namespaceURI,
+			final String localName, final String value)
+			throws XMLStreamException {
+<span class="nc bnc" id="L389" title="All 2 branches missed.">		buildAttribute(&quot;&quot;, namespaceURI == null ? &quot;&quot; : namespaceURI, localName, value, false);</span>
+<span class="nc" id="L390">	}</span>
+	
+	@Override
+	public void writeAttribute(final String prefix, final String namespaceURI,
+			final String localName, final String value)
+			throws XMLStreamException {
+<span class="pc bpc" id="L396" title="2 of 4 branches missed.">		buildAttribute(prefix == null ? &quot;&quot; : prefix, namespaceURI == null ? &quot;&quot; : namespaceURI, localName, value, true);</span>
+<span class="fc" id="L397">	}</span>
+
+	@Override
+	public void writeComment(final String data) throws XMLStreamException {
+<span class="pc bpc" id="L401" title="2 of 4 branches missed.">		if (document == null || done) {</span>
+<span class="nc" id="L402">			throw new XMLStreamException(&quot;Can only add a Comment to the Document or an Element.&quot;);</span>
+		}
+<span class="fc" id="L404">		flushActiveElement();</span>
+<span class="fc" id="L405">		flushActiveText();</span>
+<span class="fc" id="L406">		factory.addContent(parent, factory.comment(data));</span>
+<span class="fc" id="L407">	}</span>
+
+	@Override
+	public void writeProcessingInstruction(final String target)
+			throws XMLStreamException {
+<span class="nc bnc" id="L412" title="All 4 branches missed.">		if (document == null || done) {</span>
+<span class="nc" id="L413">			throw new XMLStreamException(&quot;Can only add a ProcessingInstruction to the Document or an Element.&quot;);</span>
+		}
+<span class="nc" id="L415">		flushActiveElement();</span>
+<span class="nc" id="L416">		flushActiveText();</span>
+<span class="nc" id="L417">		factory.addContent(parent, factory.processingInstruction(target));</span>
+<span class="nc" id="L418">	}</span>
+
+	@Override
+	public void writeProcessingInstruction(final String target,
+			final String data) throws XMLStreamException {
+<span class="pc bpc" id="L423" title="2 of 4 branches missed.">		if (document == null || done) {</span>
+<span class="nc" id="L424">			throw new XMLStreamException(&quot;Can only add a ProcessingInstruction to the Document or an Element.&quot;);</span>
+		}
+<span class="fc" id="L426">		flushActiveElement();</span>
+<span class="fc" id="L427">		flushActiveText();</span>
+<span class="fc" id="L428">		factory.addContent(parent, factory.processingInstruction(target, data));</span>
+<span class="fc" id="L429">	}</span>
+
+	@Override
+	public void writeCData(final String data) throws XMLStreamException {
+<span class="pc bpc" id="L433" title="1 of 2 branches missed.">		if (!(parent instanceof Element)) {</span>
+<span class="nc" id="L434">			throw new XMLStreamException(&quot;Can only writeCDATA() inside an Element.&quot;);</span>
+		}
+<span class="fc" id="L436">		flushActiveElement();</span>
+<span class="fc" id="L437">		flushActiveText();</span>
+<span class="fc" id="L438">		factory.addContent(parent, factory.cdata(data));</span>
+<span class="fc" id="L439">	}</span>
+
+	@Override
+	public void writeEntityRef(final String name) throws XMLStreamException {
+<span class="nc bnc" id="L443" title="All 2 branches missed.">		if (!(parent instanceof Element)) {</span>
+<span class="nc" id="L444">			throw new XMLStreamException(&quot;Can only writeEntityRef() inside an Element.&quot;);</span>
+		}
+<span class="nc" id="L446">		flushActiveElement();</span>
+<span class="nc" id="L447">		flushActiveText();</span>
+<span class="nc" id="L448">		factory.addContent(parent, factory.entityRef(name));</span>
+<span class="nc" id="L449">	}</span>
+	
+	@Override
+	public void writeCharacters(final String chars) throws XMLStreamException {
+<span class="pc bpc" id="L453" title="2 of 4 branches missed.">		if (document == null || done) {</span>
+<span class="nc" id="L454">			throw new XMLStreamException(&quot;Unable to add Characters at this point in the stream.&quot;);</span>
+		}
+<span class="fc" id="L456">		flushActiveElement();</span>
+<span class="pc bpc" id="L457" title="1 of 2 branches missed.">		if (chars == null) {</span>
+<span class="nc" id="L458">			return;</span>
+		}
+<span class="fc bfc" id="L460" title="All 2 branches covered.">		if (parent instanceof Element) {</span>
+<span class="fc bfc" id="L461" title="All 2 branches covered.">			if (activetext != null) {</span>
+<span class="fc" id="L462">				activetext.append(chars);</span>
+			} else {
+<span class="fc" id="L464">				activetext = factory.text(chars);</span>
+<span class="fc" id="L465">				factory.addContent(parent, activetext);</span>
+			}
+		}
+		// ignore case where parent is Document.
+<span class="fc" id="L469">	}</span>
+
+	@Override
+	public void writeCharacters(final char[] chars, final int start,
+			final int len) throws XMLStreamException {
+<span class="fc" id="L474">		writeCharacters(new String(chars, start, len));</span>
+<span class="fc" id="L475">	}</span>
+
+	@Override
+	public void writeEndElement() throws XMLStreamException {
+<span class="pc bpc" id="L479" title="1 of 2 branches missed.">		if (!(parent instanceof Element)) {</span>
+<span class="nc" id="L480">			throw new XMLStreamException(&quot;Cannot end an Element unless you are in an Element.&quot;);</span>
+		}
+<span class="fc" id="L482">		flushActiveElement();</span>
+<span class="fc" id="L483">		flushActiveText();</span>
+<span class="fc" id="L484">		usednsstack.pop();</span>
+<span class="fc" id="L485">		boundstack.pop();</span>
+<span class="fc" id="L486">		boundstack.pop();</span>
+<span class="fc" id="L487">		boundstack.pop();</span>
+<span class="fc" id="L488">		parent = parent.getParent();</span>
+<span class="fc" id="L489">	}</span>
+
+	@Override
+	public void writeEndDocument() throws XMLStreamException {
+		// flush may change state if isempty root element
+<span class="pc bpc" id="L494" title="3 of 6 branches missed.">		if (document == null || done || parent instanceof Element) {</span>
+<span class="nc" id="L495">			throw new IllegalStateException(</span>
+					&quot;Cannot write end document before writing the end of root element&quot;);
+		}
+<span class="fc" id="L498">		flushActiveElement();</span>
+<span class="fc" id="L499">		done = true;</span>
+<span class="fc" id="L500">	}</span>
+
+	@Override
+	public void close() throws XMLStreamException {
+<span class="fc" id="L504">		this.document = null;</span>
+<span class="fc" id="L505">		this.parent = null;</span>
+<span class="fc" id="L506">		activeelement = null;</span>
+<span class="fc" id="L507">		activetext = null;</span>
+<span class="fc" id="L508">		boundstack = null;</span>
+<span class="fc" id="L509">		usednsstack = null;</span>
+<span class="fc" id="L510">		done = true;</span>
+<span class="fc" id="L511">	}</span>
+
+	@Override
+	public void flush() throws XMLStreamException {
+		// flush does nothing.
+<span class="fc" id="L516">	}</span>
+
+	@Override
+	public NamespaceContext getNamespaceContext() {
+<span class="nc bnc" id="L520" title="All 2 branches missed.">		if (document == null) {</span>
+<span class="nc" id="L521">			return new JDOMNamespaceContext(new Namespace[0]);</span>
+		}
+<span class="nc" id="L523">		return new JDOMNamespaceContext(boundstack.getScope());</span>
+	}
+
+	@Override
+	public Object getProperty(String name) throws IllegalArgumentException {
+<span class="nc" id="L528">		throw new UnsupportedOperationException(&quot;Not supported yet.&quot;);</span>
+	}
+
+	// *****************************
+	// Private methods.
+	// *****************************
+
+	/**
+	 * Simple method that implements the empty-element logic without the spec-required
+	 * null-check logic
+	 * @param prefix The namespace prefix (may be null).
+	 * @param localName The Element tag
+	 * @param namespaceURI The namespace URI (may be null).
+	 * @param withpfx whether the prefix is user-specified
+	 * @param empty Is this an Empty element (expecting children?)
+	 * @throws XMLStreamException If the stream is not in an appropriate state for a new Element.
+	 */
+	private final void buildElement(final String prefix, final String localName,
+			final String namespaceURI, final boolean withpfx, boolean empty) throws XMLStreamException {
+		
+<span class="pc bpc" id="L548" title="2 of 4 branches missed.">		if (document == null || done) {</span>
+<span class="nc" id="L549">			throw new XMLStreamException(</span>
+					&quot;Cannot write new element when in current state.&quot;);
+		}
+		
+<span class="pc bpc" id="L553" title="1 of 4 branches missed.">		if (parent == document &amp;&amp; document.hasRootElement()) {</span>
+<span class="nc" id="L554">			throw new XMLStreamException(</span>
+					&quot;Document can have only one root Element.&quot;);
+		}
+			
+		
+<span class="fc" id="L559">		flushActiveElement();</span>
+<span class="fc" id="L560">		flushActiveText();</span>
+		
+		// create an element-specific namespace binding layer.
+<span class="fc" id="L563">		boundstack.push();</span>
+		
+<span class="fc" id="L565">		final Namespace ns = resolveElementNamespace(prefix, namespaceURI, withpfx);</span>
+
+<span class="fc" id="L567">		final Element e = factory.element(localName, ns);</span>
+
+<span class="fc" id="L569">		factory.addContent(parent, e);</span>
+<span class="fc" id="L570">		activeelement = e;</span>
+<span class="fc bfc" id="L571" title="All 2 branches covered.">		if (empty) {</span>
+<span class="fc" id="L572">			isempty = true;</span>
+		} else {
+<span class="fc" id="L574">			isempty = false;</span>
+<span class="fc" id="L575">			parent = e;</span>
+		}
+<span class="fc" id="L577">	}</span>
+
+	private Namespace resolveElementNamespace(String prefix, String namespaceURI,
+			boolean withpfx) throws XMLStreamException {
+		
+<span class="fc bfc" id="L582" title="All 2 branches covered.">		if (&quot;&quot;.equals(namespaceURI)) {</span>
+<span class="fc" id="L583">			final Namespace defns = boundstack.getNamespaceForPrefix(&quot;&quot;);</span>
+<span class="fc bfc" id="L584" title="All 2 branches covered.">			if(Namespace.NO_NAMESPACE != defns) {</span>
+				// inconsistency in XMLStreamWriter specification....
+				// In theory the repairing code should create a generated prefix for unbound
+				// namespace URI, but you can't create a prefixed &quot;&quot;-URI namespace.
+				//
+				// It next makes sense to throw an exception for this, and insist that the
+				// &quot;&quot; URI must be explicitly bound using a prior setPrefix(&quot;&quot;,&quot;&quot;) call,
+				// but, broken though it is, the better option is to replicate the undocumented
+				// special-case handling that the BEA Reference implementation does ....
+				// if you have the prefix (in this case &quot;&quot;) bound already, and now you are trying
+				// to bind the &quot;&quot; URI against the &quot;&quot; prefix, we let you do that as a special case
+				// but be warned that &quot;&quot; is no longer bound to the previous URI in this Element's
+				// scope.
+				// http://svn.stax.codehaus.org/browse/stax/trunk/dev/src/com/bea/xml/stream/XMLWriterBase.java?r=4&amp;r=4&amp;r=124#to278
+<span class="pc bpc" id="L598" title="1 of 2 branches missed.">				if (repairnamespace) {</span>
+<span class="fc" id="L599">					return Namespace.NO_NAMESPACE;</span>
+				}
+<span class="nc" id="L601">				throw new XMLStreamException(&quot;This attempt to use the empty URI \&quot;\&quot; as an &quot; +</span>
+						&quot;Element Namespace is illegal because the default Namespace is already &quot; +
+						&quot;bound to the URI '&quot; + defns.getURI() + &quot;'. You must call &quot; +
+						&quot;setPrefix(\&quot;\&quot;, \&quot;\&quot;) prior to this call.&quot;);
+			}
+		}
+		
+<span class="fc" id="L608">		final Namespace ns = Namespace.getNamespace(prefix, namespaceURI);</span>
+		
+<span class="fc bfc" id="L610" title="All 2 branches covered.">		if (withpfx) {</span>
+<span class="fc" id="L611">			final Namespace bnd = boundstack.getNamespaceForPrefix(prefix);</span>
+<span class="pc bpc" id="L612" title="2 of 4 branches missed.">			if (bnd == null || bnd == ns) {</span>
+				// no existing binding for prefix, or same binding.
+<span class="fc" id="L614">				return ns;</span>
+			}
+			// prefix is bound to a different URI
+<span class="nc bnc" id="L617" title="All 2 branches missed.">			if (repairnamespace) {</span>
+<span class="nc" id="L618">				return Namespace.getNamespace(generatePrefix(), namespaceURI);</span>
+			}
+<span class="nc" id="L620">			throw new XMLStreamException(&quot;Namespace prefix &quot; + prefix + </span>
+					&quot; in this scope is bound to a different URI '&quot; + bnd.getURI() + 
+					&quot;' (repairing not set for this XMLStreamWriter).&quot;); 
+		}
+		// see if the default namespace is bound correctly...
+<span class="fc bfc" id="L625" title="All 2 branches covered.">		if (boundstack.getNamespaceForPrefix(&quot;&quot;) == ns) {</span>
+<span class="fc" id="L626">			return ns;</span>
+		}
+		// nope, so see if there's any other bound namespace with the same URI.
+<span class="fc" id="L629">		final Namespace bound = boundstack.getFirstNamespaceForURI(namespaceURI);</span>
+<span class="pc bpc" id="L630" title="1 of 2 branches missed.">		if (bound != null) {</span>
+<span class="nc" id="L631">			return bound;</span>
+		}
+		// there are no existing bindings with the specified URI.
+<span class="pc bpc" id="L634" title="1 of 2 branches missed.">		if (repairnamespace) {</span>
+<span class="fc" id="L635">			return Namespace.getNamespace(generatePrefix(), namespaceURI);</span>
+		}
+<span class="nc" id="L637">		throw new XMLStreamException(&quot;Namespace URI &quot; + namespaceURI + </span>
+				&quot; is not bound in this scope (repairing not set for this XMLStreamWriter).&quot;); 
+	}
+
+	private Namespace resolveAttributeNamespace(String prefix, String namespaceURI,
+			boolean withpfx) throws XMLStreamException {
+<span class="fc" id="L643">		final Namespace ns = Namespace.getNamespace(prefix, namespaceURI);</span>
+<span class="fc bfc" id="L644" title="All 2 branches covered.">		if (ns == Namespace.NO_NAMESPACE) {</span>
+<span class="fc" id="L645">			return ns;</span>
+		}
+<span class="pc bpc" id="L647" title="2 of 4 branches missed.">		if (withpfx &amp;&amp; !&quot;&quot;.equals(prefix)) {</span>
+
+<span class="fc" id="L649">			Namespace bnd = boundstack.getNamespaceForPrefix(prefix);</span>
+			
+<span class="pc bpc" id="L651" title="2 of 4 branches missed.">			if (bnd == null || bnd == ns) {</span>
+				// no existing binding for prefix, or same binding.
+<span class="fc" id="L653">				return ns;</span>
+			}
+			// prefix is bound to a different URI
+<span class="nc bnc" id="L656" title="All 2 branches missed.">			if (repairnamespace) {</span>
+<span class="nc" id="L657">				final Namespace gen = Namespace.getNamespace(generatePrefix(), namespaceURI);</span>
+<span class="nc" id="L658">				setPrefix(gen.getPrefix(), gen.getURI());</span>
+<span class="nc" id="L659">				return gen;</span>
+			}
+<span class="nc" id="L661">			throw new XMLStreamException(&quot;Namespace prefix &quot; + prefix + </span>
+					&quot; in this scope is bound to a different URI '&quot; + bnd.getURI() + 
+					&quot;' (repairing not set for this XMLStreamWriter).&quot;); 
+		}
+		
+		// see if there's any other bound namespace with the same URI.
+<span class="nc" id="L667">		final Namespace[] bound = boundstack.getAllNamespacesForURI(namespaceURI);</span>
+<span class="nc bnc" id="L668" title="All 2 branches missed.">		for (Namespace b : bound) {</span>
+<span class="nc bnc" id="L669" title="All 2 branches missed.">			if (!&quot;&quot;.equals(b.getPrefix())) {</span>
+				// use an existing prefixed Namespace binding.
+				// good for both repairing and non-repairing
+<span class="nc" id="L672">				return b;</span>
+			}
+		}
+		// there are no existing prefixed bindings with the specified URI.
+<span class="nc bnc" id="L676" title="All 4 branches missed.">		if (repairnamespace || bound.length &gt; 0) {</span>
+<span class="nc" id="L677">			return Namespace.getNamespace(generatePrefix(), namespaceURI);</span>
+		}
+<span class="nc" id="L679">		throw new XMLStreamException(&quot;Namespace URI &quot; + namespaceURI + </span>
+				&quot; is not bound in this attribute scope (repairing not set for this XMLStreamWriter).&quot;); 
+	}
+
+	private String generatePrefix() {
+<span class="fc" id="L684">		String pfx = String.format(&quot;ns%03d&quot;, ++genprefix);</span>
+<span class="pc bpc" id="L685" title="1 of 2 branches missed.">		while (boundstack.getNamespaceForPrefix(pfx) != null) {</span>
+<span class="nc" id="L686">			pfx = String.format(&quot;ns%03d&quot;, ++genprefix);</span>
+		}
+<span class="fc" id="L688">		return pfx;</span>
+	}
+
+	private final void buildAttribute(final String prefix,
+			final String namespaceURI, final String localName,
+			final String value, final boolean withpfx) throws XMLStreamException {
+<span class="pc bpc" id="L694" title="1 of 2 branches missed.">		if (!(parent instanceof Element)) {</span>
+<span class="nc" id="L695">			throw new IllegalStateException(</span>
+					&quot;Cannot write attribute unless inside an Element.&quot;);
+		}
+<span class="pc bpc" id="L698" title="1 of 2 branches missed.">		if (localName == null) {</span>
+<span class="nc" id="L699">			throw new XMLStreamException(&quot;localName is not allowed to be null&quot;);</span>
+		}
+<span class="pc bpc" id="L701" title="1 of 2 branches missed.">		if (value == null) {</span>
+<span class="nc" id="L702">			throw new XMLStreamException(&quot;value is not allowed to be null&quot;);</span>
+		}
+<span class="pc bpc" id="L704" title="1 of 2 branches missed.">		if (activeelement == null) { </span>
+<span class="nc" id="L705">			throw new IllegalStateException(&quot;Cannot add Attributes to an Element after other content was added.&quot;);</span>
+		}
+		
+<span class="fc" id="L708">		Namespace ns = resolveAttributeNamespace(prefix, namespaceURI, withpfx);</span>
+		
+<span class="fc" id="L710">		factory.setAttribute(activeelement, factory.attribute(localName, value, ns));</span>
+<span class="fc" id="L711">	}</span>
+
+	private final void flushActiveElement() {
+<span class="fc bfc" id="L714" title="All 2 branches covered.">		if (activeelement != null) {</span>
+			
+			/*
+			 * Add any written namespaces to the element as declared namespaces
+			 * unless they are implied namespaces used by attributes, or something.
+			 * If this Element is expecting content (it's not empty) then we also
+			 * push the modified Element on to the Namespace stack.
+			 */
+
+<span class="fc" id="L723">			boolean mod = false;</span>
+<span class="fc" id="L724">			usednsstack.push(activeelement);</span>
+<span class="fc bfc" id="L725" title="All 2 branches covered.">			for (Namespace ns : pendingns) {</span>
+<span class="fc bfc" id="L726" title="All 2 branches covered.">				if (!usednsstack.isInScope(ns)) {</span>
+<span class="fc" id="L727">					activeelement.addNamespaceDeclaration(ns);</span>
+<span class="fc" id="L728">					mod = true;</span>
+				}
+<span class="fc" id="L730">			}</span>
+<span class="fc" id="L731">			pendingns.clear();</span>
+			
+<span class="fc bfc" id="L733" title="All 2 branches covered.">			if (mod) {</span>
+<span class="fc" id="L734">				usednsstack.pop();</span>
+<span class="pc bpc" id="L735" title="1 of 2 branches missed.">				if (isempty) {</span>
+<span class="nc" id="L736">					boundstack.pop();</span>
+<span class="nc" id="L737">					activeelement = null;</span>
+<span class="nc" id="L738">					return;</span>
+				}
+				// reload the stack with the additional namespaces.
+<span class="fc" id="L741">				usednsstack.push(activeelement);</span>
+			}
+<span class="fc bfc" id="L743" title="All 2 branches covered.">			if (isempty) {</span>
+<span class="fc" id="L744">				boundstack.pop();</span>
+<span class="fc" id="L745">				activeelement = null;</span>
+<span class="fc" id="L746">				return;</span>
+			}
+<span class="fc" id="L748">			boundstack.push(activeelement);</span>
+<span class="fc" id="L749">			boundstack.push();</span>
+			
+<span class="fc" id="L751">			activeelement = null;</span>
+		}
+<span class="fc" id="L753">	}</span>
+
+	private final void flushActiveText() {
+<span class="fc" id="L756">		activetext = null;</span>
+<span class="fc" id="L757">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

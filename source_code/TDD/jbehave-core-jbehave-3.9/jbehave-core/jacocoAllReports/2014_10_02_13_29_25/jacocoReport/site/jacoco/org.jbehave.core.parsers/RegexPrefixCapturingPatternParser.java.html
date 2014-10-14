@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>RegexPrefixCapturingPatternParser.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.parsers</a> &gt; <span class="el_source">RegexPrefixCapturingPatternParser.java</span></div><h1>RegexPrefixCapturingPatternParser.java</h1><pre class="source lang-java linenums">package org.jbehave.core.parsers;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.lang.builder.ToStringBuilder;
+import org.apache.commons.lang.builder.ToStringStyle;
+import org.jbehave.core.steps.StepType;
+
+/**
+ * A step pattern parser that provides a step matcher which will capture
+ * parameters starting with the given prefix in any matching step. Default
+ * prefix is $.
+ * 
+ * @author Elizabeth Keogh
+ */
+public class RegexPrefixCapturingPatternParser implements StepPatternParser {
+
+    private final String prefix;
+
+	/**
+	 * Creates a parser which captures parameters starting with $ in a matching
+	 * step.
+	 */
+	public RegexPrefixCapturingPatternParser() {
+<span class="fc" id="L28">		this(&quot;$&quot;);</span>
+<span class="fc" id="L29">	}</span>
+
+	/**
+	 * Creates a parser which captures parameters starting with a given prefix
+	 * in a matching step.
+	 * 
+	 * @param prefix the prefix to use in capturing parameters
+	 */
+<span class="fc" id="L37">	public RegexPrefixCapturingPatternParser(String prefix) {</span>
+<span class="fc" id="L38">		this.prefix = prefix;</span>
+<span class="fc" id="L39">	}</span>
+
+	public String getPrefix(){
+<span class="fc" id="L42">	    return prefix;</span>
+	}
+	
+	public StepMatcher parseStep(StepType stepType, String stepPattern) {
+<span class="fc" id="L46">		return new RegexStepMatcher(stepType, stepPattern,</span>
+				buildPattern(stepPattern), extractParameterNames(stepPattern));
+	}
+
+	private Pattern buildPattern(String stepPattern) {
+<span class="fc" id="L51">		String matchThisButLeaveBrackets = escapeRegexPunctuation(stepPattern);</span>
+<span class="fc" id="L52">		String patternToMatchAgainst = replaceParametersWithCapture(</span>
+				matchThisButLeaveBrackets, findParametersToReplace(matchThisButLeaveBrackets));
+<span class="fc" id="L54">		String matchThisButIgnoreWhitespace = anyWhitespaceWillDo(patternToMatchAgainst);</span>
+<span class="fc" id="L55">		return Pattern.compile(matchThisButIgnoreWhitespace, Pattern.DOTALL);</span>
+	}
+
+    private String escapeRegexPunctuation(String matchThis) {
+<span class="fc" id="L59">        return matchThis.replaceAll(&quot;([\\[\\]\\{\\}\\?\\^\\.\\*\\(\\)\\+\\\\])&quot;, &quot;\\\\$1&quot;);</span>
+    }
+
+	private String anyWhitespaceWillDo(String matchThis) {
+<span class="fc" id="L63">		return matchThis.replaceAll(&quot;\\s+&quot;, &quot;\\\\s+&quot;);</span>
+	}
+
+	private String[] extractParameterNames(String stepPattern) {
+<span class="fc" id="L67">		List&lt;String&gt; names = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">		for (Parameter parameter : findParametersToReplace(stepPattern)) {</span>
+<span class="fc" id="L69">			names.add(parameter.name);</span>
+<span class="fc" id="L70">		}</span>
+<span class="fc" id="L71">		return names.toArray(new String[names.size()]);</span>
+	}
+
+    private List&lt;Parameter&gt; findParametersToReplace(String matchThisButLeaveBrackets) {
+<span class="fc" id="L75">        List&lt;Parameter&gt; parameters = new ArrayList&lt;Parameter&gt;();</span>
+<span class="fc" id="L76">        Matcher findingAllPrefixedWords = findAllPrefixedWords().matcher(matchThisButLeaveBrackets);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        while (findingAllPrefixedWords.find()) {</span>
+<span class="fc" id="L78">            parameters.add(new Parameter(matchThisButLeaveBrackets, findingAllPrefixedWords.start(),</span>
+                    findingAllPrefixedWords.end(), findingAllPrefixedWords.group(2)));
+        }
+<span class="fc" id="L81">        return parameters;</span>
+    }
+
+    private Pattern findAllPrefixedWords() {
+        // Use \p{L} in place of \w to allow for all unicode-supported letters, not only ASCII
+<span class="fc" id="L86">        return Pattern.compile(&quot;(\\&quot; + prefix + &quot;\\p{L}*)(\\W|\\Z)&quot;, Pattern.DOTALL);</span>
+    }
+
+	private String replaceParametersWithCapture(String escapedMatch,
+			List&lt;Parameter&gt; parameters) {
+<span class="fc" id="L91">        String replaced = escapedMatch;</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        for (int i = parameters.size(); i &gt; 0; i--) {</span>
+<span class="fc" id="L93">            String start = replaced.substring(0, parameters.get(i - 1).start);</span>
+<span class="fc" id="L94">            String end = replaced.substring(parameters.get(i - 1).end);</span>
+<span class="fc" id="L95">            String whitespaceIfAny = parameters.get(i - 1).whitespaceIfAny;</span>
+<span class="fc" id="L96">            replaced = start + &quot;(.*)&quot; + whitespaceIfAny + end;</span>
+        }
+<span class="fc" id="L98">        return replaced;</span>
+	}
+
+	private class Parameter {
+		private final int start;
+		private final int end;
+		private final String whitespaceIfAny;
+		private final String name;
+
+		public Parameter(String pattern, int start, int end,
+<span class="fc" id="L108">				String whitespaceIfAny) {</span>
+<span class="fc" id="L109">			this.start = start;</span>
+<span class="fc" id="L110">			this.end = end;</span>
+<span class="fc" id="L111">			this.whitespaceIfAny = whitespaceIfAny;</span>
+<span class="fc" id="L112">			this.name = pattern.substring(start + prefix.length(), end - whitespaceIfAny.length()).trim();</span>
+<span class="fc" id="L113">		}</span>
+
+	}
+
+    @Override
+    public String toString() {
+<span class="fc" id="L119">        return ToStringBuilder.reflectionToString(this, ToStringStyle.SHORT_PREFIX_STYLE);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,777 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>AbstractStAXEventProcessor.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jdom</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.output.support</a> &gt; <span class="el_source">AbstractStAXEventProcessor.java</span></div><h1>AbstractStAXEventProcessor.java</h1><pre class="source lang-java linenums">/*-- 
+
+ Copyright (C) 2000-2007 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows 
+    these conditions in the documentation and/or other materials 
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the 
+ end-user documentation provided with the redistribution and/or in the 
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos 
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many 
+ individuals on behalf of the JDOM Project and was originally 
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.output.support;
+
+import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+
+import javax.xml.stream.XMLEventFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.util.XMLEventConsumer;
+
+import org.jdom2.Attribute;
+import org.jdom2.CDATA;
+import org.jdom2.Comment;
+import org.jdom2.Content;
+import org.jdom2.Content.CType;
+import org.jdom2.DocType;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.EntityRef;
+import org.jdom2.Namespace;
+import org.jdom2.ProcessingInstruction;
+import org.jdom2.Text;
+import org.jdom2.Verifier;
+import org.jdom2.output.Format;
+import org.jdom2.output.Format.TextMode;
+import org.jdom2.output.StAXEventOutputter;
+import org.jdom2.util.NamespaceStack;
+
+/**
+ * This class provides a concrete implementation of {@link StAXEventProcessor}
+ * for supporting the {@link StAXEventOutputter}.
+ * &lt;p&gt;
+ * &lt;h2&gt;Overview&lt;/h2&gt;
+ * &lt;p&gt;
+ * This class is marked abstract even though all methods are fully implemented.
+ * The &lt;code&gt;process*(...)&lt;/code&gt; methods are public because they match the
+ * StAXEventProcessor interface but the remaining methods are all protected.
+ * &lt;p&gt;
+ * People who want to create a custom StAXEventProcessor for StAXEventOutputter are
+ * able to extend this class and modify any functionality they want. Before
+ * sub-classing this you should first check to see if the {@link Format} class
+ * can get you the results you want.
+ * &lt;p&gt;
+ * &lt;b&gt;&lt;i&gt;Subclasses of this should have reentrant methods.&lt;/i&gt;&lt;/b&gt; This is
+ * easiest to accomplish simply by not allowing any instance fields. If your
+ * sub-class has an instance field/variable, then it's probably broken.
+ * &lt;p&gt;
+ * &lt;h2&gt;The Stacks&lt;/h2&gt;
+ * &lt;p&gt;
+ * One significant feature of this implementation is that it creates and
+ * maintains both a {@link NamespaceStack} and {@link FormatStack} that are
+ * managed in the
+ * {@link #printElement(XMLEventConsumer, FormatStack, NamespaceStack, XMLEventFactory, Element)} method.
+ * The stacks are pushed and popped in that method only. They significantly
+ * improve the performance and readability of the code.
+ * &lt;p&gt;
+ * The NamespaceStack is only sent through to the
+ * {@link #printElement(XMLEventConsumer, FormatStack, NamespaceStack, XMLEventFactory, Element)} and
+ * {@link #printContent(XMLEventConsumer, FormatStack, NamespaceStack, XMLEventFactory, Walker)} methods, but
+ * the FormatStack is pushed through to all print* Methods.
+ * 
+ * @see StAXEventOutputter
+ * @see StAXEventProcessor
+ * @since JDOM2
+ * @author Rolf Lear
+ */
+<span class="fc" id="L123">public abstract class AbstractStAXEventProcessor extends AbstractOutputProcessor </span>
+		implements StAXEventProcessor {
+	
+	private static final class NSIterator implements Iterator&lt;javax.xml.stream.events.Namespace&gt; {
+		private final Iterator&lt;Namespace&gt; source;
+		private final XMLEventFactory fac;
+		
+		public NSIterator(Iterator&lt;Namespace&gt; source, XMLEventFactory fac) {
+<span class="fc" id="L131">			super();</span>
+<span class="fc" id="L132">			this.source = source;</span>
+<span class="fc" id="L133">			this.fac = fac;</span>
+<span class="fc" id="L134">		}</span>
+
+		@Override
+		public boolean hasNext() {
+<span class="fc" id="L138">			return source.hasNext();</span>
+		}
+
+		@Override
+		public javax.xml.stream.events.Namespace next() {
+<span class="fc" id="L143">			Namespace ns = source.next();</span>
+<span class="fc" id="L144">			return fac.createNamespace(ns.getPrefix(), ns.getURI());</span>
+		}
+
+		@Override
+		public void remove() {
+<span class="nc" id="L149">			throw new UnsupportedOperationException(&quot;Cannot remove Namespaces&quot;);</span>
+			
+		}
+		
+	}
+<span class="fc" id="L154">	private static final class AttIterator implements Iterator&lt;javax.xml.stream.events.Attribute&gt; {</span>
+		private final Iterator&lt;Attribute&gt; source;
+		private final XMLEventFactory fac;
+		
+		public AttIterator(final Iterator&lt;Attribute&gt; source, final XMLEventFactory fac, 
+				final boolean specifiedAttributesOnly) {
+<span class="fc" id="L160">			super();</span>
+			// remove not-specified Attributes if needed....
+<span class="fc bfc" id="L162" title="All 2 branches covered.">			this.source = specifiedAttributesOnly ? specified(source) : source;</span>
+<span class="fc" id="L163">			this.fac = fac;</span>
+<span class="fc" id="L164">		}</span>
+
+		private Iterator&lt;Attribute&gt; specified(Iterator&lt;Attribute&gt; src) {
+<span class="fc bfc" id="L167" title="All 2 branches covered.">			if (src == null) {</span>
+<span class="fc" id="L168">				return null;</span>
+			}
+<span class="fc" id="L170">			final ArrayList&lt;Attribute&gt; al = new ArrayList&lt;Attribute&gt;();</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">			while (src.hasNext()) {</span>
+<span class="fc" id="L172">				Attribute att = src.next();</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">				if (att.isSpecified()) {</span>
+<span class="fc" id="L174">					al.add(att);</span>
+				}
+<span class="fc" id="L176">			}</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">			return al.isEmpty() ? null : al.iterator();</span>
+		}
+
+		@Override
+		public boolean hasNext() {
+<span class="fc bfc" id="L182" title="All 4 branches covered.">			return source != null &amp;&amp; source.hasNext();</span>
+		}
+
+		@Override
+		public javax.xml.stream.events.Attribute next() {
+<span class="fc" id="L187">			final Attribute att = source.next();</span>
+<span class="fc" id="L188">			final Namespace ns = att.getNamespace();</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">			if (ns == Namespace.NO_NAMESPACE) {</span>
+<span class="fc" id="L190">				return fac.createAttribute(att.getName(), att.getValue());</span>
+			}
+<span class="fc" id="L192">			return fac.createAttribute(ns.getPrefix(), ns.getURI(), </span>
+					att.getName(), att.getValue());
+		}
+
+		@Override
+		public void remove() {
+<span class="nc" id="L198">			throw new UnsupportedOperationException(&quot;Cannot remove attributes&quot;);</span>
+			
+		}
+		
+	}
+
+	
+
+	/* *******************************************
+	 * StAXEventProcessor implementation.
+	 * *******************************************
+	 */
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.StAXEventProcessor#process(java.io.XMLEventConsumer,
+	 * org.jdom2.Document, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final XMLEventConsumer out, final Format format,
+			final XMLEventFactory eventfactory, final Document doc) throws XMLStreamException {
+<span class="fc" id="L220">		printDocument(out, new FormatStack(format), new NamespaceStack(), eventfactory, doc);</span>
+<span class="fc" id="L221">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.StAXEventProcessor#process(java.io.XMLEventConsumer,
+	 * org.jdom2.DocType, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final XMLEventConsumer out, final Format format,
+			final XMLEventFactory eventfactory, final DocType doctype) throws XMLStreamException {
+<span class="fc" id="L232">		printDocType(out, new FormatStack(format), eventfactory, doctype);</span>
+<span class="fc" id="L233">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.StAXEventProcessor#process(java.io.XMLEventConsumer,
+	 * org.jdom2.Element, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final XMLEventConsumer out, final Format format,
+			final XMLEventFactory eventfactory, final Element element) throws XMLStreamException {
+		// If this is the root element we could pre-initialize the
+		// namespace stack with the namespaces
+<span class="fc" id="L246">		printElement(out, new FormatStack(format), new NamespaceStack(),</span>
+				eventfactory, element);
+<span class="fc" id="L248">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.StAXEventProcessor#process(java.io.XMLEventConsumer,
+	 * java.util.List, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final XMLEventConsumer out, final Format format,
+			final XMLEventFactory eventfactory, final List&lt;? extends Content&gt; list)
+			throws XMLStreamException {
+<span class="fc" id="L260">		final FormatStack fstack = new FormatStack(format);</span>
+<span class="fc" id="L261">		final Walker walker = buildWalker(fstack, list, false);</span>
+<span class="fc" id="L262">		printContent(out, new FormatStack(format), new NamespaceStack(), eventfactory, walker);</span>
+<span class="fc" id="L263">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.StAXEventProcessor#process(java.io.XMLEventConsumer,
+	 * org.jdom2.CDATA, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final XMLEventConsumer out, final Format format,
+			final XMLEventFactory eventfactory, final CDATA cdata) throws XMLStreamException {
+<span class="fc" id="L274">		final List&lt;CDATA&gt; list = Collections.singletonList(cdata);</span>
+<span class="fc" id="L275">		final FormatStack fstack = new FormatStack(format);</span>
+<span class="fc" id="L276">		final Walker walker = buildWalker(fstack, list, false);</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">		if (walker.hasNext()) {</span>
+<span class="fc" id="L278">			final Content c = walker.next();</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">			if (c == null) {</span>
+<span class="fc" id="L280">				printCDATA(out, fstack, eventfactory, new CDATA(walker.text()));</span>
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">			} else if (c.getCType() == CType.CDATA) {</span>
+<span class="fc" id="L282">				printCDATA(out, fstack, eventfactory, (CDATA)c);</span>
+			}
+		}
+<span class="fc" id="L285">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.StAXEventProcessor#process(java.io.XMLEventConsumer,
+	 * org.jdom2.Text, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final XMLEventConsumer out, final Format format,
+			final XMLEventFactory eventfactory, final Text text) throws XMLStreamException {
+<span class="fc" id="L296">		final List&lt;Text&gt; list = Collections.singletonList(text);</span>
+<span class="fc" id="L297">		final FormatStack fstack = new FormatStack(format);</span>
+<span class="fc" id="L298">		final Walker walker = buildWalker(fstack, list, false);</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">		if (walker.hasNext()) {</span>
+<span class="fc" id="L300">			final Content c = walker.next();</span>
+<span class="fc bfc" id="L301" title="All 2 branches covered.">			if (c == null) {</span>
+<span class="fc" id="L302">				printText(out, fstack, eventfactory, new Text(walker.text()));</span>
+<span class="pc bpc" id="L303" title="1 of 2 branches missed.">			} else if (c.getCType() == CType.Text) {</span>
+<span class="fc" id="L304">				printText(out, fstack, eventfactory, (Text)c);</span>
+			}
+		}
+<span class="fc" id="L307">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.StAXEventProcessor#process(java.io.XMLEventConsumer,
+	 * org.jdom2.Comment, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final XMLEventConsumer out, final Format format,
+			final XMLEventFactory eventfactory, final Comment comment) throws XMLStreamException {
+<span class="fc" id="L318">		printComment(out, new FormatStack(format), eventfactory, comment);</span>
+<span class="fc" id="L319">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.StAXEventProcessor#process(java.io.XMLEventConsumer,
+	 * org.jdom2.ProcessingInstruction, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final XMLEventConsumer out, final Format format,
+			final XMLEventFactory eventfactory, final ProcessingInstruction pi) throws XMLStreamException {
+<span class="fc" id="L330">		FormatStack fstack = new FormatStack(format);</span>
+		// Output PI verbatim, disregarding TrAX escaping PIs.
+<span class="fc" id="L332">		fstack.setIgnoreTrAXEscapingPIs(true);</span>
+<span class="fc" id="L333">		printProcessingInstruction(out, fstack, eventfactory, pi);</span>
+<span class="fc" id="L334">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.output.StAXEventProcessor#process(java.io.XMLEventConsumer,
+	 * org.jdom2.EntityRef, org.jdom2.output.Format)
+	 */
+	@Override
+	public void process(final XMLEventConsumer out, final Format format,
+			final XMLEventFactory eventfactory, final EntityRef entity) throws XMLStreamException {
+<span class="fc" id="L345">		printEntityRef(out, new FormatStack(format), eventfactory, entity);</span>
+<span class="fc" id="L346">	}</span>
+
+	/* *******************************************
+	 * Support methods for output. Should all be protected. All content-type
+	 * print methods have a FormatStack. Only printContent is responsible for
+	 * outputting appropriate indenting and newlines, which are easily available
+	 * using the FormatStack.getLevelIndent() and FormatStack.getLevelEOL().
+	 * *******************************************
+	 */
+
+	/**
+	 * This will handle printing of a {@link Document}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param nstack
+	 *        the NamespaceStack
+	 * @param eventfactory
+	 * 		  The XMLEventFactory for creating XMLEvents 
+	 * @param doc
+	 *        &lt;code&gt;Document&lt;/code&gt; to write.
+	 * @throws XMLStreamException
+	 *         if the destination XMLEventConsumer fails
+	 */
+	protected void printDocument(final XMLEventConsumer out, final FormatStack fstack,
+			final NamespaceStack nstack, final XMLEventFactory eventfactory, final Document doc) throws XMLStreamException {
+
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">		if (fstack.isOmitDeclaration()) {</span>
+			// this actually writes the declaration as version 1, UTF-8
+<span class="nc" id="L377">			out.add(eventfactory.createStartDocument(null, null));</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">		} else if (fstack.isOmitEncoding()) {</span>
+<span class="fc" id="L379">			out.add(eventfactory.createStartDocument(null, &quot;1.0&quot;));</span>
+<span class="pc bpc" id="L380" title="1 of 2 branches missed.">			if (fstack.getLineSeparator() != null) {</span>
+<span class="fc" id="L381">				out.add(eventfactory.createCharacters(fstack.getLineSeparator()));</span>
+			}
+		} else {
+<span class="fc" id="L384">			out.add(eventfactory.createStartDocument(fstack.getEncoding(), &quot;1.0&quot;));</span>
+<span class="pc bpc" id="L385" title="1 of 2 branches missed.">			if (fstack.getLineSeparator() != null) {</span>
+<span class="fc" id="L386">				out.add(eventfactory.createCharacters(fstack.getLineSeparator()));</span>
+			}
+		}
+
+		// If there is no root element then we cannot use the normal ways to
+		// access the ContentList because Document throws an exception.
+		// so we hack it and just access it by index.
+<span class="fc bfc" id="L393" title="All 2 branches covered.">		List&lt;Content&gt; list = doc.hasRootElement() ? doc.getContent() : </span>
+			new ArrayList&lt;Content&gt;(doc.getContentSize());
+<span class="fc bfc" id="L395" title="All 2 branches covered.">		if (list.isEmpty()) {</span>
+<span class="fc" id="L396">			final int sz = doc.getContentSize();</span>
+<span class="fc bfc" id="L397" title="All 2 branches covered.">			for (int i = 0; i &lt; sz; i++) {</span>
+<span class="fc" id="L398">				list.add(doc.getContent(i));</span>
+			}
+		}
+		
+<span class="fc" id="L402">		Walker walker = buildWalker(fstack, list, false);</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">		if (walker.hasNext()) {</span>
+<span class="fc bfc" id="L404" title="All 2 branches covered.">			while (walker.hasNext()) {</span>
+				
+<span class="fc" id="L406">				final Content c = walker.next();</span>
+				
+				// we do not ignore Text-like things in the Document.
+				// the walker creates the indenting for us.
+<span class="fc bfc" id="L410" title="All 2 branches covered.">				if (c == null) {</span>
+					// but, what we do is ensure it is all whitespace, and not CDATA
+<span class="fc" id="L412">					final String padding = walker.text();</span>
+<span class="pc bpc" id="L413" title="3 of 6 branches missed.">					if (padding != null &amp;&amp; Verifier.isAllXMLWhitespace(padding) &amp;&amp; </span>
+							!walker.isCDATA()) {
+						// we do not use the escaping or text* method because this
+						// content is outside of the root element, and thus is not
+						// strict text.
+<span class="fc" id="L418">						out.add(eventfactory.createCharacters(padding));</span>
+					}
+<span class="fc" id="L420">				} else {</span>
+<span class="pc bpc" id="L421" title="1 of 5 branches missed.">					switch (c.getCType()) {</span>
+						case Comment :
+<span class="fc" id="L423">							printComment(out, fstack, eventfactory, (Comment) c);</span>
+<span class="fc" id="L424">							break;</span>
+						case DocType :
+<span class="fc" id="L426">							printDocType(out, fstack, eventfactory, (DocType)c);</span>
+<span class="fc" id="L427">							break;</span>
+						case Element :
+<span class="fc" id="L429">							printElement(out, fstack, nstack, eventfactory,</span>
+									(Element)c);
+<span class="fc" id="L431">							break;</span>
+						case ProcessingInstruction :
+<span class="fc" id="L433">							printProcessingInstruction(out, fstack, eventfactory, </span>
+									(ProcessingInstruction)c);
+<span class="fc" id="L435">							break;</span>
+						default :
+							// do nothing.
+					}
+				}
+				
+<span class="fc" id="L441">			}</span>
+			
+<span class="pc bpc" id="L443" title="1 of 2 branches missed.">			if (fstack.getLineSeparator() != null) {</span>
+<span class="fc" id="L444">				out.add(eventfactory.createCharacters(fstack.getLineSeparator()));</span>
+			}
+		}
+
+<span class="fc" id="L448">		out.add(eventfactory.createEndDocument());</span>
+		
+<span class="fc" id="L450">	}</span>
+
+	/**
+	 * This will handle printing of a {@link DocType}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param eventfactory
+	 * 		  The XMLEventFactory for creating XMLEvents 
+	 * @param docType
+	 *        &lt;code&gt;DocType&lt;/code&gt; to write.
+	 * @throws XMLStreamException
+	 *         if the destination XMLEventConsumer fails
+	 */
+	protected void printDocType(final XMLEventConsumer out, final FormatStack fstack,
+			final XMLEventFactory eventfactory, final DocType docType) throws XMLStreamException {
+
+<span class="fc" id="L469">		final String publicID = docType.getPublicID();</span>
+<span class="fc" id="L470">		final String systemID = docType.getSystemID();</span>
+<span class="fc" id="L471">		final String internalSubset = docType.getInternalSubset();</span>
+<span class="fc" id="L472">		boolean hasPublic = false;</span>
+
+		// Declaration is never indented.
+		// write(out, fstack.getLevelIndent());
+		
+<span class="fc" id="L477">		StringWriter sw = new StringWriter();</span>
+
+<span class="fc" id="L479">		sw.write(&quot;&lt;!DOCTYPE &quot;);</span>
+<span class="fc" id="L480">		sw.write(docType.getElementName());</span>
+<span class="fc bfc" id="L481" title="All 2 branches covered.">		if (publicID != null) {</span>
+<span class="fc" id="L482">			sw.write(&quot; PUBLIC \&quot;&quot;);</span>
+<span class="fc" id="L483">			sw.write(publicID);</span>
+<span class="fc" id="L484">			sw.write(&quot;\&quot;&quot;);</span>
+<span class="fc" id="L485">			hasPublic = true;</span>
+		}
+<span class="fc bfc" id="L487" title="All 2 branches covered.">		if (systemID != null) {</span>
+<span class="fc bfc" id="L488" title="All 2 branches covered.">			if (!hasPublic) {</span>
+<span class="fc" id="L489">				sw.write(&quot; SYSTEM&quot;);</span>
+			}
+<span class="fc" id="L491">			sw.write(&quot; \&quot;&quot;);</span>
+<span class="fc" id="L492">			sw.write(systemID);</span>
+<span class="fc" id="L493">			sw.write(&quot;\&quot;&quot;);</span>
+		}
+<span class="pc bpc" id="L495" title="1 of 4 branches missed.">		if ((internalSubset != null) &amp;&amp; (!internalSubset.equals(&quot;&quot;))) {</span>
+<span class="fc" id="L496">			sw.write(&quot; [&quot;);</span>
+<span class="fc" id="L497">			sw.write(fstack.getLineSeparator());</span>
+<span class="fc" id="L498">			sw.write(docType.getInternalSubset());</span>
+<span class="fc" id="L499">			sw.write(&quot;]&quot;);</span>
+		}
+<span class="fc" id="L501">		sw.write(&quot;&gt;&quot;);</span>
+		
+		// DocType does not write it's own EOL
+		// for compatibility reasons. Only
+		// when output from inside a Content set.
+		// write(out, fstack.getLineSeparator());
+<span class="fc" id="L507">		out.add(eventfactory.createDTD(sw.toString()));</span>
+<span class="fc" id="L508">	}</span>
+
+	/**
+	 * This will handle printing of a {@link ProcessingInstruction}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param eventfactory
+	 * 		  The XMLEventFactory for creating XMLEvents 
+	 * @param pi
+	 *        &lt;code&gt;ProcessingInstruction&lt;/code&gt; to write.
+	 * @throws XMLStreamException
+	 *         if the destination XMLEventConsumer fails
+	 */
+	protected void printProcessingInstruction(final XMLEventConsumer out,
+			final FormatStack fstack, final XMLEventFactory eventfactory, final ProcessingInstruction pi)
+			throws XMLStreamException {
+<span class="fc" id="L527">		String target = pi.getTarget();</span>
+<span class="fc" id="L528">		String rawData = pi.getData();</span>
+<span class="pc bpc" id="L529" title="1 of 4 branches missed.">		if (rawData != null &amp;&amp; rawData.trim().length() &gt; 0) {</span>
+<span class="fc" id="L530">			out.add(eventfactory.createProcessingInstruction(target, rawData));</span>
+		} else {
+<span class="fc" id="L532">			out.add(eventfactory.createProcessingInstruction(target, &quot;&quot;));</span>
+		}
+<span class="fc" id="L534">	}</span>
+
+	/**
+	 * This will handle printing of a {@link Comment}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param eventfactory
+	 * 		  The XMLEventFactory for creating XMLEvents 
+	 * @param comment
+	 *        &lt;code&gt;Comment&lt;/code&gt; to write.
+	 * @throws XMLStreamException
+	 *         if the destination XMLEventConsumer fails
+	 */
+	protected void printComment(final XMLEventConsumer out, final FormatStack fstack,
+			final XMLEventFactory eventfactory, final Comment comment) throws XMLStreamException {
+<span class="fc" id="L552">		out.add(eventfactory.createComment(comment.getText()));</span>
+<span class="fc" id="L553">	}</span>
+
+	/**
+	 * This will handle printing of an {@link EntityRef}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param eventfactory
+	 * 		  The XMLEventFactory for creating XMLEvents 
+	 * @param entity
+	 *        &lt;code&gt;EntotyRef&lt;/code&gt; to write.
+	 * @throws XMLStreamException
+	 *         if the destination XMLEventConsumer fails
+	 */
+	protected void printEntityRef(final XMLEventConsumer out, final FormatStack fstack,
+			final XMLEventFactory eventfactory, final EntityRef entity) throws XMLStreamException {
+<span class="fc" id="L571">		out.add(eventfactory.createEntityReference(entity.getName(), null));</span>
+<span class="fc" id="L572">	}</span>
+
+	/**
+	 * This will handle printing of a {@link CDATA}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param eventfactory
+	 * 		  The XMLEventFactory for creating XMLEvents 
+	 * @param cdata
+	 *        &lt;code&gt;CDATA&lt;/code&gt; to write.
+	 * @throws XMLStreamException
+	 *         if the destination XMLEventConsumer fails
+	 */
+	protected void printCDATA(final XMLEventConsumer out, final FormatStack fstack,
+			final XMLEventFactory eventfactory, final CDATA cdata) throws XMLStreamException {
+		// CDATAs are treated like text, not indented/newline content.
+<span class="fc" id="L591">		out.add(eventfactory.createCData(cdata.getText()));</span>
+<span class="fc" id="L592">	}</span>
+
+	/**
+	 * This will handle printing of a {@link Text}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param eventfactory
+	 * 		  The XMLEventFactory for creating XMLEvents 
+	 * @param text
+	 *        &lt;code&gt;Text&lt;/code&gt; to write.
+	 * @throws XMLStreamException
+	 *         if the destination XMLEventConsumer fails
+	 */
+	protected void printText(final XMLEventConsumer out, final FormatStack fstack,
+			final XMLEventFactory eventfactory, final Text text) throws XMLStreamException {
+<span class="fc" id="L610">		out.add(eventfactory.createCharacters(text.getText()));</span>
+<span class="fc" id="L611">	}</span>
+
+	/**
+	 * This will handle printing of an {@link Element}.
+	 * &lt;p&gt;
+	 * This method arranges for outputting the Element infrastructure including
+	 * Namespace Declarations and Attributes.
+	 * &lt;p&gt;
+	 * 
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param nstack
+	 *        the NamespaceStack
+	 * @param eventfactory
+	 * 		  The XMLEventFactory for creating XMLEvents 
+	 * @param element
+	 *        &lt;code&gt;Element&lt;/code&gt; to write.
+	 * @throws XMLStreamException
+	 *         if the destination XMLEventConsumer fails
+	 */
+	protected void printElement(final XMLEventConsumer out, final FormatStack fstack,
+			final NamespaceStack nstack, final XMLEventFactory eventfactory, 
+			final Element element) throws XMLStreamException {
+
+<span class="fc" id="L637">		nstack.push(element);</span>
+		try {
+			
+<span class="fc" id="L640">			Namespace ns = element.getNamespace();</span>
+<span class="fc bfc" id="L641" title="All 2 branches covered.">			Iterator&lt;Attribute&gt; ait = element.hasAttributes() ?</span>
+					element.getAttributes().iterator() :
+						null;
+<span class="fc bfc" id="L644" title="All 2 branches covered.">			if (ns == Namespace.NO_NAMESPACE) {</span>
+<span class="fc" id="L645">				out.add(eventfactory.createStartElement(&quot;&quot;, &quot;&quot;, element.getName(), </span>
+						new AttIterator(ait, eventfactory, fstack.isSpecifiedAttributesOnly()), 
+						new NSIterator(nstack.addedForward().iterator(), eventfactory)));
+<span class="fc bfc" id="L648" title="All 2 branches covered.">			} else if (&quot;&quot;.equals(ns.getPrefix())) {</span>
+<span class="fc" id="L649">				out.add(eventfactory.createStartElement(&quot;&quot;, ns.getURI(), element.getName(), </span>
+						new AttIterator(ait, eventfactory, fstack.isSpecifiedAttributesOnly()), 
+						new NSIterator(nstack.addedForward().iterator(), eventfactory)));
+			} else {
+<span class="fc" id="L653">				out.add(eventfactory.createStartElement(ns.getPrefix(), ns.getURI(), element.getName(), </span>
+						new AttIterator(ait, eventfactory, fstack.isSpecifiedAttributesOnly()), 
+						new NSIterator(nstack.addedForward().iterator(), eventfactory)));
+			}
+<span class="fc" id="L657">			ait = null;</span>
+			
+<span class="fc" id="L659">			final List&lt;Content&gt; content = element.getContent();</span>
+			
+<span class="fc bfc" id="L661" title="All 2 branches covered.">			if (!content.isEmpty()) {</span>
+<span class="fc" id="L662">				TextMode textmode = fstack.getTextMode();</span>
+				
+				// Check for xml:space and adjust format settings
+<span class="fc" id="L665">				final String space = element.getAttributeValue(&quot;space&quot;,</span>
+						Namespace.XML_NAMESPACE);
+
+<span class="fc bfc" id="L668" title="All 2 branches covered.">				if (&quot;default&quot;.equals(space)) {</span>
+<span class="fc" id="L669">					textmode = fstack.getDefaultMode();</span>
+				}
+<span class="fc bfc" id="L671" title="All 2 branches covered.">				else if (&quot;preserve&quot;.equals(space)) {</span>
+<span class="fc" id="L672">					textmode = TextMode.PRESERVE;</span>
+				}
+
+<span class="fc" id="L675">				fstack.push();</span>
+				try {
+					
+<span class="fc" id="L678">					fstack.setTextMode(textmode);</span>
+					
+<span class="fc" id="L680">					final Walker walker = buildWalker(fstack, content, false);</span>
+<span class="fc bfc" id="L681" title="All 2 branches covered.">					if (walker.hasNext()) {</span>
+<span class="fc bfc" id="L682" title="All 4 branches covered.">						if (!walker.isAllText() &amp;&amp; fstack.getPadBetween() != null) {</span>
+							// we need to newline/indent
+<span class="fc" id="L684">							final String indent = fstack.getPadBetween();</span>
+<span class="fc" id="L685">							printText(out, fstack, eventfactory, new Text(indent));</span>
+						}
+						
+<span class="fc" id="L688">						printContent(out, fstack, nstack, eventfactory, walker);</span>
+						
+<span class="fc bfc" id="L690" title="All 4 branches covered.">						if (!walker.isAllText() &amp;&amp; fstack.getPadLast() != null) {</span>
+							// we need to newline/indent
+<span class="fc" id="L692">							final String indent = fstack.getPadLast(); </span>
+<span class="fc" id="L693">							printText(out, fstack, eventfactory, new Text(indent));</span>
+						}
+					}
+				} finally {
+<span class="pc" id="L697">					fstack.pop();</span>
+<span class="fc" id="L698">				}</span>
+				
+			}
+			
+<span class="fc" id="L702">			out.add(eventfactory.createEndElement(element.getNamespacePrefix(), </span>
+					element.getNamespaceURI(), element.getName(), 
+					new NSIterator(nstack.addedReverse().iterator(), eventfactory)));
+		
+
+		} finally {
+<span class="pc" id="L708">			nstack.pop();</span>
+<span class="fc" id="L709">		}</span>
+<span class="fc" id="L710">	}</span>
+
+	/**
+	 * This will handle printing of a List of {@link Content}.
+	 * &lt;p&gt;
+	 * 
+	 * @param out
+	 *        &lt;code&gt;XMLEventConsumer&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param nstack
+	 *        the NamespaceStack
+	 * @param eventfactory
+	 * 		  The XMLEventFactory for creating XMLEvents 
+	 * @param walker
+	 *        &lt;code&gt;Walker&lt;/code&gt; of &lt;code&gt;Content&lt;/code&gt; to write.
+	 * @throws XMLStreamException
+	 *         if the destination XMLEventConsumer fails
+	 */
+	protected void printContent(final XMLEventConsumer out,
+			final FormatStack fstack, final NamespaceStack nstack,
+			final XMLEventFactory eventfactory, final Walker walker)
+			throws XMLStreamException {
+
+<span class="fc bfc" id="L734" title="All 2 branches covered.">		while (walker.hasNext()) {</span>
+			
+<span class="fc" id="L736">			final Content content = walker.next();</span>
+			
+<span class="fc bfc" id="L738" title="All 2 branches covered.">			if (content == null) {</span>
+<span class="fc bfc" id="L739" title="All 2 branches covered.">				if (walker.isCDATA()) {</span>
+<span class="fc" id="L740">					printCDATA(out, fstack, eventfactory, new CDATA(walker.text()));</span>
+				} else {
+<span class="fc" id="L742">					printText(out, fstack, eventfactory, new Text(walker.text()));</span>
+				}
+			} else {
+<span class="pc bpc" id="L745" title="2 of 8 branches missed.">				switch (content.getCType()) {</span>
+					case CDATA:
+<span class="fc" id="L747">						printCDATA(out, fstack, eventfactory, (CDATA) content);</span>
+<span class="fc" id="L748">						break;</span>
+					case Comment:
+<span class="fc" id="L750">						printComment(out, fstack, eventfactory, (Comment) content);</span>
+<span class="fc" id="L751">						break;</span>
+					case Element:
+<span class="fc" id="L753">						printElement(out, fstack, nstack, eventfactory, (Element) content);</span>
+<span class="fc" id="L754">						break;</span>
+					case EntityRef:
+<span class="fc" id="L756">						printEntityRef(out, fstack, eventfactory, (EntityRef) content);</span>
+<span class="fc" id="L757">						break;</span>
+					case ProcessingInstruction:
+<span class="fc" id="L759">						printProcessingInstruction(out, fstack, eventfactory,</span>
+								(ProcessingInstruction) content);
+<span class="fc" id="L761">						break;</span>
+					case Text:
+<span class="fc" id="L763">						printText(out, fstack, eventfactory, (Text) content);</span>
+<span class="fc" id="L764">						break;</span>
+					case DocType:
+<span class="nc" id="L766">						printDocType(out, fstack, eventfactory, (DocType) content);</span>
+<span class="nc" id="L767">						break;</span>
+					default:
+<span class="nc" id="L769">						throw new IllegalStateException(</span>
+								&quot;Unexpected Content &quot; + content.getCType());
+		
+				}
+			}
+<span class="fc" id="L774">		}</span>
+<span class="fc" id="L775">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

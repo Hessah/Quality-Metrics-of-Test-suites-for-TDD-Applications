@@ -1,0 +1,596 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>AbstractDOMOutputProcessor.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.output.support</a> &gt; <span class="el_source">AbstractDOMOutputProcessor.java</span></div><h1>AbstractDOMOutputProcessor.java</h1><pre class="source lang-java linenums">/*-- 
+
+ Copyright (C) 2000-2007 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows 
+    these conditions in the documentation and/or other materials 
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the 
+ end-user documentation provided with the redistribution and/or in the 
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos 
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many 
+ individuals on behalf of the JDOM Project and was originally 
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.output.support;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import org.jdom2.Attribute;
+import org.jdom2.CDATA;
+import org.jdom2.Comment;
+import org.jdom2.Content;
+import org.jdom2.Content.CType;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.EntityRef;
+import org.jdom2.JDOMConstants;
+import org.jdom2.Namespace;
+import org.jdom2.ProcessingInstruction;
+import org.jdom2.Text;
+import org.jdom2.output.DOMOutputter;
+import org.jdom2.output.Format;
+import org.jdom2.output.Format.TextMode;
+import org.jdom2.util.NamespaceStack;
+
+/**
+ * This class provides a concrete implementation of {@link DOMOutputProcessor}
+ * for supporting the {@link DOMOutputter}.
+ * &lt;p&gt;
+ * &lt;h2&gt;Overview&lt;/h2&gt;
+ * &lt;p&gt;
+ * This class is marked abstract even though all methods are fully implemented.
+ * The &lt;code&gt;process*(...)&lt;/code&gt; methods are public because they match the
+ * DOMOutputProcessor interface but the remaining methods are all protected.
+ * &lt;p&gt;
+ * People who want to create a custom DOMOutputProcessor for DOMOutputter
+ * are able to extend this class and modify any functionality they want. Before
+ * sub-classing this you should first check to see if the {@link Format} class
+ * can get you the results you want.
+ * &lt;p&gt;
+ * &lt;b&gt;&lt;i&gt;Subclasses of this should have reentrant methods.&lt;/i&gt;&lt;/b&gt; This is
+ * easiest to accomplish simply by not allowing any instance fields. If your
+ * sub-class has an instance field/variable, then it's probably broken.
+ * &lt;p&gt;
+ * &lt;h2&gt;The Stacks&lt;/h2&gt;
+ * &lt;p&gt;
+ * One significant feature of this implementation is that it creates and
+ * maintains both a {@link NamespaceStack} and {@link FormatStack} that are
+ * managed in the
+ * {@link #printElement(FormatStack, NamespaceStack, org.w3c.dom.Document, Element)}
+ * method. The stacks are pushed and popped in that method only. They
+ * significantly improve the performance and readability of the code.
+ * &lt;p&gt;
+ * The NamespaceStack is only sent through to the
+ * {@link #printElement(FormatStack, NamespaceStack, org.w3c.dom.Document, Element)}
+ * and
+ * {@link #printContent(FormatStack, NamespaceStack, org.w3c.dom.Document, org.w3c.dom.Node, Walker)}
+ * methods, but the FormatStack is pushed through to all print* Methods.
+ * &lt;p&gt;
+ * &lt;h2&gt;Content Processing&lt;/h2&gt;
+ * &lt;p&gt;
+ * This class delegates the formatting of the content to the Walker classes
+ * and you can create your own custom walker by overriding the
+ * {@link #buildWalker(FormatStack, List, boolean)} method.
+ * 
+ * @see DOMOutputter
+ * @see DOMOutputProcessor
+ * @since JDOM2
+ * @author Rolf Lear
+ */
+<span class="fc" id="L123">public abstract class AbstractDOMOutputProcessor extends</span>
+		AbstractOutputProcessor implements DOMOutputProcessor {
+
+	/**
+	 * This will handle adding any &lt;code&gt;{@link Namespace}&lt;/code&gt; attributes to
+	 * the DOM tree.
+	 * 
+	 * @param ns
+	 *        &lt;code&gt;Namespace&lt;/code&gt; to add definition of
+	 */
+	private static String getXmlnsTagFor(Namespace ns) {
+<span class="fc" id="L134">		String attrName = &quot;xmlns&quot;;</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">		if (!ns.getPrefix().equals(&quot;&quot;)) {</span>
+<span class="fc" id="L136">			attrName += &quot;:&quot;;</span>
+<span class="fc" id="L137">			attrName += ns.getPrefix();</span>
+		}
+<span class="fc" id="L139">		return attrName;</span>
+	}
+
+	/* *******************************************
+	 * DOMOutputProcessor implementation.
+	 * *******************************************
+	 */
+
+	@Override
+	public org.w3c.dom.Document process(org.w3c.dom.Document basedoc,
+			Format format, Document doc) {
+<span class="fc" id="L150">		return printDocument(new FormatStack(format), new NamespaceStack(),</span>
+				basedoc, doc);
+	}
+
+	@Override
+	public org.w3c.dom.Element process(org.w3c.dom.Document basedoc,
+			Format format, Element element) {
+<span class="fc" id="L157">		return printElement(new FormatStack(format), new NamespaceStack(),</span>
+				basedoc, element);
+	}
+
+	@Override
+	public List&lt;org.w3c.dom.Node&gt; process(org.w3c.dom.Document basedoc,
+			Format format, List&lt;? extends Content&gt; list) {
+<span class="fc" id="L164">		List&lt;org.w3c.dom.Node&gt; ret = new ArrayList&lt;org.w3c.dom.Node&gt;(</span>
+				list.size());
+<span class="fc" id="L166">		FormatStack fstack = new FormatStack(format);</span>
+<span class="fc" id="L167">		NamespaceStack nstack = new NamespaceStack();</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">		for (Content c : list) {</span>
+<span class="fc" id="L169">			fstack.push();</span>
+			try {
+<span class="fc" id="L171">				org.w3c.dom.Node node = helperContentDispatcher(fstack, nstack,</span>
+						basedoc, c);
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">				if (node != null) {</span>
+<span class="fc" id="L174">					ret.add(node);</span>
+				}
+			} finally {
+<span class="pc" id="L177">				fstack.pop();</span>
+<span class="fc" id="L178">			}</span>
+<span class="fc" id="L179">		}</span>
+<span class="fc" id="L180">		return ret;</span>
+	}
+
+	@Override
+	public org.w3c.dom.CDATASection process(org.w3c.dom.Document basedoc,
+			Format format, CDATA cdata) {
+<span class="fc" id="L186">		final List&lt;CDATA&gt; list = Collections.singletonList(cdata);</span>
+<span class="fc" id="L187">		final FormatStack fstack = new FormatStack(format);</span>
+<span class="fc" id="L188">		final Walker walker = buildWalker(fstack, list, false);</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">		if (walker.hasNext()) {</span>
+<span class="fc" id="L190">			final Content c = walker.next();</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">			if (c == null) {</span>
+<span class="fc" id="L192">				return printCDATA(fstack, basedoc, new CDATA(walker.text()));</span>
+			}
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">			if (c.getCType() == CType.CDATA) {</span>
+<span class="fc" id="L195">				return printCDATA(fstack, basedoc, (CDATA)c);</span>
+			}
+		}
+		// return an empty string if nothing happened.
+<span class="fc" id="L199">		return null;</span>
+	}
+
+	@Override
+	public org.w3c.dom.Text process(org.w3c.dom.Document basedoc,
+			Format format, Text text) {
+<span class="fc" id="L205">		final List&lt;Text&gt; list = Collections.singletonList(text);</span>
+<span class="fc" id="L206">		final FormatStack fstack = new FormatStack(format);</span>
+<span class="fc" id="L207">		final Walker walker = buildWalker(fstack, list, false);</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">		if (walker.hasNext()) {</span>
+<span class="fc" id="L209">			final Content c = walker.next();</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">			if (c == null) {</span>
+<span class="fc" id="L211">				return printText(fstack, basedoc, new Text(walker.text()));</span>
+			}
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">			if (c.getCType() == CType.Text) {</span>
+<span class="fc" id="L214">				return printText(fstack, basedoc, (Text)c);</span>
+			}
+		}
+		// return an empty string if nothing happened.
+<span class="fc" id="L218">		return null;</span>
+	}
+
+	@Override
+	public org.w3c.dom.Comment process(org.w3c.dom.Document basedoc,
+			Format format, Comment comment) {
+<span class="fc" id="L224">		return printComment(new FormatStack(format), basedoc, comment);</span>
+	}
+
+	@Override
+	public org.w3c.dom.ProcessingInstruction process(
+			org.w3c.dom.Document basedoc, Format format,
+			ProcessingInstruction pi) {
+<span class="fc" id="L231">		return printProcessingInstruction(new FormatStack(format), basedoc, pi);</span>
+	}
+
+	@Override
+	public org.w3c.dom.EntityReference process(org.w3c.dom.Document basedoc,
+			Format format, EntityRef entity) {
+<span class="fc" id="L237">		return printEntityRef(new FormatStack(format), basedoc, entity);</span>
+	}
+
+	@Override
+	public org.w3c.dom.Attr process(org.w3c.dom.Document basedoc, Format format,
+			Attribute attribute) {
+<span class="fc" id="L243">		return printAttribute(new FormatStack(format), basedoc, attribute);</span>
+	}
+
+	/* *******************************************
+	 * Support methods for output. Should all be protected. All content-type
+	 * print methods have a FormatStack. Only printContent is responsible for
+	 * outputting appropriate indenting and newlines, which are easily available
+	 * using the FormatStack.getLevelIndent() and FormatStack.getLevelEOL().
+	 * *******************************************
+	 */
+
+	/**
+	 * This will handle printing of a {@link Document}.
+	 * 
+	 * @param fstack
+	 *        the FormatStack
+	 * @param nstack
+	 *        the NamespaceStack
+	 * @param basedoc
+	 *        The org.w3c.dom.Document for creating DOM Nodes
+	 * @param doc
+	 *        &lt;code&gt;Document&lt;/code&gt; to write.
+	 * @return The input JDOM document converted to a DOM document.
+	 */
+	protected org.w3c.dom.Document printDocument(final FormatStack fstack,
+			final NamespaceStack nstack, final org.w3c.dom.Document basedoc,
+			final Document doc) {
+
+<span class="pc bpc" id="L271" title="1 of 2 branches missed.">		if (!fstack.isOmitDeclaration()) {</span>
+<span class="fc" id="L272">			basedoc.setXmlVersion(&quot;1.0&quot;);</span>
+		}
+
+<span class="fc" id="L275">		final int sz = doc.getContentSize();</span>
+		
+<span class="fc bfc" id="L277" title="All 2 branches covered.">		if (sz &gt; 0) {</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">			for (int i = 0; i &lt; sz; i++) {</span>
+<span class="fc" id="L279">				final Content c = doc.getContent(i);</span>
+<span class="fc" id="L280">				org.w3c.dom.Node n = null;</span>
+<span class="pc bpc" id="L281" title="1 of 5 branches missed.">				switch (c.getCType()) {</span>
+					case Comment :
+<span class="fc" id="L283">						n = printComment(fstack, basedoc, (Comment)c);</span>
+<span class="fc" id="L284">						break;</span>
+					case DocType :
+						// cannot simply add a DocType to a DOM object
+						// it is added when the DOM Document is created.
+						// leave n as null
+<span class="fc" id="L289">						break;</span>
+					case Element :
+<span class="fc" id="L291">						n = printElement(fstack, nstack, basedoc, (Element)c);</span>
+<span class="fc" id="L292">						break;</span>
+					case ProcessingInstruction :
+<span class="fc" id="L294">						n = printProcessingInstruction(fstack, basedoc, </span>
+								(ProcessingInstruction)c);
+<span class="fc" id="L296">						break;</span>
+<span class="fc" id="L297">					default :</span>
+						// do nothing.
+				}
+<span class="fc bfc" id="L300" title="All 2 branches covered.">				if (n != null) {</span>
+<span class="fc" id="L301">					basedoc.appendChild(n);</span>
+				}
+			}
+		}
+		
+<span class="fc" id="L306">		return basedoc;</span>
+	}
+
+	/**
+	 * This will handle printing of a {@link ProcessingInstruction}.
+	 * 
+	 * @param fstack
+	 *        the FormatStack
+	 * @param basedoc
+	 *        The org.w3c.dom.Document for creating DOM Nodes
+	 * @param pi
+	 *        &lt;code&gt;ProcessingInstruction&lt;/code&gt; to write.
+	 * @return The input JDOM ProcessingInstruction converted to a DOM
+	 *         ProcessingInstruction.
+	 */
+	protected org.w3c.dom.ProcessingInstruction printProcessingInstruction(
+			final FormatStack fstack, final org.w3c.dom.Document basedoc,
+			final ProcessingInstruction pi) {
+<span class="fc" id="L324">		String target = pi.getTarget();</span>
+<span class="fc" id="L325">		String rawData = pi.getData();</span>
+<span class="pc bpc" id="L326" title="1 of 4 branches missed.">		if (rawData == null || rawData.trim().length() == 0) {</span>
+<span class="fc" id="L327">			rawData = &quot;&quot;;</span>
+		}
+<span class="fc" id="L329">		return basedoc.createProcessingInstruction(target, rawData);</span>
+	}
+
+	/**
+	 * This will handle printing of a {@link Comment}.
+	 * 
+	 * @param fstack
+	 *        the FormatStack
+	 * @param basedoc
+	 *        The org.w3c.dom.Document for creating DOM Nodes
+	 * @param comment
+	 *        &lt;code&gt;Comment&lt;/code&gt; to write.
+	 * @return The input JDOM Comment converted to a DOM Comment
+	 */
+	protected org.w3c.dom.Comment printComment(final FormatStack fstack,
+			final org.w3c.dom.Document basedoc, final Comment comment) {
+<span class="fc" id="L345">		return basedoc.createComment(comment.getText());</span>
+	}
+
+	/**
+	 * This will handle printing of an {@link EntityRef}.
+	 * 
+	 * @param fstack
+	 *        the FormatStack
+	 * @param basedoc
+	 *        The org.w3c.dom.Document for creating DOM Nodes
+	 * @param entity
+	 *        &lt;code&gt;EntotyRef&lt;/code&gt; to write.
+	 * @return The input JDOM EntityRef converted to a DOM EntityReference
+	 */
+	protected org.w3c.dom.EntityReference printEntityRef(
+			final FormatStack fstack, final org.w3c.dom.Document basedoc,
+			final EntityRef entity) {
+<span class="fc" id="L362">		return basedoc.createEntityReference(entity.getName());</span>
+	}
+
+	/**
+	 * This will handle printing of a {@link CDATA}.
+	 * 
+	 * @param fstack
+	 *        the FormatStack
+	 * @param basedoc
+	 *        The org.w3c.dom.Document for creating DOM Nodes
+	 * @param cdata
+	 *        &lt;code&gt;CDATA&lt;/code&gt; to write.
+	 * @return The input JDOM CDATA converted to a DOM CDATASection
+	 */
+	protected org.w3c.dom.CDATASection printCDATA(final FormatStack fstack,
+			final org.w3c.dom.Document basedoc, final CDATA cdata) {
+		// CDATAs are treated like text, not indented/newline content.
+<span class="fc" id="L379">		return basedoc.createCDATASection(cdata.getText());</span>
+	}
+
+	/**
+	 * This will handle printing of a {@link Text}.
+	 * 
+	 * @param fstack
+	 *        the FormatStack
+	 * @param basedoc
+	 *        The org.w3c.dom.Document for creating DOM Nodes
+	 * @param text
+	 *        &lt;code&gt;Text&lt;/code&gt; to write.
+	 * @return The input JDOM Text converted to a DOM Text
+	 */
+	protected org.w3c.dom.Text printText(final FormatStack fstack,
+			final org.w3c.dom.Document basedoc, final Text text) {
+<span class="fc" id="L395">		return basedoc.createTextNode(text.getText());</span>
+	}
+
+	/**
+	 * This will handle printing of a {@link Attribute}.
+	 * 
+	 * @param fstack
+	 *        the FormatStack
+	 * @param basedoc
+	 *        The org.w3c.dom.Document for creating DOM Nodes
+	 * @param attribute
+	 *        &lt;code&gt;Attribute&lt;/code&gt; to write.
+	 * @return The input JDOM Attribute converted to a DOM Attr
+	 */
+	protected org.w3c.dom.Attr printAttribute(final FormatStack fstack,
+			final org.w3c.dom.Document basedoc, final Attribute attribute) {
+<span class="fc bfc" id="L411" title="All 4 branches covered.">		if (!attribute.isSpecified() &amp;&amp; fstack.isSpecifiedAttributesOnly()) {</span>
+<span class="fc" id="L412">			return null;</span>
+		}
+<span class="fc" id="L414">		org.w3c.dom.Attr attr = basedoc.createAttributeNS(</span>
+				attribute.getNamespaceURI(), attribute.getQualifiedName());
+<span class="fc" id="L416">		attr.setValue(attribute.getValue());</span>
+<span class="fc" id="L417">		return attr;</span>
+	}
+
+	/**
+	 * This will handle printing of an {@link Element}.
+	 * &lt;p&gt;
+	 * This method arranges for outputting the Element infrastructure including
+	 * Namespace Declarations and Attributes.
+	 * &lt;p&gt;
+	 * The actual formatting of the content is managed by the Walker created for
+	 * the Element's content.
+	 * &lt;p&gt;
+	 * 
+	 * @param fstack
+	 *        the FormatStack
+	 * @param nstack
+	 *        the NamespaceStack
+	 * @param basedoc
+	 *        The org.w3c.dom.Document for creating DOM Nodes
+	 * @param element
+	 *        &lt;code&gt;Element&lt;/code&gt; to write.
+	 * @return The input JDOM Element converted to a DOM Element
+	 */
+	protected org.w3c.dom.Element printElement(final FormatStack fstack,
+			final NamespaceStack nstack, final org.w3c.dom.Document basedoc,
+			final Element element) {
+
+<span class="fc" id="L444">		nstack.push(element);</span>
+		try {
+
+<span class="fc" id="L447">			TextMode textmode = fstack.getTextMode();</span>
+
+			// Check for xml:space and adjust format settings
+<span class="fc" id="L450">			final String space = element.getAttributeValue(&quot;space&quot;,</span>
+					Namespace.XML_NAMESPACE);
+
+<span class="fc bfc" id="L453" title="All 2 branches covered.">			if (&quot;default&quot;.equals(space)) {</span>
+<span class="fc" id="L454">				textmode = fstack.getDefaultMode();</span>
+<span class="fc bfc" id="L455" title="All 2 branches covered.">			} else if (&quot;preserve&quot;.equals(space)) {</span>
+<span class="fc" id="L456">				textmode = TextMode.PRESERVE;</span>
+			}
+
+<span class="fc" id="L459">			org.w3c.dom.Element ret = basedoc.createElementNS(</span>
+					element.getNamespaceURI(), element.getQualifiedName());
+
+<span class="fc bfc" id="L462" title="All 2 branches covered.">			for (Namespace ns : nstack.addedForward()) {</span>
+<span class="pc bpc" id="L463" title="1 of 2 branches missed.">				if (ns == Namespace.XML_NAMESPACE) {</span>
+<span class="nc" id="L464">					continue;</span>
+				}
+<span class="fc" id="L466">				ret.setAttributeNS(JDOMConstants.NS_URI_XMLNS, getXmlnsTagFor(ns), ns.getURI());</span>
+<span class="fc" id="L467">			}</span>
+
+<span class="fc bfc" id="L469" title="All 2 branches covered.">			if (element.hasAttributes()) {</span>
+<span class="fc bfc" id="L470" title="All 2 branches covered.">				for (Attribute att : element.getAttributes()) {</span>
+<span class="fc" id="L471">					final org.w3c.dom.Attr a = printAttribute(fstack, basedoc, att);</span>
+<span class="fc bfc" id="L472" title="All 2 branches covered.">					if (a != null) {</span>
+<span class="fc" id="L473">						ret.setAttributeNodeNS(a);</span>
+					}
+<span class="fc" id="L475">				}</span>
+			}
+
+<span class="fc" id="L478">			final List&lt;Content&gt; content = element.getContent();</span>
+			
+<span class="fc bfc" id="L480" title="All 2 branches covered.">			if (!content.isEmpty()) {</span>
+<span class="fc" id="L481">				fstack.push();</span>
+				try {
+<span class="fc" id="L483">					fstack.setTextMode(textmode);</span>
+<span class="fc" id="L484">					Walker walker = buildWalker(fstack, content, false);</span>
+					
+<span class="fc bfc" id="L486" title="All 4 branches covered.">					if (!walker.isAllText() &amp;&amp; fstack.getPadBetween() != null) {</span>
+						// we need to newline/indent
+<span class="fc" id="L488">						final org.w3c.dom.Text n = basedoc.createTextNode(</span>
+								fstack.getPadBetween());
+<span class="fc" id="L490">						ret.appendChild(n);</span>
+					}
+					
+<span class="fc" id="L493">					printContent(fstack, nstack, basedoc, ret, walker);</span>
+					
+<span class="fc bfc" id="L495" title="All 4 branches covered.">					if (!walker.isAllText() &amp;&amp; fstack.getPadLast() != null) {</span>
+						// we need to newline/indent
+<span class="fc" id="L497">						final org.w3c.dom.Text n = basedoc.createTextNode(</span>
+								fstack.getPadLast());
+<span class="fc" id="L499">						ret.appendChild(n);</span>
+					}
+					
+				} finally {
+<span class="pc" id="L503">					fstack.pop();</span>
+<span class="fc" id="L504">				}</span>
+			}
+
+<span class="fc" id="L507">			return ret;</span>
+
+		} finally {
+<span class="pc" id="L510">			nstack.pop();</span>
+		}
+	}
+
+	/**
+	 * This will handle printing of a List of {@link Content}. Uses the Walker
+	 * to ensure formatting.
+	 * 
+	 * @param fstack
+	 *        the FormatStack
+	 * @param nstack
+	 *        the NamespaceStack
+	 * @param basedoc
+	 *        The org.w3c.dom.Document for creating DOM Nodes
+	 * @param target
+	 *        the DOM node this content should be appended to.
+	 * @param walker
+	 *        &lt;code&gt;List&lt;/code&gt; of &lt;code&gt;Content&lt;/code&gt; to write.
+	 */
+	protected void printContent(final FormatStack fstack,
+			final NamespaceStack nstack, final org.w3c.dom.Document basedoc,
+			final org.w3c.dom.Node target, final Walker walker) {
+
+<span class="fc bfc" id="L533" title="All 2 branches covered.">		while (walker.hasNext()) {</span>
+<span class="fc" id="L534">			final Content c = walker.next();</span>
+<span class="fc" id="L535">			org.w3c.dom.Node n = null;</span>
+<span class="fc bfc" id="L536" title="All 2 branches covered.">			if (c == null) {</span>
+				// Formatted Text or CDATA
+<span class="fc" id="L538">				final String text = walker.text();</span>
+<span class="fc bfc" id="L539" title="All 2 branches covered.">				if (walker.isCDATA()) {</span>
+<span class="fc" id="L540">					n = printCDATA(fstack, basedoc, new CDATA(text));</span>
+				} else {
+<span class="fc" id="L542">					n = printText(fstack, basedoc, new Text(text));</span>
+				}
+<span class="fc" id="L544">			} else {</span>
+<span class="fc" id="L545">				n = helperContentDispatcher(fstack, nstack,</span>
+						basedoc, c);
+			}
+<span class="pc bpc" id="L548" title="1 of 2 branches missed.">			if (n != null) {</span>
+<span class="fc" id="L549">				target.appendChild(n);</span>
+			}
+<span class="fc" id="L551">		}</span>
+
+<span class="fc" id="L553">	}</span>
+
+	/**
+	 * This method contains code which is reused in a number of places. It
+	 * simply determines what content is passed in, and dispatches it to the
+	 * correct print* method.
+	 * 
+	 * @param fstack
+	 *        The current FormatStack
+	 * @param nstack
+	 *        the NamespaceStack
+	 * @param basedoc
+	 *        The org.w3c.dom.Document for creating DOM Nodes
+	 * @param content
+	 *        The content to dispatch
+	 * @return the input JDOM Content converted to a DOM Node.
+	 */
+	protected org.w3c.dom.Node helperContentDispatcher(
+			final FormatStack fstack, final NamespaceStack nstack,
+			final org.w3c.dom.Document basedoc, final Content content) {
+<span class="pc bpc" id="L573" title="2 of 8 branches missed.">		switch (content.getCType()) {</span>
+			case CDATA:
+<span class="fc" id="L575">				return printCDATA(fstack, basedoc, (CDATA) content);</span>
+			case Comment:
+<span class="fc" id="L577">				return printComment(fstack, basedoc, (Comment) content);</span>
+			case Element:
+<span class="fc" id="L579">				return printElement(fstack, nstack, basedoc, (Element) content);</span>
+			case EntityRef:
+<span class="fc" id="L581">				return printEntityRef(fstack, basedoc, (EntityRef) content);</span>
+			case ProcessingInstruction:
+<span class="fc" id="L583">				return printProcessingInstruction(fstack, basedoc,</span>
+						(ProcessingInstruction) content);
+			case Text:
+<span class="fc" id="L586">				return printText(fstack, basedoc, (Text) content);</span>
+			case DocType:
+<span class="nc" id="L588">				return null;</span>
+			default:
+<span class="nc" id="L590">				throw new IllegalStateException(&quot;Unexpected Content &quot;</span>
+						+ content.getCType());
+		}
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

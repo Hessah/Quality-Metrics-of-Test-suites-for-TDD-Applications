@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>SAXBuilderEngine.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jdom</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.input.sax</a> &gt; <span class="el_source">SAXBuilderEngine.java</span></div><h1>SAXBuilderEngine.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2011 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.input.sax;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Reader;
+import java.net.MalformedURLException;
+import java.net.URL;
+
+import org.xml.sax.DTDHandler;
+import org.xml.sax.EntityResolver;
+import org.xml.sax.ErrorHandler;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
+import org.xml.sax.XMLReader;
+
+import org.jdom2.Document;
+import org.jdom2.JDOMException;
+import org.jdom2.JDOMFactory;
+import org.jdom2.input.JDOMParseException;
+
+/**
+ * Builds a JDOM document from files, streams, readers, URLs, or a SAX
+ * {@link org.xml.sax.InputSource} instance using a SAX parser. This Engine is
+ * built by the SAXBuilder based on the state of the SAXBuilder when the engine
+ * was produced. It is not possible to reconfigure the engine once built, but it
+ * can be reused many times (though not concurrently). This makes it the fastest
+ * way to process many multitudes of XML documents (if those documents are all
+ * parsed the same way). If you want to process in multiple threads you can
+ * safely have one SAXBuilderEngine in each thread on the condition that:
+ * &lt;ol&gt;
+ * &lt;li&gt;The JDOMFactory is thread-safe (the JDOM-supplied JDOMFactories are)
+ * &lt;li&gt;There is no XMLFilter given to the SAXBuilder, or, if there is, then it
+ * is thread-safe.
+ * &lt;li&gt;If you have a custom {@link XMLReaderJDOMFactory} that it supplies a new
+ * instance of an XMLReader on each call (the JDOM-supplied ones all do).
+ * &lt;li&gt;If you have a custom {@link SAXHandlerFactory} that it supplies a new
+ * instance of a SAXHanfler on each call (the JDOM-supplied one does)
+ * &lt;/ol&gt;
+ * 
+ * @see org.jdom2.input.sax
+ * @author Rolf Lear
+ */
+public class SAXBuilderEngine implements SAXEngine {
+
+	/** The SAX XMLReader. */
+	private final XMLReader saxParser;
+
+	/** The SAXHandler */
+	private final SAXHandler saxHandler;
+
+	/** indicates whether this is a validating parser */
+	private final boolean validating;
+
+	/**
+	 * Creates a new SAXBuilderEngine.
+	 * 
+	 * @param reader
+	 *        The XMLReader this Engine parses with
+	 * @param handler
+	 *        The SAXHandler that processes the SAX Events.
+	 * @param validating
+	 *        True if this is a validating system.
+	 */
+	public SAXBuilderEngine(final XMLReader reader, final SAXHandler handler,
+<span class="fc" id="L121">			final boolean validating) {</span>
+<span class="fc" id="L122">		saxParser = reader;</span>
+<span class="fc" id="L123">		saxHandler = handler;</span>
+<span class="fc" id="L124">		this.validating = validating;</span>
+<span class="fc" id="L125">	}</span>
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#getJDOMFactory()
+	 */
+	@Override
+	public JDOMFactory getJDOMFactory() {
+<span class="fc" id="L134">		return saxHandler.getFactory();</span>
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#isValidating()
+	 */
+	@Override
+	public boolean isValidating() {
+<span class="fc" id="L144">		return validating;</span>
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#getErrorHandler()
+	 */
+	@Override
+	public ErrorHandler getErrorHandler() {
+<span class="fc" id="L154">		return saxParser.getErrorHandler();</span>
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#getEntityResolver()
+	 */
+	@Override
+	public EntityResolver getEntityResolver() {
+<span class="fc" id="L164">		return saxParser.getEntityResolver();</span>
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#getDTDHandler()
+	 */
+	@Override
+	public DTDHandler getDTDHandler() {
+<span class="fc" id="L174">		return saxParser.getDTDHandler();</span>
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#isIgnoringElementContentWhitespace()
+	 */
+	@Override
+	public boolean getIgnoringElementContentWhitespace() {
+<span class="fc" id="L184">		return saxHandler.getIgnoringElementContentWhitespace();</span>
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#isIgnoringBoundaryWhitespace()
+	 */
+	@Override
+	public boolean getIgnoringBoundaryWhitespace() {
+<span class="fc" id="L194">		return saxHandler.getIgnoringBoundaryWhitespace();</span>
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#isExpandEntities()
+	 */
+	@Override
+	public boolean getExpandEntities() {
+<span class="fc" id="L204">		return saxHandler.getExpandEntities();</span>
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#build(org.xml.sax.InputSource)
+	 */
+	@Override
+	public Document build(final InputSource in)
+			throws JDOMException, IOException {
+		try {
+			// Parse the document.
+<span class="fc" id="L217">			saxParser.parse(in);</span>
+
+<span class="fc" id="L219">			return saxHandler.getDocument();</span>
+<span class="fc" id="L220">		} catch (final SAXParseException e) {</span>
+<span class="fc" id="L221">			Document doc = saxHandler.getDocument();</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">			if (doc.hasRootElement() == false) {</span>
+<span class="fc" id="L223">				doc = null;</span>
+			}
+
+<span class="fc" id="L226">			final String systemId = e.getSystemId();</span>
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">			if (systemId != null) {</span>
+<span class="fc" id="L228">				throw new JDOMParseException(&quot;Error on line &quot; +</span>
+						e.getLineNumber() + &quot; of document &quot; + systemId + &quot;: &quot; +
+						e.getMessage(), e, doc);
+			}
+<span class="nc" id="L232">			throw new JDOMParseException(&quot;Error on line &quot; +</span>
+					e.getLineNumber() + &quot;: &quot; +
+							e.getMessage(), e, doc);
+<span class="nc" id="L235">		} catch (final SAXException e) {</span>
+<span class="nc" id="L236">			throw new JDOMParseException(&quot;Error in building: &quot; +</span>
+					e.getMessage(), e, saxHandler.getDocument());
+		} finally {
+			// Explicitly nullify the handler to encourage GC
+			// It's a stack var so this shouldn't be necessary, but it
+			// seems to help on some JVMs
+<span class="fc" id="L242">			saxHandler.reset();</span>
+		}
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#build(java.io.InputStream)
+	 */
+	@Override
+	public Document build(final InputStream in) throws JDOMException, IOException {
+<span class="fc" id="L253">		return build(new InputSource(in));</span>
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#build(java.io.File)
+	 */
+	@Override
+	public Document build(final File file) throws JDOMException, IOException {
+		try {
+<span class="fc" id="L264">			return build(fileToURL(file));</span>
+<span class="nc" id="L265">		} catch (final MalformedURLException e) {</span>
+<span class="nc" id="L266">			throw new JDOMException(&quot;Error in building&quot;, e);</span>
+		}
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#build(java.net.URL)
+	 */
+	@Override
+	public Document build(final URL url) throws JDOMException, IOException {
+<span class="fc" id="L277">		return build(new InputSource(url.toExternalForm()));</span>
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#build(java.io.InputStream,
+	 * java.lang.String)
+	 */
+	@Override
+	public Document build(final InputStream in, final String systemId)
+			throws JDOMException, IOException {
+
+<span class="fc" id="L290">		final InputSource src = new InputSource(in);</span>
+<span class="fc" id="L291">		src.setSystemId(systemId);</span>
+<span class="fc" id="L292">		return build(src);</span>
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#build(java.io.Reader)
+	 */
+	@Override
+	public Document build(final Reader characterStream)
+			throws JDOMException, IOException {
+<span class="fc" id="L303">		return build(new InputSource(characterStream));</span>
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#build(java.io.Reader,
+	 * java.lang.String)
+	 */
+	@Override
+	public Document build(final Reader characterStream, final String systemId)
+			throws JDOMException, IOException {
+
+<span class="fc" id="L316">		final InputSource src = new InputSource(characterStream);</span>
+<span class="fc" id="L317">		src.setSystemId(systemId);</span>
+<span class="fc" id="L318">		return build(src);</span>
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see org.jdom2.input.sax.SAXEngine#build(java.lang.String)
+	 */
+	@Override
+	public Document build(final String systemId)
+			throws JDOMException, IOException {
+<span class="fc" id="L329">		return build(new InputSource(systemId));</span>
+	}
+
+	/**
+	 * Custom File.toUrl() implementation to handle special chars in file names
+	 * Actually, we can now rely on the core Java toURI function,
+	 * 
+	 * @param file
+	 *        file object whose path will be converted
+	 * @return URL form of the file, with special characters handled
+	 * @throws MalformedURLException
+	 *         if there's a problem constructing a URL
+	 */
+	private static URL fileToURL(final File file) throws MalformedURLException {
+
+<span class="fc" id="L344">		return file.getAbsoluteFile().toURI().toURL();</span>
+
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

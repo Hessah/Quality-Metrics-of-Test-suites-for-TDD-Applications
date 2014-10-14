@@ -1,0 +1,575 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>XPathHelper.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.xpath</a> &gt; <span class="el_source">XPathHelper.java</span></div><h1>XPathHelper.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2000-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.xpath;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+
+import org.jdom2.Attribute;
+import org.jdom2.Comment;
+import org.jdom2.Content;
+import org.jdom2.Element;
+import org.jdom2.Namespace;
+import org.jdom2.NamespaceAware;
+import org.jdom2.Parent;
+import org.jdom2.ProcessingInstruction;
+import org.jdom2.Text;
+import org.jdom2.filter.Filters;
+
+/**
+ * Provides a set of utility methods to generate XPath expressions to select a
+ * given node in a document. You can generate absolute XPath expressions to the
+ * target node, or relative expressions from a specified start point. If you
+ * request a relative expression, the start and target nodes must share some
+ * common ancestry.
+ * &lt;p&gt;
+ * XPaths are required to be namespace-aware. Typically this is done by using
+ * a namespace-prefixed query, with the actual namespace URI being set in the
+ * context of the XPath expression. This is not possible to express using a
+ * simple String return value. As a work-around, this method uses a potentially
+ * slower, but more reliable, mechanism for ensuring the correct namespace
+ * context is selected. The mechanism will appear like (for Elements):
+ * &lt;br&gt;
+ * &lt;code&gt;   .../*[local-name() = 'tag' and namespace-uri() = 'uri']&lt;/code&gt;
+ * &lt;br&gt;
+ * Similarly, Attributes will have a syntax similar to:
+ * &lt;br&gt;
+ * &lt;code&gt;   .../@*[local-name() = 'attname' and namespace-uri() = 'uri'] &lt;/code&gt;
+ * &lt;br&gt;
+ * This mechanism makes it possible to have a simple namespace context, and a
+ * simple String value returned from the methods on this class.
+ * &lt;p&gt;
+ * This class does not provide ways to access document-level content. Nor does
+ * it provide ways to access data relative to the Document level. Use absolute
+ * methods to access data from the Document level.
+ * &lt;p&gt;
+ * The methods on this class assume that the Document is above the top-most
+ * Element in the XML tree. The top-most Element is the one that does not have
+ * a parent Element (although it may have a parent Document). As a result, you
+ * can use Element data that is not attached to a JDOM Document.
+ * &lt;p&gt;
+ * Detatched Attributes, and detached non-Element content are not treated the
+ * same. If you try to get an Absolute path to a detached Attribute or
+ * non-Element Content you will get an IllegalArgumentException. On the other
+ * hand it is legal to get the relative XPath for a detached node to itself (
+ * but to some other node will cause an IllegalArgumentException because the
+ * nodes do not share a common ancestor).  
+ * &lt;p&gt;
+ * &lt;strong&gt;Note&lt;/strong&gt;: As this class has no knowledge of the document
+ * content, the generated XPath expression rely on the document structure. Hence
+ * any modification of the structure of the document may invalidate the
+ * generated XPaths.
+ * &lt;/p&gt;
+ * 
+ * @author Laurent Bihanic
+ * @author Rolf Lear
+ */
+public final class XPathHelper {
+	
+	/**
+	 * Private constructor.
+	 */
+<span class="nc" id="L126">	private XPathHelper () {</span>
+		// make constructor inaccessible.
+<span class="nc" id="L128">	}</span>
+
+	/**
+	 * Appends the specified path token to the provided buffer followed by the
+	 * position specification of the target node in its siblings list (if
+	 * needed).
+	 * 
+	 * @param node
+	 *        the target node for the XPath expression.
+	 * @param siblings
+	 *        the siblings of the target node.
+	 * @param pathToken
+	 *        the path token identifying the target node.
+	 * @param buffer
+	 *        the buffer to which appending the XPath sub-expression or
+	 *        &lt;code&gt;null&lt;/code&gt; if the method shall allocate a new buffer.
+	 * @return the XPath sub-expression to select the target node among its
+	 *         siblings.
+	 */
+	private static StringBuilder getPositionPath(Object node, List&lt;?&gt; siblings,
+			String pathToken, StringBuilder buffer) {
+
+<span class="fc" id="L150">		buffer.append(pathToken);</span>
+
+<span class="fc bfc" id="L152" title="All 2 branches covered.">		if (siblings != null) {</span>
+<span class="fc" id="L153">			int position = 0;</span>
+<span class="fc" id="L154">			final Iterator&lt;?&gt; i = siblings.iterator();</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">			while (i.hasNext()) {</span>
+<span class="fc" id="L156">				position++;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">				if (i.next() == node)</span>
+<span class="fc" id="L158">					break;</span>
+			}
+<span class="fc bfc" id="L160" title="All 4 branches covered.">			if (position &gt; 1 || i.hasNext()) {</span>
+				// the item is not at the first location, ot there are more
+				// locations. in other words, indexing is required.
+<span class="fc" id="L163">				buffer.append('[').append(position).append(']');</span>
+			}
+		}
+<span class="fc" id="L166">		return buffer;</span>
+	}
+
+	/**
+	 * Calculate a single stage of an XPath query.
+	 * 
+	 * @param nsa
+	 *        The token to get the relative-to-parent XPath for
+	 * @param buffer
+	 *        The buffer to append the relative stage to
+	 * @return The same buffer as was input.
+	 */
+	private static final StringBuilder getSingleStep(final NamespaceAware nsa,
+			final StringBuilder buffer) {
+<span class="fc bfc" id="L180" title="All 2 branches covered.">		if (nsa instanceof Content) {</span>
+			
+<span class="fc" id="L182">			final Content content = (Content) nsa;</span>
+			
+<span class="fc" id="L184">			final Parent pnt = content.getParent();</span>
+
+<span class="fc bfc" id="L186" title="All 2 branches covered.">			if (content instanceof Text) { // OR CDATA!</span>
+				
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">				final List&lt;?&gt; sibs = pnt == null ? null :</span>
+					pnt.getContent(Filters.text()); // CDATA
+<span class="fc" id="L190">				return getPositionPath(content, sibs, &quot;text()&quot;, buffer);</span>
+				
+<span class="fc bfc" id="L192" title="All 2 branches covered.">			} else if (content instanceof Comment) {</span>
+				
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">				final List&lt;?&gt; sibs = pnt == null ? null :</span>
+					pnt.getContent(Filters.comment());
+<span class="fc" id="L196">				return getPositionPath(content, sibs, &quot;comment()&quot;, buffer);</span>
+				
+<span class="fc bfc" id="L198" title="All 2 branches covered.">			} else if (content instanceof ProcessingInstruction) {</span>
+				
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">				final List&lt;?&gt; sibs = pnt == null ? null : </span>
+					pnt.getContent(Filters.processinginstruction());
+<span class="fc" id="L202">				return getPositionPath(content, sibs,</span>
+						&quot;processing-instruction()&quot;, buffer);
+				
+<span class="fc bfc" id="L205" title="All 4 branches covered.">			} else if (content instanceof Element &amp;&amp;</span>
+					((Element) content).getNamespace() == Namespace.NO_NAMESPACE) {
+				
+				// simple XPath to a no-namespace Element.
+				
+<span class="fc" id="L210">				final String ename = ((Element) content).getName();</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">				final List&lt;?&gt; sibs = (pnt instanceof Element) ? ((Element)pnt)</span>
+						.getChildren(ename) : null;
+<span class="fc" id="L213">				return getPositionPath(content, sibs, ename, buffer);</span>
+				
+<span class="fc bfc" id="L215" title="All 2 branches covered.">			} else if (content instanceof Element) {</span>
+				
+				// complex XPath to an Element with Namespace...
+				// we do not want to have to prefix namespaces because that is
+				// essentially impossible to get right with the new JDOM2 API.
+<span class="fc" id="L220">				final Element emt = (Element)content;</span>
+				
+				// Note, the getChildren compares only the URI (not the prefix)
+				// so the results are the same as an XPath would be.
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">				final List&lt;?&gt; sibs = (pnt instanceof Element) ? </span>
+						((Element)pnt).getChildren(emt.getName(), emt.getNamespace()) : null;
+<span class="fc" id="L226">				String xps = &quot;*[local-name() = '&quot; + emt.getName() + </span>
+						&quot;' and namespace-uri() = '&quot; + 
+						emt.getNamespaceURI() + &quot;']&quot;;
+<span class="fc" id="L229">				return getPositionPath(content, sibs, xps, buffer);</span>
+				
+			} else {
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">				final List&lt;?&gt; sibs = pnt == null ? Collections</span>
+						.singletonList(nsa) : pnt.getContent();
+<span class="fc" id="L234">				return getPositionPath(content, sibs, &quot;node()&quot;, buffer);</span>
+				
+			}
+<span class="fc bfc" id="L237" title="All 2 branches covered.">		} else if (nsa instanceof Attribute) {</span>
+<span class="fc" id="L238">			Attribute att = (Attribute) nsa;</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">			if (att.getNamespace() == Namespace.NO_NAMESPACE) {</span>
+<span class="fc" id="L240">				buffer.append(&quot;@&quot;).append(att.getName());</span>
+			} else {
+<span class="fc" id="L242">				buffer.append(&quot;@*[local-name() = '&quot;).append(att.getName());</span>
+<span class="fc" id="L243">				buffer.append(&quot;' and namespace-uri() = '&quot;);</span>
+<span class="fc" id="L244">				buffer.append(att.getNamespaceURI()).append(&quot;']&quot;);</span>
+			}
+		}
+
+		// do nothing...
+<span class="fc" id="L249">		return buffer;</span>
+	}
+
+	/**
+	 * Returns the path to the specified &lt;code&gt;to&lt;/code&gt;Element from the
+	 * specified &lt;code&gt;from&lt;/code&gt; Element. The from Element must have a common
+	 * ancestor Element with the to Element.
+	 * &lt;p&gt;
+	 * 
+	 * @param from
+	 *        the Element the generated path shall select relative to.
+	 * @param to
+	 *        the Content the generated path shall select.
+	 * @param sb
+	 *        the StringBuilder to append the path to.
+	 * @return an XPath expression to select the specified node.
+	 * @throws IllegalArgumentException
+	 *         if the from and to Elements have no common ancestor.
+	 */
+	private static StringBuilder getRelativeElementPath(final Element from,
+			final Parent to, final StringBuilder sb) {
+<span class="fc bfc" id="L270" title="All 2 branches covered.">		if (from == to) {</span>
+<span class="fc" id="L271">			sb.append(&quot;.&quot;);</span>
+<span class="fc" id="L272">			return sb;</span>
+		}
+
+		// ToStack will be a chain of Elements from the to element to the
+		// root element, but will be 'short' if it encounters the from Element
+		// itself.
+<span class="fc" id="L278">		final ArrayList&lt;Parent&gt; tostack = new ArrayList&lt;Parent&gt;();</span>
+<span class="fc" id="L279">		Parent p = to;</span>
+<span class="fc bfc" id="L280" title="All 4 branches covered.">		while (p != null &amp;&amp; p != from) {</span>
+<span class="fc" id="L281">			tostack.add(p);</span>
+<span class="fc" id="L282">			p = p.getParent();</span>
+		}
+		
+		// the number of steps we will have in the resulting path (potentially)
+<span class="fc" id="L286">		int pos = tostack.size();</span>
+
+<span class="fc bfc" id="L288" title="All 2 branches covered.">		if (p != from) {</span>
+			// the from is not a direct ancestor of the to.
+			// we need to find where the common ancestor is between from and to
+			// we use the 'pos' variable to locate the common ancestor.
+			// pos is a pointer in to the tostack.
+<span class="fc" id="L293">			Parent f = from;</span>
+<span class="fc" id="L294">			int fcnt = 0;</span>
+			// note that we search for 'pos' here... it will be set.
+<span class="fc bfc" id="L296" title="All 4 branches covered.">			while (f != null &amp;&amp; (pos = locate(f, tostack)) &lt; 0) {</span>
+				// go up the from ELement's ancestry until we intersect with the
+				// to Element's Ancestry.
+<span class="fc" id="L299">				fcnt++;</span>
+<span class="fc" id="L300">				f = f.getParent();</span>
+			}
+<span class="fc bfc" id="L302" title="All 2 branches covered.">			if (f == null) {</span>
+<span class="fc" id="L303">				throw new IllegalArgumentException(</span>
+						&quot;The 'from' and 'to' Element have no common ancestor.&quot;);
+			}
+			// OK, we have counted how far up the ancestry we need to go, so
+			// add the steps to the XPath.
+<span class="fc bfc" id="L308" title="All 2 branches covered.">			while (--fcnt &gt;= 0) {</span>
+<span class="fc" id="L309">				sb.append(&quot;../&quot;);</span>
+			}
+		}
+		// we have the common point in the ancestry, indicated by 'pos'.
+		// we walk down the 'to' side of the tree until we get to the target.
+<span class="fc bfc" id="L314" title="All 2 branches covered.">		while (--pos &gt;= 0) {</span>
+<span class="fc" id="L315">			getSingleStep(tostack.get(pos), sb);</span>
+<span class="fc" id="L316">			sb.append(&quot;/&quot;);</span>
+		}
+		// we automatically append '/' in the loop, so we remove the last '/'
+<span class="fc" id="L319">		sb.setLength(sb.length() - 1);</span>
+<span class="fc" id="L320">		return sb;</span>
+	}
+
+	/**
+	 * Do an identity search in an array for a specific value.
+	 * 
+	 * @param f
+	 *        The Element to search for.
+	 * @param tostack
+	 *        The list to search in.
+	 * @return the position of the f value in the tostack.
+	 */
+	private static int locate(final Parent f, final List&lt;Parent&gt; tostack) {
+		// a somewhat naive search... ArrayList it is fast enough though.
+<span class="fc" id="L334">		int ret = tostack.size();</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">		while (--ret &gt;= 0) {</span>
+<span class="fc bfc" id="L336" title="All 2 branches covered.">			if (f == tostack.get(ret)) {</span>
+<span class="fc" id="L337">				return ret;</span>
+			}
+		}
+<span class="fc" id="L340">		return -1;</span>
+	}
+
+	/**
+	 * Returns the relative path from the given from Content to the specified to
+	 * Content as an XPath expression.
+	 * 
+	 * @param from
+	 *        the Content from which the the generated path shall be applied.
+	 * @param to
+	 *        the Content the generated path shall select.
+	 * @return an XPath expression to select the specified node.
+	 * @throws IllegalArgumentException
+	 *         if &lt;code&gt;to&lt;/code&gt; and &lt;code&gt;from&lt;/code&gt; are not part of the same
+	 *         XML tree
+	 */
+	public static String getRelativePath(final Content from, final Content to) {
+<span class="fc bfc" id="L357" title="All 2 branches covered.">		if (from == null) {</span>
+<span class="fc" id="L358">			throw new NullPointerException(</span>
+					&quot;Cannot create a path from a null target&quot;);
+		}
+<span class="fc bfc" id="L361" title="All 2 branches covered.">		if (to == null) {</span>
+<span class="fc" id="L362">			throw new NullPointerException(</span>
+					&quot;Cannot create a path to a null target&quot;);
+		}
+<span class="fc" id="L365">		StringBuilder sb = new StringBuilder();</span>
+<span class="fc bfc" id="L366" title="All 2 branches covered.">		if (from == to) {</span>
+<span class="fc" id="L367">			return &quot;.&quot;;</span>
+		}
+<span class="fc bfc" id="L369" title="All 2 branches covered.">		final Element efrom = (from instanceof Element) ? (Element) from : from</span>
+				.getParentElement();
+<span class="fc bfc" id="L371" title="All 2 branches covered.">		if (from != efrom) {</span>
+<span class="fc" id="L372">			sb.append(&quot;../&quot;);</span>
+		}
+<span class="fc bfc" id="L374" title="All 2 branches covered.">		if (to instanceof Element) {</span>
+<span class="fc" id="L375">			getRelativeElementPath(efrom, (Element) to, sb);</span>
+		} else {
+<span class="fc" id="L377">			final Parent telement = to.getParent();</span>
+<span class="fc bfc" id="L378" title="All 2 branches covered.">			if (telement == null) {</span>
+<span class="fc" id="L379">				throw new IllegalArgumentException(</span>
+						&quot;Cannot get a relative XPath to detached content.&quot;);
+			}
+<span class="fc" id="L382">			getRelativeElementPath(efrom, telement, sb);</span>
+<span class="fc" id="L383">			sb.append(&quot;/&quot;);</span>
+<span class="fc" id="L384">			getSingleStep(to, sb);</span>
+		}
+<span class="fc" id="L386">		return sb.toString();</span>
+	}
+
+	/**
+	 * Returns the relative path from the given from Content to the specified to
+	 * Attribute as an XPath expression.
+	 * 
+	 * @param from
+	 *        the Content from which the the generated path shall be applied.
+	 * @param to
+	 *        the Attribute the generated path shall select.
+	 * @return an XPath expression to select the specified node.
+	 * @throws IllegalArgumentException
+	 *         if &lt;code&gt;to&lt;/code&gt; and &lt;code&gt;from&lt;/code&gt; are not part of the same
+	 *         XML tree
+	 */
+	public static String getRelativePath(final Content from, final Attribute to) {
+<span class="fc bfc" id="L403" title="All 2 branches covered.">		if (from == null) {</span>
+<span class="fc" id="L404">			throw new NullPointerException(</span>
+					&quot;Cannot create a path from a null Content&quot;);
+		}
+<span class="fc bfc" id="L407" title="All 2 branches covered.">		if (to == null) {</span>
+<span class="fc" id="L408">			throw new NullPointerException(</span>
+					&quot;Cannot create a path to a null Attribute&quot;);
+		}
+<span class="fc" id="L411">		final Element t = to.getParent();</span>
+<span class="fc bfc" id="L412" title="All 2 branches covered.">		if (t == null) {</span>
+<span class="fc" id="L413">			throw new IllegalArgumentException(</span>
+					&quot;Cannot create a path to detached Attribute&quot;);
+		}
+<span class="fc" id="L416">		StringBuilder sb = new StringBuilder(getRelativePath(from, t));</span>
+<span class="fc" id="L417">		sb.append(&quot;/&quot;);</span>
+<span class="fc" id="L418">		getSingleStep(to, sb);</span>
+<span class="fc" id="L419">		return sb.toString();</span>
+	}
+
+	/**
+	 * Returns the relative path from the given from Attribute to the specified
+	 * to Attribute as an XPath expression.
+	 * 
+	 * @param from
+	 *        the Attribute from which the the generated path shall be applied.
+	 * @param to
+	 *        the Attribute the generated path shall select.
+	 * @return an XPath expression to select the specified node.
+	 * @throws IllegalArgumentException
+	 *         if &lt;code&gt;to&lt;/code&gt; and &lt;code&gt;from&lt;/code&gt; are not part of the same
+	 *         XML tree
+	 */
+	public static String getRelativePath(final Attribute from,
+			final Attribute to) {
+<span class="fc bfc" id="L437" title="All 2 branches covered.">		if (from == null) {</span>
+<span class="fc" id="L438">			throw new NullPointerException(</span>
+					&quot;Cannot create a path from a null 'from'&quot;);
+		}
+<span class="fc bfc" id="L441" title="All 2 branches covered.">		if (to == null) {</span>
+<span class="fc" id="L442">			throw new NullPointerException(</span>
+					&quot;Cannot create a path to a null target&quot;);
+		}
+<span class="fc bfc" id="L445" title="All 2 branches covered.">		if (from == to) {</span>
+<span class="fc" id="L446">			return &quot;.&quot;;</span>
+		}
+
+<span class="fc" id="L449">		final Element f = from.getParent();</span>
+<span class="fc bfc" id="L450" title="All 2 branches covered.">		if (f == null) {</span>
+<span class="fc" id="L451">			throw new IllegalArgumentException(</span>
+					&quot;Cannot create a path from a detached attrbibute&quot;);
+		}
+
+<span class="fc" id="L455">		return &quot;../&quot; + getRelativePath(f, to);</span>
+	}
+
+	/**
+	 * Returns the relative path from the given from Attribute to the specified
+	 * to Content as an XPath expression.
+	 * 
+	 * @param from
+	 *        the Attribute from which the the generated path shall be applied.
+	 * @param to
+	 *        the Content the generated path shall select.
+	 * @return an XPath expression to select the specified node.
+	 * @throws IllegalArgumentException
+	 *         if &lt;code&gt;to&lt;/code&gt; and &lt;code&gt;from&lt;/code&gt; are not part of the same
+	 *         XML tree
+	 */
+	public static String getRelativePath(final Attribute from, final Content to) {
+<span class="fc bfc" id="L472" title="All 2 branches covered.">		if (from == null) {</span>
+<span class="fc" id="L473">			throw new NullPointerException(</span>
+					&quot;Cannot create a path from a null 'from'&quot;);
+		}
+<span class="fc bfc" id="L476" title="All 2 branches covered.">		if (to == null) {</span>
+<span class="fc" id="L477">			throw new NullPointerException(</span>
+					&quot;Cannot create a path to a null target&quot;);
+		}
+<span class="fc" id="L480">		final Element f = from.getParent();</span>
+<span class="fc bfc" id="L481" title="All 2 branches covered.">		if (f == null) {</span>
+<span class="fc" id="L482">			throw new IllegalArgumentException(</span>
+					&quot;Cannot create a path from a detached attrbibute&quot;);
+		}
+<span class="fc bfc" id="L485" title="All 2 branches covered.">		if (f == to) {</span>
+<span class="fc" id="L486">			return &quot;..&quot;;</span>
+		}
+<span class="fc" id="L488">		return &quot;../&quot; + getRelativePath(f, to);</span>
+	}
+
+	/**
+	 * Returns the absolute path to the specified to Content.
+	 * 
+	 * @param to
+	 *        the Content the generated path shall select.
+	 * @return an XPath expression to select the specified node.
+	 * @throws IllegalArgumentException
+	 *         if &lt;code&gt;to&lt;/code&gt; is not an Element and it is detached.
+	 */
+	public static String getAbsolutePath(final Content to) {
+<span class="fc bfc" id="L501" title="All 2 branches covered.">		if (to == null) {</span>
+<span class="fc" id="L502">			throw new NullPointerException(</span>
+					&quot;Cannot create a path to a null target&quot;);
+		}
+
+<span class="fc" id="L506">		final StringBuilder sb = new StringBuilder();</span>
+
+<span class="fc bfc" id="L508" title="All 2 branches covered.">		final Element t = (to instanceof Element) ? (Element) to : to</span>
+				.getParentElement();
+<span class="fc bfc" id="L510" title="All 2 branches covered.">		if (t == null) {</span>
+<span class="fc bfc" id="L511" title="All 2 branches covered.">			if (to.getParent() == null) {</span>
+<span class="fc" id="L512">				throw new IllegalArgumentException(</span>
+						&quot;Cannot create a path to detached target&quot;);
+			}
+			// otherwise it must be at the document level.
+<span class="fc" id="L516">			sb.append(&quot;/&quot;);</span>
+<span class="fc" id="L517">			getSingleStep(to, sb);</span>
+<span class="fc" id="L518">			return sb.toString();</span>
+		}
+<span class="fc" id="L520">		Element r = t;</span>
+<span class="fc bfc" id="L521" title="All 2 branches covered.">		while (r.getParentElement() != null) {</span>
+<span class="fc" id="L522">			r = r.getParentElement();</span>
+		}
+<span class="fc" id="L524">		sb.append(&quot;/&quot;);</span>
+<span class="fc" id="L525">		getSingleStep(r, sb);</span>
+<span class="fc bfc" id="L526" title="All 2 branches covered.">		if (r != t) {</span>
+<span class="fc" id="L527">			sb.append(&quot;/&quot;);</span>
+<span class="fc" id="L528">			getRelativeElementPath(r, t, sb);</span>
+		}
+<span class="fc bfc" id="L530" title="All 2 branches covered.">		if (t != to) {</span>
+<span class="fc" id="L531">			sb.append(&quot;/&quot;);</span>
+<span class="fc" id="L532">			getSingleStep(to, sb);</span>
+		}
+<span class="fc" id="L534">		return sb.toString();</span>
+	}
+
+	/**
+	 * Returns the absolute path to the specified to Content.
+	 * 
+	 * @param to
+	 *        the Content the generated path shall select.
+	 * @return an XPath expression to select the specified node.
+	 * @throws IllegalArgumentException
+	 *         if &lt;code&gt;to&lt;/code&gt; is detached.
+	 */
+	public static String getAbsolutePath(final Attribute to) {
+<span class="fc bfc" id="L547" title="All 2 branches covered.">		if (to == null) {</span>
+<span class="fc" id="L548">			throw new NullPointerException(</span>
+					&quot;Cannot create a path to a null target&quot;);
+		}
+
+<span class="fc" id="L552">		final Element t = to.getParent();</span>
+<span class="fc bfc" id="L553" title="All 2 branches covered.">		if (t == null) {</span>
+<span class="fc" id="L554">			throw new IllegalArgumentException(</span>
+					&quot;Cannot create a path to detached target&quot;);
+		}
+<span class="fc" id="L557">		Element r = t;</span>
+<span class="fc bfc" id="L558" title="All 2 branches covered.">		while (r.getParentElement() != null) {</span>
+<span class="fc" id="L559">			r = r.getParentElement();</span>
+		}
+<span class="fc" id="L561">		final StringBuilder sb = new StringBuilder();</span>
+
+<span class="fc" id="L563">		sb.append(&quot;/&quot;);</span>
+<span class="fc" id="L564">		getSingleStep(r, sb);</span>
+<span class="fc bfc" id="L565" title="All 2 branches covered.">		if (t != r) {</span>
+<span class="fc" id="L566">			sb.append(&quot;/&quot;);</span>
+<span class="fc" id="L567">			getRelativeElementPath(r, t, sb);</span>
+		}
+<span class="fc" id="L569">		sb.append(&quot;/&quot;);</span>
+<span class="fc" id="L570">		getSingleStep(to, sb);</span>
+<span class="fc" id="L571">		return sb.toString();</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

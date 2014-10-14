@@ -1,0 +1,681 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>AttributeList.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jdom</a> &gt; <a href="index.source.html" class="el_package">org.jdom2</a> &gt; <span class="el_source">AttributeList.java</span></div><h1>AttributeList.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2000-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2;
+
+import java.util.*;
+
+import org.jdom2.internal.ArrayCopy;
+
+/**
+ * &lt;code&gt;AttributeList&lt;/code&gt; represents legal JDOM
+ * &lt;code&gt;{@link Attribute}&lt;/code&gt; content.
+ * &lt;p&gt;
+ * This class is NOT PUBLIC; users should see it as a simple List
+ * implementation, although it behaves something like a Set because you cannot
+ * add duplicate Attributes. An attribute is considered duplicate if it has the
+ * same Namespace URI and Attribute name as another existing Attribute.
+ * 
+ * @author Alex Rosen
+ * @author Philippe Riand
+ * @author Bradley S. Huffman
+ * @author Rolf Lear
+ */
+final class AttributeList extends AbstractList&lt;Attribute&gt;
+		implements RandomAccess {
+
+	/** The initial size to start the backing array. */
+	private static final int INITIAL_ARRAY_SIZE = 4;
+
+	/** The backing array */
+	private Attribute attributeData[];
+
+	/** The current size */
+	private int size;
+
+	/** The parent Element */
+	private final Element parent;
+
+	/**
+	 * Create a new instance of the AttributeList representing &lt;i&gt;parent&lt;/i&gt;
+	 * Element's Attributes
+	 * 
+	 * @param parent
+	 *        Element whose Attributes are to be held
+	 */
+<span class="fc" id="L97">	AttributeList(final Element parent) {</span>
+<span class="fc" id="L98">		this.parent = parent;</span>
+<span class="fc" id="L99">	}</span>
+
+	/**
+	 * Package internal method to support building from sources that are 100%
+	 * trusted.
+	 * 
+	 * @param a
+	 *        an Attribute to add without any checks
+	 */
+	final void uncheckedAddAttribute(final Attribute a) {
+<span class="fc" id="L109">		a.parent = parent;</span>
+<span class="fc" id="L110">		ensureCapacity(size + 1);</span>
+<span class="fc" id="L111">		attributeData[size++] = a;</span>
+<span class="fc" id="L112">		modCount++;</span>
+<span class="fc" id="L113">	}</span>
+
+	/**
+	 * Check and add &lt;i&gt;attribute&lt;/i&gt; to the end of the list or replace an
+	 * existing &lt;code&gt;Attribute&lt;/code&gt; with the same name and
+	 * &lt;code&gt;Namespace&lt;/code&gt;.
+	 * 
+	 * @param attribute
+	 *        The &lt;code&gt;Attribute&lt;/code&gt; to insert into the list.
+	 * @return true as specified by &lt;code&gt;Collection.add()&lt;/code&gt;.
+	 * @throws IllegalAddException
+	 *         if validation rules prevent the add
+	 */
+	@Override
+	public boolean add(final Attribute attribute) {
+<span class="fc bfc" id="L128" title="All 2 branches covered.">		if (attribute.getParent() != null) {</span>
+<span class="fc" id="L129">			throw new IllegalAddException(</span>
+					&quot;The attribute already has an existing parent \&quot;&quot;
+							+ attribute.getParent().getQualifiedName() + &quot;\&quot;&quot;);
+		}
+
+<span class="fc bfc" id="L134" title="All 2 branches covered.">		if (Verifier.checkNamespaceCollision(attribute, parent) != null) {</span>
+<span class="fc" id="L135">			throw new IllegalAddException(parent, attribute,</span>
+					Verifier.checkNamespaceCollision(attribute, parent));
+		}
+
+		// returns -1 if not exist
+<span class="fc" id="L140">		final int duplicate = indexOfDuplicate(attribute);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">		if (duplicate &lt; 0) {</span>
+<span class="fc" id="L142">			attribute.setParent(parent);</span>
+<span class="fc" id="L143">			ensureCapacity(size + 1);</span>
+<span class="fc" id="L144">			attributeData[size++] = attribute;</span>
+<span class="fc" id="L145">			modCount++;</span>
+		} else {
+<span class="fc" id="L147">			final Attribute old = attributeData[duplicate];</span>
+<span class="fc" id="L148">			old.setParent(null);</span>
+<span class="fc" id="L149">			attributeData[duplicate] = attribute;</span>
+<span class="fc" id="L150">			attribute.setParent(parent);</span>
+		}
+<span class="fc" id="L152">		return true;</span>
+	}
+
+	/**
+	 * Check and add &lt;i&gt;attribute&lt;/i&gt; to this list at &lt;i&gt;index&lt;/i&gt;.
+	 * 
+	 * @param index
+	 *        where to add/insert the &lt;code&gt;Attribute&lt;/code&gt;
+	 * @param attribute
+	 *        &lt;code&gt;Attribute&lt;/code&gt; to add
+	 * @throws IllegalAddException
+	 *         if validation rules prevent the add
+	 */
+	@Override
+	public void add(final int index, final Attribute attribute) {
+<span class="fc bfc" id="L167" title="All 4 branches covered.">		if (index &lt; 0 || index &gt; size) {</span>
+<span class="fc" id="L168">			throw new IndexOutOfBoundsException(&quot;Index: &quot; + index +</span>
+					&quot; Size: &quot; + size());
+		}
+
+<span class="fc bfc" id="L172" title="All 2 branches covered.">		if (attribute.getParent() != null) {</span>
+<span class="fc" id="L173">			throw new IllegalAddException(</span>
+					&quot;The attribute already has an existing parent \&quot;&quot; +
+							attribute.getParent().getQualifiedName() + &quot;\&quot;&quot;);
+		}
+<span class="fc" id="L177">		final int duplicate = indexOfDuplicate(attribute);</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">		if (duplicate &gt;= 0) {</span>
+<span class="fc" id="L179">			throw new IllegalAddException(&quot;Cannot add duplicate attribute&quot;);</span>
+		}
+
+<span class="fc" id="L182">		final String reason = Verifier.checkNamespaceCollision(attribute, parent);</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">		if (reason != null) {</span>
+<span class="fc" id="L184">			throw new IllegalAddException(parent, attribute, reason);</span>
+		}
+
+<span class="fc" id="L187">		attribute.setParent(parent);</span>
+
+<span class="fc" id="L189">		ensureCapacity(size + 1);</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">		if (index == size) {</span>
+<span class="fc" id="L191">			attributeData[size++] = attribute;</span>
+		} else {
+<span class="fc" id="L193">			System.arraycopy(attributeData, index, attributeData, index + 1, </span>
+					size - index);
+<span class="fc" id="L195">			attributeData[index] = attribute;</span>
+<span class="fc" id="L196">			size++;</span>
+		}
+<span class="fc" id="L198">		modCount++;</span>
+<span class="fc" id="L199">	}</span>
+
+	/**
+	 * Add all the &lt;code&gt;Attributes&lt;/code&gt; in &lt;i&gt;collection&lt;/i&gt;.
+	 * 
+	 * @param collection
+	 *        The &lt;code&gt;Collection&lt;/code&gt; of &lt;code&gt;Attributes&lt;/code&gt; to add.
+	 * @return &lt;code&gt;true&lt;/code&gt; if the list was modified as a result of the
+	 *         add.
+	 * @throws IllegalAddException
+	 *         if validation rules prevent the addAll
+	 */
+	@Override
+	public boolean addAll(final Collection&lt;? extends Attribute&gt; collection) {
+<span class="fc" id="L213">		return addAll(size(), collection);</span>
+	}
+
+	/**
+	 * Inserts the &lt;code&gt;Attributes&lt;/code&gt; in &lt;i&gt;collection&lt;/i&gt; at the specified
+	 * &lt;i&gt;index&lt;/i&gt; in this list.
+	 * 
+	 * @param index
+	 *        The offset at which to start adding the &lt;code&gt;Attributes&lt;/code&gt;
+	 * @param collection
+	 *        The &lt;code&gt;Collection&lt;/code&gt; containing the &lt;code&gt;Attributes&lt;/code&gt;
+	 *        to add.
+	 * @return &lt;code&gt;true&lt;/code&gt; if the list was modified as a result of the
+	 *         add.
+	 * @throws IllegalAddException
+	 *         if validation rules prevent the addAll
+	 */
+	@Override
+	public boolean addAll(final int index,
+			final Collection&lt;? extends Attribute&gt; collection) {
+<span class="fc bfc" id="L233" title="All 4 branches covered.">		if (index &lt; 0 || index &gt; size) {</span>
+<span class="fc" id="L234">			throw new IndexOutOfBoundsException(&quot;Index: &quot; + index +</span>
+					&quot; Size: &quot; + size());
+		}
+
+<span class="fc bfc" id="L238" title="All 2 branches covered.">		if (collection == null) {</span>
+<span class="fc" id="L239">			throw new NullPointerException(</span>
+					&quot;Can not add a null Collection to AttributeList&quot;);
+		}
+<span class="fc" id="L242">		final int addcnt = collection.size();</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">		if (addcnt == 0) {</span>
+<span class="fc" id="L244">			return false;</span>
+		}
+<span class="fc bfc" id="L246" title="All 2 branches covered.">		if (addcnt == 1) {</span>
+			// quick check for single-add.
+<span class="fc" id="L248">			add(index, collection.iterator().next());</span>
+<span class="fc" id="L249">			return true;</span>
+		}
+
+<span class="fc" id="L252">		ensureCapacity(size() + addcnt);</span>
+
+<span class="fc" id="L254">		final int tmpmodcount = modCount;</span>
+<span class="fc" id="L255">		boolean ok = false;</span>
+
+<span class="fc" id="L257">		int count = 0;</span>
+
+		try {
+<span class="fc bfc" id="L260" title="All 2 branches covered.">			for (Attribute att : collection) {</span>
+<span class="fc" id="L261">				add(index + count, att);</span>
+<span class="fc" id="L262">				count++;</span>
+<span class="fc" id="L263">			}</span>
+<span class="fc" id="L264">			ok = true;</span>
+		} finally {
+<span class="pc bpc" id="L266" title="2 of 4 branches missed.">			if (!ok) {</span>
+<span class="pc bpc" id="L267" title="2 of 4 branches missed.">				while (--count &gt;= 0) {</span>
+<span class="pc" id="L268">					remove(index + count);</span>
+				}
+<span class="pc" id="L270">				modCount = tmpmodcount;</span>
+			}
+		}
+
+<span class="fc" id="L274">		return true;</span>
+	}
+
+	/**
+	 * Clear the current list.
+	 */
+	@Override
+	public void clear() {
+<span class="fc bfc" id="L282" title="All 2 branches covered.">		if (attributeData != null) {</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">			while (size &gt; 0) {</span>
+<span class="fc" id="L284">				size--;</span>
+<span class="fc" id="L285">				attributeData[size].setParent(null);</span>
+<span class="fc" id="L286">				attributeData[size] = null;</span>
+			}
+		}
+<span class="fc" id="L289">		modCount++;</span>
+<span class="fc" id="L290">	}</span>
+
+	/**
+	 * Clear the current list and set it to the contents of &lt;i&gt;collection&lt;/i&gt;.
+	 * 
+	 * @param collection
+	 *        The &lt;code&gt;Collection&lt;/code&gt; to use.
+	 * @throws IllegalAddException
+	 *         if validation rules prevent the addAll
+	 */
+	void clearAndSet(final Collection&lt;? extends Attribute&gt; collection) {
+<span class="fc bfc" id="L301" title="All 4 branches covered.">		if (collection == null || collection.isEmpty()) {</span>
+<span class="fc" id="L302">			clear();</span>
+<span class="fc" id="L303">			return;</span>
+		}
+
+		// keep a backup in case we need to roll-back...
+<span class="fc" id="L307">		final Attribute[] old = attributeData;</span>
+<span class="fc" id="L308">		final int oldSize = size;</span>
+<span class="fc" id="L309">		final int oldModCount = modCount;</span>
+
+		// clear the current system
+		// we need to detatch before we add so that we don't run in to a problem
+		// where an attribute in the to-add list is one that we are 'clearing'
+		// first.
+<span class="fc bfc" id="L315" title="All 2 branches covered.">		while (size &gt; 0) {</span>
+<span class="fc" id="L316">			old[--size].setParent(null);</span>
+		}
+<span class="fc" id="L318">		size = 0;</span>
+<span class="fc" id="L319">		attributeData = null;</span>
+
+<span class="fc" id="L321">		boolean ok = false;</span>
+		try {
+<span class="fc" id="L323">			addAll(0, collection);</span>
+<span class="fc" id="L324">			ok = true;</span>
+		} finally {
+<span class="pc bpc" id="L326" title="2 of 4 branches missed.">			if (!ok) {</span>
+				// we have an exception pending....
+				// restore the old system.
+				// re-attach the old stuff
+<span class="pc" id="L330">				attributeData = old;</span>
+<span class="pc bpc" id="L331" title="2 of 4 branches missed.">				while (size &lt; oldSize) {</span>
+<span class="pc" id="L332">					attributeData[size++].setParent(parent);</span>
+				}
+<span class="pc" id="L334">				modCount = oldModCount;</span>
+			}
+		}
+
+<span class="fc" id="L338">	}</span>
+
+	/**
+	 * Increases the capacity of this &lt;code&gt;AttributeList&lt;/code&gt; instance, if
+	 * necessary, to ensure that it can hold at least the number of items
+	 * specified by the minimum capacity argument.
+	 * 
+	 * @param minCapacity
+	 *        the desired minimum capacity.
+	 */
+	private void ensureCapacity(final int minCapacity) {
+<span class="fc bfc" id="L349" title="All 2 branches covered.">		if (attributeData == null) {</span>
+<span class="fc" id="L350">			attributeData = </span>
+					new Attribute[Math.max(minCapacity, INITIAL_ARRAY_SIZE)];
+<span class="fc" id="L352">			return;</span>
+<span class="fc bfc" id="L353" title="All 2 branches covered.">		} else if (minCapacity &lt; attributeData.length) {</span>
+<span class="fc" id="L354">			return;</span>
+		}
+		// most JVM's allocate memory in multiples of 'double-words', on
+		// 64-bit it's 16-bytes, on 32-bit it's 8 bytes which all means it makes
+		// sense to increment the capacity in even values.
+<span class="fc" id="L359">		attributeData = ArrayCopy.copyOf(attributeData,</span>
+				((minCapacity + INITIAL_ARRAY_SIZE) &gt;&gt;&gt; 1) &lt;&lt; 1);
+<span class="fc" id="L361">	}</span>
+
+	/**
+	 * Retrieve the &lt;code&gt;Attribute&lt;/code&gt; at &lt;i&gt;offset&lt;/i&gt;.
+	 * 
+	 * @param index
+	 *        The position of the &lt;code&gt;Attribute&lt;/code&gt; to retrieve.
+	 * @return The &lt;code&gt;Attribute&lt;/code&gt; at position &lt;i&gt;index&lt;/i&gt;.
+	 */
+	@Override
+	public Attribute get(final int index) {
+<span class="fc bfc" id="L372" title="All 4 branches covered.">		if (index &lt; 0 || index &gt;= size) {</span>
+<span class="fc" id="L373">			throw new IndexOutOfBoundsException(&quot;Index: &quot; + index +</span>
+					&quot; Size: &quot; + size());
+		}
+
+<span class="fc" id="L377">		return attributeData[index];</span>
+	}
+
+	/**
+	 * Retrieve the &lt;code&gt;Attribute&lt;/code&gt; with the given name and the same
+	 * &lt;code&gt;Namespace&lt;/code&gt; URI as &lt;i&gt;namespace&lt;/i&gt;.
+	 * 
+	 * @param name
+	 *        name of attribute to return
+	 * @param namespace
+	 *        indicate what &lt;code&gt;Namespace&lt;/code&gt; URI to consider
+	 * @return the &lt;code&gt;Attribute&lt;/code&gt;, or null if one doesn't exist.
+	 */
+	Attribute get(final String name, final Namespace namespace) {
+<span class="fc" id="L391">		final int index = indexOf(name, namespace);</span>
+<span class="fc bfc" id="L392" title="All 2 branches covered.">		if (index &lt; 0) {</span>
+<span class="fc" id="L393">			return null;</span>
+		}
+<span class="fc" id="L395">		return attributeData[index];</span>
+	}
+
+	/**
+	 * Return index of the &lt;code&gt;Attribute&lt;/code&gt; with the given &lt;i&gt;name&lt;/i&gt; and
+	 * the same Namespace URI as &lt;i&gt;namespace&lt;/i&gt;.
+	 * 
+	 * @param name
+	 *        name of &lt;code&gt;Attribute&lt;/code&gt; to retrieve
+	 * @param namespace
+	 *        indicate what &lt;code&gt;Namespace&lt;/code&gt; URI to consider
+	 * @return the index of the attribute that matches the conditions, or
+	 *         &lt;code&gt;-1&lt;/code&gt; if there is none.
+	 */
+	int indexOf(final String name, final Namespace namespace) {
+<span class="fc bfc" id="L410" title="All 2 branches covered.">		if (attributeData != null) {</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">			if (namespace == null) {</span>
+<span class="fc" id="L412">				return indexOf(name, Namespace.NO_NAMESPACE);</span>
+			}
+<span class="fc" id="L414">			final String uri = namespace.getURI();</span>
+<span class="fc bfc" id="L415" title="All 2 branches covered.">			for (int i = 0; i &lt; size; i++) {</span>
+<span class="fc" id="L416">				final Attribute att = attributeData[i];</span>
+<span class="fc bfc" id="L417" title="All 4 branches covered.">				if (uri.equals(att.getNamespaceURI()) &amp;&amp;</span>
+						name.equals(att.getName())) {
+<span class="fc" id="L419">					return i;</span>
+				}
+			}
+		}
+<span class="fc" id="L423">		return -1;</span>
+	}
+
+	/**
+	 * Remove the &lt;code&gt;Attribute&lt;/code&gt; at &lt;i&gt;index&lt;/i&gt;.
+	 * 
+	 * @param index
+	 *        The offset of the &lt;code&gt;Attribute&lt;/code&gt; to remove.
+	 * @return The removed &lt;code&gt;Attribute&lt;/code&gt;.
+	 */
+	@Override
+	public Attribute remove(final int index) {
+<span class="fc bfc" id="L435" title="All 4 branches covered.">		if (index &lt; 0 || index &gt;= size)</span>
+<span class="fc" id="L436">			throw new IndexOutOfBoundsException(&quot;Index: &quot; + index +</span>
+					&quot; Size: &quot; + size());
+
+<span class="fc" id="L439">		final Attribute old = attributeData[index];</span>
+<span class="fc" id="L440">		old.setParent(null);</span>
+<span class="fc" id="L441">		System.arraycopy(attributeData, index + 1, attributeData, index,</span>
+				size - index - 1);
+<span class="fc" id="L443">		attributeData[--size] = null; // Let gc do its work</span>
+<span class="fc" id="L444">		modCount++;</span>
+<span class="fc" id="L445">		return old;</span>
+	}
+
+	/**
+	 * Remove the &lt;code&gt;Attribute&lt;/code&gt; with the specified name and the same
+	 * URI as &lt;i&gt;namespace&lt;/i&gt;.
+	 * 
+	 * @param name
+	 *        name of &lt;code&gt;Attribute&lt;/code&gt; to remove
+	 * @param namespace
+	 *        indicate what &lt;code&gt;Namespace&lt;/code&gt; URI to consider
+	 * @return the &lt;code&gt;true&lt;/code&gt; if attribute was removed,
+	 *         &lt;code&gt;false&lt;/code&gt; otherwise
+	 */
+	boolean remove(final String name, final Namespace namespace) {
+<span class="fc" id="L460">		final int index = indexOf(name, namespace);</span>
+<span class="fc bfc" id="L461" title="All 2 branches covered.">		if (index &lt; 0) {</span>
+<span class="fc" id="L462">			return false;</span>
+		}
+<span class="fc" id="L464">		remove(index);</span>
+<span class="fc" id="L465">		return true;</span>
+	}
+
+	/**
+	 * Set the &lt;code&gt;Attribute&lt;/code&gt; at &lt;i&gt;index&lt;/i&gt; to be &lt;i&gt;attribute&lt;/i&gt;.
+	 * 
+	 * @param index
+	 *        The location to set the value to.
+	 * @param attribute
+	 *        The &lt;code&gt;Attribute&lt;/code&gt; to set.
+	 * @return The replaced &lt;code&gt;Attribute&lt;/code&gt;.
+	 * @throws IllegalAddException
+	 *         if validation rules prevent the set
+	 */
+	@Override
+	public Attribute set(final int index, final Attribute attribute) {
+<span class="fc bfc" id="L481" title="All 4 branches covered.">		if (index &lt; 0 || index &gt;= size)</span>
+<span class="fc" id="L482">			throw new IndexOutOfBoundsException(&quot;Index: &quot; + index +</span>
+					&quot; Size: &quot; + size());
+
+<span class="fc bfc" id="L485" title="All 2 branches covered.">		if (attribute.getParent() != null) {</span>
+<span class="fc" id="L486">			throw new IllegalAddException(</span>
+					&quot;The attribute already has an existing parent \&quot;&quot; +
+							attribute.getParent().getQualifiedName() + &quot;\&quot;&quot;);
+		}
+
+<span class="fc" id="L491">		final int duplicate = indexOfDuplicate(attribute);</span>
+<span class="fc bfc" id="L492" title="All 4 branches covered.">		if ((duplicate &gt;= 0) &amp;&amp; (duplicate != index)) {</span>
+<span class="fc" id="L493">			throw new IllegalAddException(&quot;Cannot set duplicate attribute&quot;);</span>
+		}
+
+<span class="fc" id="L496">		final String reason = Verifier.checkNamespaceCollision(attribute, parent, index);</span>
+<span class="fc bfc" id="L497" title="All 2 branches covered.">		if (reason != null) {</span>
+<span class="fc" id="L498">			throw new IllegalAddException(parent, attribute, reason);</span>
+		}
+
+<span class="fc" id="L501">		final Attribute old = attributeData[index];</span>
+<span class="fc" id="L502">		old.setParent(null);</span>
+
+<span class="fc" id="L504">		attributeData[index] = attribute;</span>
+<span class="fc" id="L505">		attribute.setParent(parent);</span>
+<span class="fc" id="L506">		return old;</span>
+	}
+
+	/**
+	 * Return index of attribute with same name and Namespace, or -1 if one
+	 * doesn't exist
+	 */
+	private int indexOfDuplicate(final Attribute attribute) {
+<span class="fc" id="L514">		return indexOf(attribute.getName(), attribute.getNamespace());</span>
+	}
+
+	/**
+	 * Returns an &lt;code&gt;Iterator&lt;/code&gt; over the &lt;code&gt;Attributes&lt;/code&gt; in this
+	 * list in the proper sequence.
+	 * 
+	 * @return an iterator.
+	 */
+	@Override
+	public Iterator&lt;Attribute&gt; iterator() {
+<span class="fc" id="L525">		return new ALIterator();</span>
+	}
+
+	/**
+	 * Return the number of &lt;code&gt;Attributes&lt;/code&gt; in this list
+	 * 
+	 * @return The number of &lt;code&gt;Attributes&lt;/code&gt; in this list.
+	 */
+	@Override
+	public int size() {
+<span class="fc" id="L535">		return size;</span>
+	}
+	
+	@Override
+	public boolean isEmpty() {
+<span class="fc bfc" id="L540" title="All 2 branches covered.">		return size == 0;</span>
+	}
+
+	/**
+	 * Return this list as a &lt;code&gt;String&lt;/code&gt;
+	 */
+	@Override
+	public String toString() {
+<span class="fc" id="L548">		return super.toString();</span>
+	}
+
+	/**
+	 * Unlike the Arrays.binarySearch, this method never expects an
+	 * &quot;already exists&quot; condition, we only ever add, thus there will never
+	 * be a negative insertion-point.
+	 * @param indexes The pointers to search within
+	 * @param len The number of pointers to search within
+	 * @param val The pointer we are checking for.
+	 * @param comp The Comparator to compare with
+	 * @return the insertion point.
+	 */
+	private final int binarySearch(final int[] indexes, final int len,
+			final int val, final Comparator&lt;? super Attribute&gt; comp) {
+<span class="fc" id="L563">		int left = 0, mid = 0, right = len - 1, cmp = 0;</span>
+<span class="fc" id="L564">		final Attribute base = attributeData[val];</span>
+<span class="fc bfc" id="L565" title="All 2 branches covered.">		while (left &lt;= right) {</span>
+<span class="fc" id="L566">			mid = (left + right) &gt;&gt;&gt; 1;</span>
+<span class="fc" id="L567">			cmp = comp.compare(base, attributeData[indexes[mid]]);</span>
+<span class="fc bfc" id="L568" title="All 2 branches covered.">			if (cmp == 0) {</span>
+<span class="pc bpc" id="L569" title="2 of 6 branches missed.">				while (cmp == 0 &amp;&amp; mid &lt; right &amp;&amp; comp.compare(</span>
+						base, attributeData[indexes[mid + 1]]) == 0) {
+<span class="fc" id="L571">					mid++;</span>
+				}
+<span class="fc" id="L573">				return mid + 1;</span>
+<span class="fc bfc" id="L574" title="All 2 branches covered.">			} else if (cmp &lt; 0) {</span>
+<span class="fc" id="L575">				right = mid - 1;</span>
+			} else {
+<span class="fc" id="L577">				left = mid + 1;</span>
+			}
+		}
+<span class="fc" id="L580">		return left;</span>
+	}
+	
+	private void sortInPlace(final int[] indexes) {
+		// the indexes are a discrete set of values that have no duplicates,
+		// and describe the relative order of each of them.
+		// as a result, we can do some tricks....
+<span class="fc" id="L587">		final int[] unsorted = ArrayCopy.copyOf(indexes, indexes.length);</span>
+<span class="fc" id="L588">		Arrays.sort(unsorted);</span>
+<span class="fc" id="L589">		final Attribute[] usc = new Attribute[unsorted.length];</span>
+<span class="fc bfc" id="L590" title="All 2 branches covered.">		for (int i = 0; i &lt; usc.length; i++) {</span>
+<span class="fc" id="L591">			usc[i] = attributeData[indexes[i]];</span>
+		}
+		// usc contains the content in their pre-sorted order....
+<span class="fc bfc" id="L594" title="All 2 branches covered.">		for (int i = 0; i &lt; indexes.length; i ++) {</span>
+<span class="fc" id="L595">			attributeData[unsorted[i]] = usc[i];</span>
+		}
+<span class="fc" id="L597">	}</span>
+
+	/**
+	 * Sort the attributes using the supplied comparator. The attributes are
+	 * never added using regular mechanisms, so there are never problems with
+	 * detached or already-attached Attributes. The sort happens 'in place'.
+	 * &lt;p&gt;
+	 * If the comparator identifies two (or more) Attributes to be equal, then
+	 * the relative order of those attributes will not be changed.
+	 * 
+	 * @param comp The Comparator to use for sorting.
+	 */
+	void sort(Comparator&lt;? super Attribute&gt; comp) {
+<span class="fc" id="L610">		final int sz = size;</span>
+<span class="fc" id="L611">		int[] indexes = new int[sz];</span>
+<span class="fc bfc" id="L612" title="All 2 branches covered.">		for (int i = 0 ; i &lt; sz; i++) {</span>
+<span class="fc" id="L613">			final int ip = binarySearch(indexes, i, i, comp);</span>
+<span class="fc bfc" id="L614" title="All 2 branches covered.">			if (ip &lt; i) {</span>
+<span class="fc" id="L615">				System.arraycopy(indexes, ip, indexes, ip+1, i - ip);</span>
+			}
+<span class="fc" id="L617">			indexes[ip] = i;</span>
+		}
+<span class="fc" id="L619">		sortInPlace(indexes);</span>
+<span class="fc" id="L620">	}</span>
+
+	/* * * * * * * * * * * * * ContentListIterator * * * * * * * * * * * * * */
+	/* * * * * * * * * * * * * ContentListIterator * * * * * * * * * * * * * */
+	/**
+	 * A fast iterator that can beat AbstractList because we can access the data
+	 * directly. This is important because so much code now uses the for-each
+	 * type loop &lt;code&gt;for (Attribute a : element.getAttributes()) {...}&lt;/code&gt;,
+	 * and that uses iterator().
+	 * 
+	 * @author Rolf Lear
+	 */
+	private final class ALIterator implements Iterator&lt;Attribute&gt; {
+		// The modCount to expect (or throw ConcurrentModeEx)
+<span class="fc" id="L634">		private int expect = -1;</span>
+		// the index of the next Attribute to return.
+<span class="fc" id="L636">		private int cursor = 0;</span>
+		// whether it is legal to call remove()
+<span class="fc" id="L638">		private boolean canremove = false;</span>
+
+<span class="fc" id="L640">		private ALIterator() {</span>
+<span class="fc" id="L641">			expect = modCount;</span>
+<span class="fc" id="L642">		}</span>
+
+		@Override
+		public boolean hasNext() {
+<span class="fc bfc" id="L646" title="All 2 branches covered.">			return cursor &lt; size;</span>
+		}
+
+		@Override
+		public Attribute next() {
+<span class="fc bfc" id="L651" title="All 2 branches covered.">			if (modCount != expect) {</span>
+<span class="fc" id="L652">				throw new ConcurrentModificationException(&quot;ContentList was &quot; +</span>
+						&quot;modified outside of this Iterator&quot;);
+			}
+<span class="fc bfc" id="L655" title="All 2 branches covered.">			if (cursor &gt;= size) {</span>
+<span class="fc" id="L656">				throw new NoSuchElementException(&quot;Iterated beyond the end of &quot; +</span>
+						&quot;the ContentList.&quot;);
+			}
+<span class="fc" id="L659">			canremove = true;</span>
+<span class="fc" id="L660">			return attributeData[cursor++];</span>
+		}
+
+		@Override
+		public void remove() {
+<span class="fc bfc" id="L665" title="All 2 branches covered.">			if (modCount != expect) {</span>
+<span class="fc" id="L666">				throw new ConcurrentModificationException(&quot;ContentList was &quot; +</span>
+						&quot;modified outside of this Iterator&quot;);
+			}
+<span class="fc bfc" id="L669" title="All 2 branches covered.">			if (!canremove) {</span>
+<span class="fc" id="L670">				throw new IllegalStateException(&quot;Can only remove() content &quot; +</span>
+						&quot;after a call to next()&quot;);
+			}
+<span class="fc" id="L673">			AttributeList.this.remove(--cursor);</span>
+<span class="fc" id="L674">			expect = modCount;</span>
+<span class="fc" id="L675">			canremove = false;</span>
+<span class="fc" id="L676">		}</span>
+
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>FilePrintStreamFactory.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.reporters</a> &gt; <span class="el_source">FilePrintStreamFactory.java</span></div><h1>FilePrintStreamFactory.java</h1><pre class="source lang-java linenums">package org.jbehave.core.reporters;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.PrintStream;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.builder.ToStringBuilder;
+import org.apache.commons.lang.builder.ToStringStyle;
+import org.jbehave.core.io.CodeLocations;
+import org.jbehave.core.io.StoryLocation;
+
+/**
+ * Creates {@link PrintStream} instances that write to a file identified by the
+ * {@link StoryLocation}. {@link FileConfiguration} specifies directory and the
+ * extension, providing useful default values.
+ */
+public class FilePrintStreamFactory implements PrintStreamFactory {
+
+    private final StoryLocation storyLocation;
+    private FileConfiguration configuration;
+    private File outputFile;
+
+    public FilePrintStreamFactory(StoryLocation storyLocation) {
+<span class="fc" id="L26">        this(storyLocation, new FileConfiguration());</span>
+<span class="fc" id="L27">    }</span>
+
+<span class="fc" id="L29">    public FilePrintStreamFactory(StoryLocation storyLocation, FileConfiguration configuration) {</span>
+<span class="fc" id="L30">        this.storyLocation = storyLocation;</span>
+<span class="fc" id="L31">        this.configuration = configuration;</span>
+<span class="fc" id="L32">    }</span>
+
+    public PrintStream createPrintStream() {
+        try {
+<span class="fc" id="L36">            outputFile = outputFile();</span>
+<span class="fc" id="L37">            outputFile.getParentFile().mkdirs();</span>
+<span class="fc" id="L38">            return new FilePrintStream(outputFile, false);</span>
+<span class="fc" id="L39">        } catch (Exception e) {</span>
+<span class="fc" id="L40">            throw new PrintStreamCreationFailed(outputFile, e);</span>
+        }
+    }
+
+    public File getOutputFile() {
+<span class="fc" id="L45">        return outputFile;</span>
+    }
+
+    public void useConfiguration(FileConfiguration configuration) {
+<span class="fc" id="L49">        this.configuration = configuration;</span>
+<span class="fc" id="L50">        this.outputFile = outputFile();</span>
+<span class="fc" id="L51">    }</span>
+
+    public FileConfiguration configuration() {
+<span class="fc" id="L54">        return configuration;</span>
+    }
+
+    protected File outputFile() {
+<span class="fc" id="L58">        return new File(outputDirectory(), outputName());</span>
+    }
+
+    /**
+     * Return the file output directory, using the configured
+     * {@link FilePathResolver}
+     * 
+     * @return The File representing the output directory
+     */
+    protected File outputDirectory() {
+<span class="fc" id="L68">        return new File(configuration.getPathResolver().resolveDirectory(storyLocation,</span>
+                configuration.getRelativeDirectory()));
+    }
+
+    /**
+     * Return the file output name, using the configured
+     * {@link FilePathResolver}
+     * 
+     * @return The file output name
+     */
+    protected String outputName() {
+<span class="fc" id="L79">        return configuration.getPathResolver().resolveName(storyLocation, configuration.getExtension());</span>
+    }
+
+    public static interface FilePathResolver {
+
+        String resolveDirectory(StoryLocation storyLocation, String relativeDirectory);
+
+        String resolveName(StoryLocation storyLocation, String extension);
+
+    }
+
+    /**
+     * Resolves directory from code location parent file.
+     */
+<span class="fc" id="L93">    public static abstract class AbstractPathResolver implements FilePathResolver {</span>
+
+        public String resolveDirectory(StoryLocation storyLocation, String relativeDirectory) {
+<span class="fc" id="L96">            File parent = new File(CodeLocations.getPathFromURL(storyLocation.getCodeLocation())).getParentFile();</span>
+<span class="fc" id="L97">            return parent.getPath().replace('\\', '/') + &quot;/&quot; + relativeDirectory;</span>
+        }
+
+    }
+
+    /**
+     * Resolves story location path to java packaged name, replacing '/' with '.'
+     */
+<span class="fc" id="L105">    public static class ResolveToPackagedName extends AbstractPathResolver {</span>
+
+        public String resolveName(StoryLocation storyLocation, String extension) {
+<span class="fc" id="L108">            String name = storyLocation.getPath().replace('/', '.');</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">            if (name.startsWith(&quot;.&quot;)) {</span>
+<span class="fc" id="L110">                name = name.substring(1);</span>
+            }
+<span class="fc" id="L112">            return StringUtils.substringBeforeLast(name, &quot;.&quot;) + &quot;.&quot; + extension;</span>
+        }
+
+    }
+
+    /**
+     * Resolves story location path to simple name, considering portion after last '/'.
+     */
+<span class="fc" id="L120">    public static class ResolveToSimpleName extends AbstractPathResolver {</span>
+
+        public String resolveName(StoryLocation storyLocation, String extension) {
+<span class="fc" id="L123">            String name = storyLocation.getPath();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            if ( StringUtils.contains(name, '/') ){</span>
+<span class="fc" id="L125">                name = StringUtils.substringAfterLast(name, &quot;/&quot;);</span>
+            }
+<span class="fc" id="L127">            return StringUtils.substringBeforeLast(name, &quot;.&quot;) + &quot;.&quot; + extension;</span>
+        }
+
+    }
+
+    public static class FilePrintStream extends PrintStream {
+
+        private final File outputFile;
+        private final boolean append;
+
+        public FilePrintStream(File outputFile, boolean append) throws FileNotFoundException {
+<span class="fc" id="L138">            super(new FileOutputStream(outputFile, append));</span>
+<span class="fc" id="L139">            this.outputFile = outputFile;</span>
+<span class="fc" id="L140">            this.append = append;</span>
+<span class="fc" id="L141">        }</span>
+
+        @Override
+        public String toString() {
+<span class="nc" id="L145">            return new ToStringBuilder(this, ToStringStyle.SHORT_PREFIX_STYLE).append(outputFile).append(append)</span>
+                    .toString();
+        }
+
+    }
+
+    /**
+     * Configuration class for file print streams. Allows specification the
+     * relative directory (relative to code location) and file extension.
+     * Provides as defaults {@link #RELATIVE_DIRECTORY} and {@link #EXTENSION}.
+     */
+    public static class FileConfiguration {
+        public static final String RELATIVE_DIRECTORY = &quot;jbehave&quot;;
+        public static final String EXTENSION = &quot;html&quot;;
+
+        private final String relativeDirectory;
+        private final String extension;
+        private final FilePathResolver pathResolver;
+
+        public FileConfiguration() {
+<span class="fc" id="L165">            this(EXTENSION);</span>
+<span class="fc" id="L166">        }</span>
+
+        public FileConfiguration(String extension) {
+<span class="fc" id="L169">            this(RELATIVE_DIRECTORY, extension, new ResolveToPackagedName());</span>
+<span class="fc" id="L170">        }</span>
+
+<span class="fc" id="L172">        public FileConfiguration(String relativeDirectory, String extension, FilePathResolver pathResolver) {</span>
+<span class="fc" id="L173">            this.relativeDirectory = relativeDirectory;</span>
+<span class="fc" id="L174">            this.extension = extension;</span>
+<span class="fc" id="L175">            this.pathResolver = pathResolver;</span>
+<span class="fc" id="L176">        }</span>
+
+        public String getRelativeDirectory() {
+<span class="fc" id="L179">            return relativeDirectory;</span>
+        }
+
+        public String getExtension() {
+<span class="fc" id="L183">            return extension;</span>
+        }
+
+        public FilePathResolver getPathResolver() {
+<span class="fc" id="L187">            return pathResolver;</span>
+        }
+
+        @Override
+        public String toString() {
+<span class="fc" id="L192">            return ToStringBuilder.reflectionToString(this, ToStringStyle.SHORT_PREFIX_STYLE);</span>
+        }
+
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public class PrintStreamCreationFailed extends RuntimeException {
+<span class="fc" id="L199">        public PrintStreamCreationFailed(File file, Exception cause) {</span>
+<span class="fc" id="L200">            super(&quot;Failed to create print stream for file &quot; + file, cause);</span>
+<span class="fc" id="L201">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

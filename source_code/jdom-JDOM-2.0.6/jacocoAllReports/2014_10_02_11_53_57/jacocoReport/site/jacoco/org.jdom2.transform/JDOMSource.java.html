@@ -1,0 +1,576 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>JDOMSource.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.transform</a> &gt; <span class="el_source">JDOMSource.java</span></div><h1>JDOMSource.java</h1><pre class="source lang-java linenums">/*-- 
+
+ Copyright (C) 2001-2007 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows 
+    these conditions in the documentation and/or other materials 
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the 
+ end-user documentation provided with the redistribution and/or in the 
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos 
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many 
+ individuals on behalf of the JDOM Project and was originally 
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.transform;
+
+import java.io.InputStream;
+import java.io.Reader;
+import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.xml.transform.sax.SAXSource;
+
+import org.jdom2.Content;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.JDOMConstants;
+import org.jdom2.JDOMException;
+import org.jdom2.output.SAXOutputter;
+import org.jdom2.output.XMLOutputter;
+import org.xml.sax.EntityResolver;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXNotSupportedException;
+import org.xml.sax.XMLFilter;
+import org.xml.sax.XMLReader;
+
+/**
+ * A holder for an XML Transformation source: a Document, Element, or list of
+ * nodes.
+ * &lt;p&gt;
+ * The is provides input to a
+ * {@link javax.xml.transform.Transformer JAXP TrAX Transformer}.
+ * &lt;p&gt;
+ * The following example shows how to apply an XSL Transformation
+ * to a JDOM document and get the transformation result in the form
+ * of a list of JDOM nodes:
+ * &lt;pre&gt;&lt;code&gt;
+ *   public static List transform(Document doc, String stylesheet)
+ *                                        throws JDOMException {
+ *     try {
+ *       Transformer transformer = TransformerFactory.newInstance()
+ *                             .newTransformer(new StreamSource(stylesheet));
+ *       JDOMSource in = new JDOMSource(doc);
+ *       JDOMResult out = new JDOMResult();
+ *       transformer.transform(in, out);
+ *       return out.getResult();
+ *     }
+ *     catch (TransformerException e) {
+ *       throw new JDOMException(&quot;XSLT Transformation failed&quot;, e);
+ *     }
+ *   }
+ * &lt;/code&gt;&lt;/pre&gt;
+ *
+ * @see org.jdom2.transform.JDOMResult
+ *
+ * @author Laurent Bihanic
+ * @author Jason Hunter
+ */
+public class JDOMSource extends SAXSource {
+
+	/**
+	 * If {@link javax.xml.transform.TransformerFactory#getFeature}
+	 * returns &lt;code&gt;true&lt;/code&gt; when passed this value as an
+	 * argument, the Transformer natively supports JDOM.
+	 * &lt;p&gt;
+	 * &lt;strong&gt;Note&lt;/strong&gt;: This implementation does not override
+	 * the {@link SAXSource#FEATURE} value defined by its superclass
+	 * to be considered as a SAXSource by Transformer implementations
+	 * not natively supporting JDOM.
+	 * &lt;/p&gt;
+	 */
+	public final static String JDOM_FEATURE = JDOMConstants.JDOM2_FEATURE_JDOMSOURCE;
+			
+
+	/**
+	 * The XMLReader object associated to this source or
+	 * &lt;code&gt;null&lt;/code&gt; if no XMLReader has yet been requested.
+	 *
+	 * @see    #getXMLReader
+	 */
+<span class="fc" id="L133">	private XMLReader xmlReader = null;</span>
+
+	/**
+	 * Optional entity resolver associated to the source of
+	 * this document or &lt;code&gt;null&lt;/code&gt; if no EntityResolver
+	 * was supplied with this JDOMSource. 
+	 * 
+	 * @see #buildDocumentReader()
+	 */
+<span class="fc" id="L142">	private EntityResolver resolver = null;</span>
+
+	/**
+	 * Creates a JDOM TrAX source wrapping a JDOM document.
+	 *
+	 * @param  source   the JDOM document to use as source for the
+	 *                  transformations
+	 *
+	 * @throws IllegalArgumentException   if &lt;code&gt;source&lt;/code&gt; is
+	 *                                    &lt;code&gt;null&lt;/code&gt;.
+	 */
+	public JDOMSource(Document source) {
+<span class="fc" id="L154">		this(source, null);</span>
+<span class="fc" id="L155">	}</span>
+
+	/**
+	 * Creates a JDOM TrAX source wrapping a list of JDOM nodes.
+	 *
+	 * @param  source   the JDOM nodes to use as source for the
+	 *                  transformations
+	 *
+	 * @throws IllegalArgumentException   if &lt;code&gt;source&lt;/code&gt; is
+	 *                                    &lt;code&gt;null&lt;/code&gt;.
+	 */
+<span class="fc" id="L166">	public JDOMSource(List&lt;? extends Content&gt; source) {</span>
+<span class="fc" id="L167">		setNodes(source);</span>
+<span class="fc" id="L168">	}</span>
+
+	/**
+	 * Creates a JDOM TrAX source wrapping a JDOM element.
+	 *
+	 * @param  source   the JDOM element to use as source for the
+	 *                  transformations
+	 *
+	 * @throws IllegalArgumentException   if &lt;code&gt;source&lt;/code&gt; is
+	 *                                    &lt;code&gt;null&lt;/code&gt;.
+	 */
+<span class="fc" id="L179">	public JDOMSource(Element source) {</span>
+<span class="fc" id="L180">		List&lt;Content&gt; nodes = new ArrayList&lt;Content&gt;();</span>
+<span class="fc" id="L181">		nodes.add(source);</span>
+
+<span class="fc" id="L183">		setNodes(nodes);</span>
+<span class="fc" id="L184">	}</span>
+
+	/**
+	 * Creates a JDOM TrAX source wrapping a JDOM element with an
+	 * associated EntityResolver to resolve external entities.
+	 * 
+	 * @param source 		The JDOM Element to use as source for the 
+	 * 					transformations
+	 * 
+	 * @param resolver 	Entity resolver to use for the source 
+	 * 					transformation
+	 * 
+	 * @throws IllegalArgumentException	if&lt;code&gt;source&lt;/code&gt; is
+	 * &lt;code&gt;null&lt;/code&gt;
+	 */
+<span class="fc" id="L199">	public JDOMSource(Document source, EntityResolver resolver) {</span>
+<span class="fc" id="L200">		setDocument(source);</span>
+<span class="fc" id="L201">		this.resolver = resolver;</span>
+<span class="fc bfc" id="L202" title="All 4 branches covered.">		if (source != null &amp;&amp; source.getBaseURI() != null) {</span>
+<span class="fc" id="L203">			super.setSystemId(source.getBaseURI());</span>
+		}
+<span class="fc" id="L205">	}</span>
+
+	/**
+	 * Sets the source document used by this TrAX source.
+	 *
+	 * @param  source   the JDOM document to use as source for the
+	 *                  transformations
+	 *
+	 * @throws IllegalArgumentException   if &lt;code&gt;source&lt;/code&gt; is
+	 *                                    &lt;code&gt;null&lt;/code&gt;.
+	 *
+	 * @see    #getDocument
+	 */
+	public void setDocument(Document source) {
+<span class="fc" id="L219">		super.setInputSource(new JDOMInputSource(source));</span>
+<span class="fc" id="L220">	}</span>
+
+	/**
+	 * Returns the source document used by this TrAX source.
+	 *
+	 * @return the source document used by this TrAX source or
+	 *         &lt;code&gt;null&lt;/code&gt; if the source is a node list.
+	 *
+	 * @see    #setDocument
+	 */
+	public Document getDocument() {
+<span class="fc" id="L231">		Object   src = ((JDOMInputSource)getInputSource()).getSource();</span>
+<span class="fc" id="L232">		Document doc = null;</span>
+
+<span class="fc bfc" id="L234" title="All 2 branches covered.">		if (src instanceof Document) {</span>
+<span class="fc" id="L235">			doc = (Document)src;</span>
+		}
+<span class="fc" id="L237">		return doc;</span>
+	}
+
+	/**
+	 * Sets the source node list used by this TrAX source.
+	 *
+	 * @param  source   the JDOM nodes to use as source for the
+	 *                  transformations
+	 *
+	 * @throws IllegalArgumentException   if &lt;code&gt;source&lt;/code&gt; is
+	 *                                    &lt;code&gt;null&lt;/code&gt;.
+	 *
+	 * @see    #getNodes
+	 */
+	public void setNodes(List&lt;? extends Content&gt; source) {
+<span class="fc" id="L252">		super.setInputSource(new JDOMInputSource(source));</span>
+<span class="fc" id="L253">	}</span>
+
+	/**
+	 * Returns the source node list used by this TrAX source.
+	 *
+	 * @return the source node list used by this TrAX source or
+	 *         &lt;code&gt;null&lt;/code&gt; if the source is a JDOM document.
+	 *
+	 * @see    #setDocument
+	 */
+	public List&lt;? extends Content&gt; getNodes() {
+<span class="fc" id="L264">		return ((JDOMInputSource)getInputSource()).getListSource();</span>
+	}
+
+
+	//-------------------------------------------------------------------------
+	// SAXSource overwritten methods
+	//-------------------------------------------------------------------------
+
+	/**
+	 * Sets the SAX InputSource to be used for the Source.
+	 * &lt;p&gt;
+	 * As this implementation only supports JDOM document as data
+	 * source, this method always throws an
+	 * {@link UnsupportedOperationException}.
+	 * &lt;/p&gt;
+	 *
+	 * @param  inputSource   a valid InputSource reference.
+	 *
+	 * @throws UnsupportedOperationException   always!
+	 */
+	@Override
+	public void setInputSource(InputSource inputSource)
+			throws UnsupportedOperationException {
+<span class="fc" id="L287">		throw new UnsupportedOperationException();</span>
+	}
+
+	/**
+	 * Set the XMLReader to be used for the Source.
+	 * &lt;p&gt;
+	 * As this implementation only supports JDOM document as data
+	 * source, this method throws an
+	 * {@link UnsupportedOperationException} if the provided reader
+	 * object does not implement the SAX {@link XMLFilter}
+	 * interface.  Otherwise, the JDOM document reader will be
+	 * attached as parent of the filter chain.&lt;/p&gt;
+	 *
+	 * @param  reader   a valid XMLReader or XMLFilter reference.
+	 *
+	 * @throws UnsupportedOperationException   if &lt;code&gt;reader&lt;/code&gt;
+	 *                                         is not a SAX
+	 *                                         {@link XMLFilter}.
+	 * @see    #getXMLReader
+	 */
+	@Override
+	public void setXMLReader(XMLReader reader)
+			throws UnsupportedOperationException {
+<span class="fc bfc" id="L310" title="All 2 branches covered.">		if (reader instanceof XMLFilter) {</span>
+			// Connect the filter chain to a document reader.
+<span class="fc" id="L312">			XMLFilter filter = (XMLFilter)reader;</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">			while (filter.getParent() instanceof XMLFilter) {</span>
+<span class="fc" id="L314">				filter = (XMLFilter)(filter.getParent());</span>
+			}
+<span class="fc" id="L316">			filter.setParent(buildDocumentReader());</span>
+
+			// Read XML data from filter chain.
+<span class="fc" id="L319">			this.xmlReader = reader;</span>
+<span class="fc" id="L320">		}</span>
+		else {
+<span class="fc" id="L322">			throw new UnsupportedOperationException();</span>
+		}
+<span class="fc" id="L324">	}</span>
+
+	/**
+	 * Returns the XMLReader to be used for the Source.
+	 * &lt;p&gt;
+	 * This implementation returns a specific XMLReader reading
+	 * the XML data from the source JDOM document.
+	 * &lt;/p&gt;
+	 *
+	 * @return an XMLReader reading the XML data from the source
+	 *         JDOM document.
+	 */
+	@Override
+	public XMLReader getXMLReader() {
+<span class="fc bfc" id="L338" title="All 2 branches covered.">		if (this.xmlReader == null) {</span>
+<span class="fc" id="L339">			this.xmlReader = buildDocumentReader();</span>
+		}
+<span class="fc" id="L341">		return this.xmlReader;</span>
+	}
+
+	/**
+	 * Build an XMLReader to be used for the source. This will
+	 * create a new instance of DocumentReader with an 
+	 * EntityResolver instance if available.
+	 * 
+	 * @return XMLReader reading the XML data from the source
+	 * 		JDOM document with an optional EntityResolver
+	 */
+	private XMLReader buildDocumentReader() {
+<span class="fc" id="L353">		DocumentReader reader = new DocumentReader();</span>
+<span class="fc bfc" id="L354" title="All 2 branches covered.">		if (resolver != null)</span>
+<span class="fc" id="L355">			reader.setEntityResolver(resolver);</span>
+<span class="fc" id="L356">		return reader;</span>
+	}
+
+	//=========================================================================
+	// JDOMInputSource nested class
+	//=========================================================================
+
+	/**
+	 * A subclass of the SAX InputSource interface that wraps a JDOM
+	 * Document.
+	 * &lt;p&gt;
+	 * This class is nested in JDOMSource as it is not intented to
+	 * be used independently of its friend: DocumentReader.
+	 * &lt;/p&gt;
+	 *
+	 * @see    org.jdom2.Document
+	 */
+	private static class JDOMInputSource extends InputSource {
+		/**
+		 * The source as a JDOM document or a list of JDOM nodes.
+		 */
+<span class="fc" id="L377">		private Document docsource = null;</span>
+
+		/**
+		 * The source as a JDOM document or a list of JDOM nodes.
+		 */
+<span class="fc" id="L382">		private List&lt;? extends Content&gt; listsource = null;</span>
+		/**
+		 * Builds a InputSource wrapping the specified JDOM Document.
+		 *
+		 * @param  document   the source document.
+		 */
+<span class="fc" id="L388">		public JDOMInputSource(Document document) {</span>
+<span class="fc" id="L389">			this.docsource = document;</span>
+<span class="fc" id="L390">		}</span>
+
+		/**
+		 * Builds a InputSource wrapping a list of JDOM nodes.
+		 *
+		 * @param  nodes   the source JDOM nodes.
+		 */
+<span class="fc" id="L397">		public JDOMInputSource(List&lt;? extends Content&gt; nodes) {</span>
+<span class="fc" id="L398">			this.listsource = nodes;</span>
+<span class="fc" id="L399">		}</span>
+
+		/**
+		 * Returns the source.
+		 *
+		 * @return the source as a JDOM document or a list of JDOM nodes.
+		 */
+		public Object getSource() {
+<span class="fc bfc" id="L407" title="All 2 branches covered.">			return docsource == null ? listsource : docsource;</span>
+		}
+
+		//-------------------------------------------------------------------------
+		// InputSource overwritten methods
+		//-------------------------------------------------------------------------
+
+		/**
+		 * Sets the character stream for this input source.
+		 * &lt;p&gt;
+		 * This implementation always throws an
+		 * {@link UnsupportedOperationException} as the only source
+		 * stream supported is the source JDOM document.
+		 * &lt;/p&gt;
+		 *
+		 * @param  characterStream   a character stream containing
+		 *                           an XML document.
+		 *
+		 * @throws UnsupportedOperationException  always!
+		 */
+		@Override
+		public void setCharacterStream(Reader characterStream)
+				throws UnsupportedOperationException {
+<span class="fc" id="L430">			throw new UnsupportedOperationException();</span>
+		}
+
+		/**
+		 * Gets the character stream for this input source.
+		 * &lt;p&gt;
+		 * Note that this method is only provided to make this
+		 * InputSource implementation acceptable by any XML
+		 * parser.  As it generates an in-memory string representation
+		 * of the JDOM document, it is quite inefficient from both
+		 * speed and memory consumption points of view.
+		 * &lt;/p&gt;
+		 *
+		 * @return a Reader to a string representation of the
+		 *         source JDOM document.
+		 */
+		@Override
+		public Reader getCharacterStream() {
+<span class="fc" id="L448">			Reader reader = null;</span>
+
+<span class="fc bfc" id="L450" title="All 2 branches covered.">			if (docsource != null) {</span>
+				// Get an in-memory string representation of the document
+				// and return a reader on it.
+<span class="fc" id="L453">				reader = new StringReader(</span>
+						new XMLOutputter().outputString(docsource));
+			}
+<span class="fc bfc" id="L456" title="All 2 branches covered.">			else if (listsource != null) {</span>
+<span class="fc" id="L457">				reader = new StringReader(</span>
+						new XMLOutputter().outputString(listsource));
+			}
+			// Else: No source, no reader!
+<span class="fc" id="L461">			return reader;</span>
+		}
+		/**
+		 * Sets the byte stream for this input source.
+		 * &lt;p&gt;
+		 * This implementation always throws an
+		 * {@link UnsupportedOperationException} as the only source
+		 * stream supported is the source JDOM document.
+		 * &lt;/p&gt;
+		 *
+		 * @param  byteStream   a byte stream containing
+		 *                           an XML document.
+		 *
+		 * @throws UnsupportedOperationException  always!
+		 */
+		@Override
+		public void setByteStream(InputStream byteStream)
+				throws UnsupportedOperationException {
+<span class="fc" id="L479">			throw new UnsupportedOperationException();</span>
+		}
+
+		public Document getDocumentSource() {
+<span class="fc" id="L483">			return docsource;</span>
+		}
+
+		public List&lt;? extends Content&gt; getListSource() {
+			// TODO Auto-generated method stub
+<span class="fc" id="L488">			return listsource;</span>
+		}
+
+	}
+
+	//=========================================================================
+	// DocumentReader nested class
+	//=========================================================================
+
+	/**
+	 * An implementation of the SAX2 XMLReader interface that presents
+	 * a SAX view of a JDOM Document.  The actual generation of the
+	 * SAX events is delegated to JDOM's SAXOutputter.
+	 *
+	 * @see    org.jdom2.Document
+	 * @see    org.jdom2.output.SAXOutputter
+	 */
+	private static class DocumentReader   extends    SAXOutputter
+	implements XMLReader    {
+		/**
+		 * Public default constructor.
+		 */
+		public DocumentReader() {
+<span class="fc" id="L511">			super();</span>
+<span class="fc" id="L512">		}</span>
+
+		//----------------------------------------------------------------------
+		// SAX XMLReader interface support
+		//----------------------------------------------------------------------
+
+		/**
+		 * Parses an XML document from a system identifier (URI).
+		 * &lt;p&gt;
+		 * This implementation does not support reading XML data from
+		 * system identifiers, only from JDOM documents.  Hence,
+		 * this method always throws a {@link SAXNotSupportedException}.
+		 * &lt;/p&gt;
+		 *
+		 * @param  systemId   the system identifier (URI).
+		 *
+		 * @throws SAXNotSupportedException   always!
+		 */
+		@Override
+		public void parse(String systemId) throws SAXNotSupportedException {
+<span class="fc" id="L532">			throw new SAXNotSupportedException(</span>
+					&quot;Only JDOM Documents are supported as input&quot;);
+		}
+
+		/**
+		 * Parses an XML document.
+		 * &lt;p&gt;
+		 * The methods accepts only &lt;code&gt;JDOMInputSource&lt;/code&gt;s
+		 * instances as input sources.
+		 * &lt;/p&gt;
+		 *
+		 * @param  input   the input source for the top-level of the
+		 *                  XML document.
+		 *
+		 * @throws SAXException               any SAX exception,
+		 *                                    possibly wrapping
+		 *                                    another exception.
+		 * @throws SAXNotSupportedException   if the input source does
+		 *                                    not wrap a JDOM document.
+		 */
+		@Override
+		public void parse(InputSource input) throws SAXException {
+<span class="fc bfc" id="L554" title="All 2 branches covered.">			if (input instanceof JDOMInputSource) {</span>
+				try {
+<span class="fc" id="L556">					Document docsource = ((JDOMInputSource)input).getDocumentSource();</span>
+<span class="fc bfc" id="L557" title="All 2 branches covered.">					if (docsource != null) {</span>
+<span class="fc" id="L558">						this.output(docsource);</span>
+					}
+					else {
+<span class="fc" id="L561">						this.output(((JDOMInputSource)input).getListSource());</span>
+					}
+				}
+<span class="nc" id="L564">				catch (JDOMException e) {</span>
+<span class="nc" id="L565">					throw new SAXException(e.getMessage(), e);</span>
+<span class="fc" id="L566">				}</span>
+			}
+			else {
+<span class="fc" id="L569">				throw new SAXNotSupportedException(</span>
+						&quot;Only JDOM Documents are supported as input&quot;);
+			}
+<span class="fc" id="L572">		}</span>
+	}
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

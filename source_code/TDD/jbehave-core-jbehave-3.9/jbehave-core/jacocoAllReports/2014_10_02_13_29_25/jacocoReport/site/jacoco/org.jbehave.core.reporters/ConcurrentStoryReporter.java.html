@@ -1,0 +1,364 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ConcurrentStoryReporter.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.reporters</a> &gt; <span class="el_source">ConcurrentStoryReporter.java</span></div><h1>ConcurrentStoryReporter.java</h1><pre class="source lang-java linenums">package org.jbehave.core.reporters;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import org.jbehave.core.model.ExamplesTable;
+import org.jbehave.core.model.GivenStories;
+import org.jbehave.core.model.Lifecycle;
+import org.jbehave.core.model.Meta;
+import org.jbehave.core.model.Narrative;
+import org.jbehave.core.model.OutcomesTable;
+import org.jbehave.core.model.Scenario;
+import org.jbehave.core.model.Story;
+import org.jbehave.core.model.StoryDuration;
+
+/**
+ * When running a multithreading mode, reports cannot be written concurrently but should 
+ * be delayed and invoked only at the end of a story, ensuring synchronization on the delegate
+ * responsible for the reporting.
+ */
+public class ConcurrentStoryReporter implements StoryReporter {
+
+    private static Method storyCancelled;
+    private static Method storyNotAllowed;
+    private static Method beforeStory;
+    private static Method afterStory;
+    private static Method narrative;
+    private static Method lifecycle;
+    private static Method scenarioNotAllowed;
+    private static Method beforeScenario;
+    private static Method scenarioMeta;
+    private static Method afterScenario;
+    private static Method givenStories;
+    private static Method givenStoriesPaths;
+    private static Method beforeExamples;
+    private static Method example;
+    private static Method afterExamples;
+    private static Method beforeStep;
+    private static Method successful;
+    private static Method ignorable;
+    private static Method pending;
+    private static Method notPerformed;
+    private static Method failed;
+    private static Method failedOutcomes;
+    private static Method dryRun;
+    private static Method pendingMethods;
+    private static Method restarted;
+
+    static {
+        try {
+<span class="fc" id="L54">            storyCancelled = StoryReporter.class.getMethod(&quot;storyCancelled&quot;, Story.class, StoryDuration.class);</span>
+<span class="fc" id="L55">            storyNotAllowed = StoryReporter.class.getMethod(&quot;storyNotAllowed&quot;, Story.class, String.class);</span>
+<span class="fc" id="L56">            beforeStory = StoryReporter.class.getMethod(&quot;beforeStory&quot;, Story.class, Boolean.TYPE);</span>
+<span class="fc" id="L57">            afterStory = StoryReporter.class.getMethod(&quot;afterStory&quot;, Boolean.TYPE);</span>
+<span class="fc" id="L58">            narrative = StoryReporter.class.getMethod(&quot;narrative&quot;, Narrative.class);</span>
+<span class="fc" id="L59">            lifecycle = StoryReporter.class.getMethod(&quot;lifecyle&quot;, Lifecycle.class);</span>
+<span class="fc" id="L60">            scenarioNotAllowed = StoryReporter.class.getMethod(&quot;scenarioNotAllowed&quot;, Scenario.class, String.class);</span>
+<span class="fc" id="L61">            beforeScenario = StoryReporter.class.getMethod(&quot;beforeScenario&quot;, String.class);</span>
+<span class="fc" id="L62">            scenarioMeta = StoryReporter.class.getMethod(&quot;scenarioMeta&quot;, Meta.class);</span>
+<span class="fc" id="L63">            afterScenario = StoryReporter.class.getMethod(&quot;afterScenario&quot;);</span>
+<span class="fc" id="L64">            givenStories = StoryReporter.class.getMethod(&quot;givenStories&quot;, GivenStories.class);</span>
+<span class="fc" id="L65">            givenStoriesPaths = StoryReporter.class.getMethod(&quot;givenStories&quot;, List.class);</span>
+<span class="fc" id="L66">            beforeExamples = StoryReporter.class.getMethod(&quot;beforeExamples&quot;, List.class, ExamplesTable.class);</span>
+<span class="fc" id="L67">            example = StoryReporter.class.getMethod(&quot;example&quot;, Map.class);</span>
+<span class="fc" id="L68">            afterExamples = StoryReporter.class.getMethod(&quot;afterExamples&quot;);</span>
+<span class="fc" id="L69">            beforeStep = StoryReporter.class.getMethod(&quot;beforeStep&quot;, String.class);</span>
+<span class="fc" id="L70">            successful = StoryReporter.class.getMethod(&quot;successful&quot;, String.class);</span>
+<span class="fc" id="L71">            ignorable = StoryReporter.class.getMethod(&quot;ignorable&quot;, String.class);</span>
+<span class="fc" id="L72">            pending = StoryReporter.class.getMethod(&quot;pending&quot;, String.class);</span>
+<span class="fc" id="L73">            notPerformed = StoryReporter.class.getMethod(&quot;notPerformed&quot;, String.class);</span>
+<span class="fc" id="L74">            failed = StoryReporter.class.getMethod(&quot;failed&quot;, String.class, Throwable.class);</span>
+<span class="fc" id="L75">            failedOutcomes = StoryReporter.class.getMethod(&quot;failedOutcomes&quot;, String.class, OutcomesTable.class);</span>
+<span class="fc" id="L76">            dryRun = StoryReporter.class.getMethod(&quot;dryRun&quot;);</span>
+<span class="fc" id="L77">            pendingMethods = StoryReporter.class.getMethod(&quot;pendingMethods&quot;, List.class);</span>
+<span class="fc" id="L78">            restarted = StoryReporter.class.getMethod(&quot;restarted&quot;, String.class, Throwable.class);</span>
+<span class="nc" id="L79">        } catch (NoSuchMethodException e) {</span>
+<span class="nc" id="L80">            throw new RuntimeException(e);</span>
+<span class="fc" id="L81">        }</span>
+<span class="fc" id="L82">    }</span>
+
+<span class="fc" id="L84">    private List&lt;DelayedMethod&gt; delayedMethods = new ArrayList&lt;DelayedMethod&gt;();</span>
+    private final StoryReporter crossReferencing;
+    private final StoryReporter delegate;
+    private final boolean multiThreading;
+<span class="fc" id="L88">    private boolean invoked = false;</span>
+
+<span class="fc" id="L90">    public ConcurrentStoryReporter(StoryReporter crossReferencing, StoryReporter delegate, boolean multiThreading) {</span>
+<span class="fc" id="L91">        this.crossReferencing = crossReferencing;</span>
+<span class="fc" id="L92">        this.multiThreading = multiThreading;</span>
+<span class="fc" id="L93">        this.delegate = delegate;</span>
+<span class="fc" id="L94">    }</span>
+
+    public void storyNotAllowed(Story story, String filter) {
+<span class="nc" id="L97">        crossReferencing.storyNotAllowed(story, filter);</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L99">            delayedMethods.add(new DelayedMethod(storyNotAllowed, story, filter));</span>
+        } else {
+<span class="nc" id="L101">            delegate.storyNotAllowed(story, filter);</span>
+        }
+<span class="nc" id="L103">    }</span>
+
+    public void beforeStory(Story story, boolean givenStory) {
+<span class="fc" id="L106">        crossReferencing.beforeStory(story, givenStory);</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L108">            delayedMethods.add(new DelayedMethod(beforeStory, story, givenStory));</span>
+        } else {
+<span class="fc" id="L110">            delegate.beforeStory(story, givenStory);</span>
+        }
+<span class="fc" id="L112">    }</span>
+
+    public void afterStory(boolean givenStory) {
+<span class="fc" id="L115">        crossReferencing.afterStory(givenStory);</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L117">            delayedMethods.add(new DelayedMethod(afterStory, givenStory));</span>
+        } else {
+<span class="fc" id="L119">            delegate.afterStory(givenStory);</span>
+        }
+<span class="fc" id="L121">    }</span>
+
+    public void narrative(Narrative aNarrative) {
+<span class="fc" id="L124">        crossReferencing.narrative(aNarrative);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L126">            delayedMethods.add(new DelayedMethod(narrative, aNarrative));</span>
+        } else {
+<span class="fc" id="L128">            delegate.narrative(aNarrative);</span>
+        }
+<span class="fc" id="L130">    }</span>
+    
+    public void lifecyle(Lifecycle aLifecycle) {
+<span class="fc" id="L133">        crossReferencing.lifecyle(aLifecycle);</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L135">            delayedMethods.add(new DelayedMethod(lifecycle, aLifecycle));</span>
+        } else {
+<span class="fc" id="L137">            delegate.lifecyle(aLifecycle);</span>
+        }
+<span class="fc" id="L139">    }</span>
+
+    public void scenarioNotAllowed(Scenario scenario, String filter) {
+<span class="nc" id="L142">        crossReferencing.scenarioNotAllowed(scenario, filter);</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L144">            delayedMethods.add(new DelayedMethod(scenarioNotAllowed, scenario, filter));</span>
+        } else {
+<span class="nc" id="L146">            delegate.scenarioNotAllowed(scenario, filter);</span>
+        }
+<span class="nc" id="L148">    }</span>
+
+    public void beforeScenario(String scenarioTitle) {
+<span class="fc" id="L151">        crossReferencing.beforeScenario(scenarioTitle);</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L153">            delayedMethods.add(new DelayedMethod(beforeScenario, scenarioTitle));</span>
+        } else {
+<span class="fc" id="L155">            delegate.beforeScenario(scenarioTitle);</span>
+        }
+<span class="fc" id="L157">    }</span>
+
+    public void scenarioMeta(Meta meta) {
+<span class="fc" id="L160">        crossReferencing.scenarioMeta(meta);</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L162">            delayedMethods.add(new DelayedMethod(scenarioMeta, meta));</span>
+        } else {
+<span class="fc" id="L164">            delegate.scenarioMeta(meta);</span>
+        }
+<span class="fc" id="L166">    }</span>
+
+    public void afterScenario() {
+<span class="fc" id="L169">        crossReferencing.afterScenario();</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L171">            delayedMethods.add(new DelayedMethod(afterScenario));</span>
+        } else {
+<span class="fc" id="L173">            delegate.afterScenario();</span>
+        }
+<span class="fc" id="L175">    }</span>
+
+    public void givenStories(GivenStories stories) {
+<span class="nc" id="L178">        crossReferencing.givenStories(stories);</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L180">            delayedMethods.add(new DelayedMethod(givenStories, stories));</span>
+        } else {
+<span class="nc" id="L182">            delegate.givenStories(stories);</span>
+        }
+<span class="nc" id="L184">    }</span>
+
+    public void givenStories(List&lt;String&gt; storyPaths) {
+<span class="fc" id="L187">        crossReferencing.givenStories(storyPaths);</span>
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L189">            delayedMethods.add(new DelayedMethod(givenStoriesPaths, storyPaths));</span>
+        } else {
+<span class="fc" id="L191">            delegate.givenStories(storyPaths);</span>
+        }
+<span class="fc" id="L193">    }</span>
+
+    public void beforeExamples(List&lt;String&gt; steps, ExamplesTable table) {
+<span class="fc" id="L196">        crossReferencing.beforeExamples(steps, table);</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L198">            delayedMethods.add(new DelayedMethod(beforeExamples, steps, table));</span>
+        } else {
+<span class="fc" id="L200">            delegate.beforeExamples(steps, table);</span>
+        }
+<span class="fc" id="L202">    }</span>
+
+    public void example(Map&lt;String, String&gt; tableRow) {
+<span class="fc" id="L205">        crossReferencing.example(tableRow);</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L207">            delayedMethods.add(new DelayedMethod(example, tableRow));</span>
+        } else {
+<span class="fc" id="L209">            delegate.example(tableRow);</span>
+        }
+<span class="fc" id="L211">    }</span>
+
+    public void afterExamples() {
+<span class="fc" id="L214">        crossReferencing.afterExamples();</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L216">            delayedMethods.add(new DelayedMethod(afterExamples));</span>
+        } else {
+<span class="fc" id="L218">            delegate.afterExamples();</span>
+        }
+<span class="fc" id="L220">    }</span>
+
+    public void beforeStep(String step) {
+<span class="fc" id="L223">        crossReferencing.beforeStep(step);</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L225">            delayedMethods.add(new DelayedMethod(beforeStep, step));</span>
+        } else {
+<span class="fc" id="L227">            delegate.beforeStep(step);</span>
+        }
+<span class="fc" id="L229">    }</span>
+
+    public void successful(String step) {
+<span class="fc" id="L232">        crossReferencing.successful(step);</span>
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L234">            delayedMethods.add(new DelayedMethod(successful, step));</span>
+        } else {
+<span class="fc" id="L236">            delegate.successful(step);</span>
+        }
+<span class="fc" id="L238">    }</span>
+
+    public void ignorable(String step) {
+<span class="fc" id="L241">        crossReferencing.ignorable(step);</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L243">            delayedMethods.add(new DelayedMethod(ignorable, step));</span>
+        } else {
+<span class="fc" id="L245">            delegate.ignorable(step);</span>
+        }
+<span class="fc" id="L247">    }</span>
+
+    public void pending(String step) {
+<span class="fc" id="L250">        crossReferencing.pending(step);</span>
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L252">            delayedMethods.add(new DelayedMethod(pending, step));</span>
+        } else {
+<span class="fc" id="L254">            delegate.pending(step);</span>
+        }
+<span class="fc" id="L256">    }</span>
+
+    public void notPerformed(String step) {
+<span class="fc" id="L259">        crossReferencing.notPerformed(step);</span>
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L261">            delayedMethods.add(new DelayedMethod(notPerformed, step));</span>
+        } else {
+<span class="fc" id="L263">            delegate.notPerformed(step);</span>
+        }
+<span class="fc" id="L265">    }</span>
+
+    public void failed(String step, Throwable cause) {
+<span class="fc" id="L268">        crossReferencing.failed(step, cause);</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L270">            delayedMethods.add(new DelayedMethod(failed, step, cause));</span>
+        } else {
+<span class="fc" id="L272">            delegate.failed(step, cause);</span>
+        }
+<span class="fc" id="L274">    }</span>
+
+    public void failedOutcomes(String step, OutcomesTable table) {
+<span class="fc" id="L277">        crossReferencing.failedOutcomes(step, table);</span>
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L279">            delayedMethods.add(new DelayedMethod(failedOutcomes, step, table));</span>
+        } else {
+<span class="fc" id="L281">            delegate.failedOutcomes(step, table);</span>
+        }
+<span class="fc" id="L283">    }</span>
+
+    public void dryRun() {
+<span class="fc" id="L286">        crossReferencing.dryRun();</span>
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L288">            delayedMethods.add(new DelayedMethod(dryRun));</span>
+        } else {
+<span class="fc" id="L290">            delegate.dryRun();</span>
+        }
+<span class="fc" id="L292">    }</span>
+
+    public void pendingMethods(List&lt;String&gt; methods) {
+<span class="fc" id="L295">        crossReferencing.pendingMethods(methods);</span>
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L297">            delayedMethods.add(new DelayedMethod(pendingMethods, methods));</span>
+        } else {
+<span class="fc" id="L299">            delegate.pendingMethods(methods);</span>
+        }
+        
+<span class="fc" id="L302">    }</span>
+
+    public void restarted(String step, Throwable cause) {
+<span class="fc" id="L305">        crossReferencing.restarted(step, cause);</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L307">            delayedMethods.add(new DelayedMethod(restarted, step, cause));</span>
+        } else {
+<span class="fc" id="L309">            delegate.restarted(step, cause);</span>
+        }
+<span class="fc" id="L311">    }</span>
+
+    public void storyCancelled(Story story, StoryDuration storyDuration) {
+<span class="fc" id="L314">        crossReferencing.storyCancelled(story, storyDuration);</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">        if (multiThreading) {</span>
+<span class="nc" id="L316">            delayedMethods.add(new DelayedMethod(storyCancelled, story, storyDuration));</span>
+        } else {
+<span class="fc" id="L318">            delegate.storyCancelled(story, storyDuration);</span>
+        }
+<span class="fc" id="L320">    }</span>
+
+    public StoryReporter getDelegate() {
+<span class="fc" id="L323">        return delegate;</span>
+    }
+
+    public void invokeDelayed() {
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">        if ( !multiThreading ){</span>
+<span class="fc" id="L328">            return;</span>
+        }
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        if (invoked) {</span>
+<span class="nc" id="L331">            throw new RuntimeException(&quot;Delayed methods already invoked&quot;);</span>
+        }
+<span class="nc" id="L333">        synchronized (delegate) {</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">            for (DelayedMethod delayed : delayedMethods) {</span>
+<span class="nc" id="L335">                delayed.invoke(delegate);</span>
+<span class="nc" id="L336">            }</span>
+<span class="nc" id="L337">        }</span>
+<span class="nc" id="L338">        invoked = true;</span>
+<span class="nc" id="L339">    }</span>
+
+    public static class DelayedMethod {
+        private Method method;
+        private Object[] args;
+
+<span class="nc" id="L345">        public DelayedMethod(Method method, Object... args) {</span>
+<span class="nc" id="L346">            this.method = method;</span>
+<span class="nc" id="L347">            this.args = args;</span>
+<span class="nc" id="L348">        }</span>
+
+        public void invoke(StoryReporter delegate) {
+            try {
+<span class="nc" id="L352">                method.invoke(delegate, args);</span>
+<span class="nc" id="L353">            } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L354">                throw new RuntimeException(e);</span>
+<span class="nc" id="L355">            } catch (InvocationTargetException e) {</span>
+<span class="nc" id="L356">                throw new RuntimeException(e);</span>
+<span class="nc" id="L357">            } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L358">                throw new RuntimeException(&quot;&quot; + method, e);</span>
+<span class="nc" id="L359">            }</span>
+<span class="nc" id="L360">        }</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

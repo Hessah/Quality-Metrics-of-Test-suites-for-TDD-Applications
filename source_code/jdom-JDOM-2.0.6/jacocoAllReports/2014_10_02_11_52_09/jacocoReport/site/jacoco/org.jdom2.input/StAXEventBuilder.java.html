@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StAXEventBuilder.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.input</a> &gt; <span class="el_source">StAXEventBuilder.java</span></div><h1>StAXEventBuilder.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2011-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.input;
+
+import java.util.Iterator;
+
+import javax.xml.namespace.QName;
+import javax.xml.stream.XMLEventReader;
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.events.Characters;
+import javax.xml.stream.events.StartElement;
+import javax.xml.stream.events.XMLEvent;
+
+import org.jdom2.AttributeType;
+import org.jdom2.Comment;
+import org.jdom2.DefaultJDOMFactory;
+import org.jdom2.DocType;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.JDOMException;
+import org.jdom2.JDOMFactory;
+import org.jdom2.Namespace;
+import org.jdom2.ProcessingInstruction;
+import org.jdom2.input.stax.DTDParser;
+
+/**
+ * Builds a JDOM Document from a StAX-based XMLEventReader.
+ * &lt;p&gt;
+ * XMLEventReaders are pre-configured and as a result JDOM is not able to
+ * alter whether the input is validated, or whether the Events have escaped
+ * entities or not. These (and other) characteristics are configurable by
+ * setting the correct features and properties on the XMLInputFactory when it
+ * is used to create the XMLStreamReader.
+ * &lt;p&gt;
+ * Useful configuration to set, or know about is:
+ * &lt;ul&gt;
+ * &lt;li&gt;StAX Events seldom differentiate between Text and CDATA content. You
+ * will likely want to configure your StAX factory (XMLInputFactory) with
+ * &lt;code&gt;http://java.sun.com/xml/stream/properties/report-cdata-event&lt;/code&gt;
+ * for the default Java StAX implementation, or the equivalent property for your
+ * StAX engine.
+ * &lt;li&gt;The remaining XMLInputFactory settings are likely to work fine at their
+ * default values.
+ * &lt;li&gt;StAX is not likely to be your best option if you want a validating
+ * parser, at least not with the default (built-in Java implementation in Java6 
+ * which does not support it). Consider a SAX parser.
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * From a JDOM perspective XMLStreamReaders are more efficient than 
+ * XMLEventReaders. Where possible use an XMLStreamReader.
+ * &lt;p&gt;
+ * If you happen to be looking at the source code, pay careful attention to the
+ * imports so you know what type of instance is being processed, whether it is
+ * a StAX class, or a JDOM class, because there are name conflicts.
+ * 
+ * @author Rolf Lear
+ *
+ */
+<span class="fc" id="L112">public class StAXEventBuilder {</span>
+	
+
+	/**
+	 * Create a Document from an XMLEventReader
+	 * @param factory the {@link JDOMFactory} to use
+	 * @param stream the XMLEventReader to read from
+	 * @return the parsed Document
+	 * @throws JDOMException if there is any issue
+	 * 				(XMLStreamExceptions are wrapped).
+	 */
+	private static final Document process(final JDOMFactory factory, 
+			final XMLEventReader events) throws JDOMException {
+		try {
+
+<span class="fc" id="L127">			final Document document = factory.document(null);</span>
+<span class="fc" id="L128">			Element current = null;</span>
+
+<span class="fc" id="L130">			XMLEvent event = events.peek();</span>
+
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">			if (XMLStreamConstants.START_DOCUMENT != event.getEventType()) {</span>
+<span class="nc" id="L133">				throw new JDOMException(&quot;JDOM requires that XMLStreamReaders &quot; +</span>
+						&quot;are at their beginning when being processed.&quot;);
+			}
+
+
+
+<span class="fc bfc" id="L139" title="All 2 branches covered.">			while (event.getEventType() != XMLStreamConstants.END_DOCUMENT) {</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">				if (event.isStartDocument()) {</span>
+<span class="fc" id="L141">					document.setBaseURI(event.getLocation().getSystemId());</span>
+<span class="fc" id="L142">					document.setProperty(&quot;ENCODING_SCHEME&quot;,</span>
+							((javax.xml.stream.events.StartDocument)event).getCharacterEncodingScheme());
+<span class="fc" id="L144">					document.setProperty(&quot;STANDALONE&quot;, String.valueOf(</span>
+							((javax.xml.stream.events.StartDocument)event).isStandalone()));
+					//						document.setProperty(&quot;ENCODING&quot;,
+					//								((StartDocument)event).getEncoding());
+<span class="fc bfc" id="L148" title="All 2 branches covered.">				} else if (event instanceof javax.xml.stream.events.DTD) {</span>
+					//List&lt;?&gt; list = (List&lt;?&gt;)reader.getProperty(&quot;javax.xml.stream.entities&quot;);
+					//System.out.println(list);
+<span class="fc" id="L151">					final DocType dtype = DTDParser.parse(((javax.xml.stream.events.DTD)event).getDocumentTypeDeclaration(), factory);</span>
+<span class="fc" id="L152">					document.setDocType(dtype);</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">				} else if (event.isStartElement()) {</span>
+<span class="fc" id="L154">					final Element emt = processElement(factory, event.asStartElement());</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">					if (current == null) {</span>
+<span class="fc" id="L156">						document.setRootElement(emt);</span>
+<span class="fc" id="L157">						final DocType dt = document.getDocType();</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">						if (dt != null) {</span>
+<span class="fc" id="L159">							dt.setElementName(emt.getName());</span>
+						}
+<span class="fc" id="L161">					} else {</span>
+<span class="fc" id="L162">						current.addContent(emt);</span>
+					}
+<span class="fc" id="L164">					current = emt;</span>
+<span class="pc bpc" id="L165" title="1 of 4 branches missed.">				} else if (event.isCharacters() &amp;&amp; current != null) {</span>
+					// ignore any character-based content (should only be spaces)
+					// outside of the root element.
+<span class="fc" id="L168">					final Characters chars = event.asCharacters();</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">					if (chars.isCData()) {</span>
+<span class="fc" id="L170">						current.addContent(factory.cdata(</span>
+								((Characters)event).getData()));
+					} else {
+<span class="fc" id="L173">						current.addContent(factory.text(</span>
+								((Characters)event).getData()));
+					}
+<span class="fc bfc" id="L176" title="All 2 branches covered.">				} else if (event instanceof javax.xml.stream.events.Comment) {</span>
+<span class="fc" id="L177">					final Comment comment = factory.comment(</span>
+							((javax.xml.stream.events.Comment)event).getText());
+<span class="fc bfc" id="L179" title="All 2 branches covered.">					if (current == null) {</span>
+<span class="fc" id="L180">						document.addContent(comment);</span>
+					} else {
+<span class="fc" id="L182">						current.addContent(comment);</span>
+					}
+<span class="fc bfc" id="L184" title="All 2 branches covered.">				} else if (event.isEntityReference()) {</span>
+<span class="fc" id="L185">					current.addContent(factory.entityRef(</span>
+							((javax.xml.stream.events.EntityReference)event).getName()));
+<span class="fc bfc" id="L187" title="All 2 branches covered.">				} else if (event.isProcessingInstruction()) {</span>
+<span class="fc" id="L188">					final ProcessingInstruction pi = factory.processingInstruction(</span>
+							((javax.xml.stream.events.ProcessingInstruction)event).getTarget(),
+							((javax.xml.stream.events.ProcessingInstruction)event).getData());
+<span class="fc bfc" id="L191" title="All 2 branches covered.">					if (current == null) {</span>
+<span class="fc" id="L192">						document.addContent(pi);</span>
+					} else {
+<span class="fc" id="L194">						current.addContent(pi);</span>
+					}
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">				} else if (event.isEndElement()) {</span>
+<span class="fc" id="L197">					current = current.getParentElement();</span>
+				}
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">				if (events.hasNext()) {</span>
+<span class="fc" id="L200">					event = events.nextEvent();</span>
+				} else {
+					break;
+				}
+			}
+<span class="fc" id="L205">			return document;</span>
+<span class="nc" id="L206">		} catch (final XMLStreamException xse) {</span>
+<span class="nc" id="L207">			throw new JDOMException(&quot;Unable to process XMLStream. See Cause.&quot;, xse);</span>
+		}
+	}
+
+	private static final Element processElement(final JDOMFactory factory,
+			final StartElement event) {
+<span class="fc" id="L213">		final QName qname = event.getName();</span>
+
+<span class="fc" id="L215">		final Element element = factory.element(qname.getLocalPart(),</span>
+				Namespace.getNamespace(qname.getPrefix(), qname.getNamespaceURI()));
+
+		// Handle attributes
+<span class="fc" id="L219">		for (final Iterator&lt;?&gt; it = event.getAttributes();</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">				it.hasNext(); ) {</span>
+
+<span class="fc" id="L222">			final javax.xml.stream.events.Attribute att =</span>
+					(javax.xml.stream.events.Attribute)it.next();
+
+<span class="fc" id="L225">			final QName aqname = att.getName();</span>
+
+<span class="fc" id="L227">			final Namespace attNs = Namespace.getNamespace(aqname.getPrefix(),</span>
+					aqname.getNamespaceURI());
+
+<span class="fc" id="L230">			factory.setAttribute(element, factory.attribute(</span>
+					aqname.getLocalPart(), att.getValue(),
+					AttributeType.getAttributeType(att.getDTDType()), attNs));
+<span class="fc" id="L233">		}</span>
+
+<span class="fc bfc" id="L235" title="All 2 branches covered.">		for (final Iterator&lt;?&gt; it = event.getNamespaces(); it.hasNext();) {</span>
+<span class="fc" id="L236">			final javax.xml.stream.events.Namespace ns =</span>
+					(javax.xml.stream.events.Namespace)it.next();
+
+<span class="fc" id="L239">			element.addNamespaceDeclaration(Namespace.getNamespace(</span>
+					ns.getPrefix(), ns.getNamespaceURI()));
+<span class="fc" id="L241">		}</span>
+
+<span class="fc" id="L243">		return element;</span>
+	}
+
+	
+	
+	/** The factory to use for parsing */
+<span class="fc" id="L249">	private JDOMFactory factory = new DefaultJDOMFactory();</span>
+	
+	/**
+	 * Returns the current {@link org.jdom2.JDOMFactory} in use.
+	 * @return the factory in use
+	 */
+	public JDOMFactory getFactory() {
+<span class="fc" id="L256">		return factory;</span>
+	}
+
+	/**
+	 * This sets a custom JDOMFactory for the builder.  Use this to build
+	 * the tree with your own subclasses of the JDOM classes.
+	 *
+	 * @param factory &lt;code&gt;JDOMFactory&lt;/code&gt; to use
+	 */
+	public void setFactory(JDOMFactory factory) {
+<span class="fc" id="L266">		this.factory = factory;</span>
+<span class="fc" id="L267">	}</span>
+	
+	/**
+	 * This builds a document from the supplied
+	 * XMLEventReader.
+	 * &lt;p&gt;
+	 * The JDOMContent will be built by the current JDOMFactory.
+	 *
+	 * @param events &lt;code&gt;XMLEventReader&lt;/code&gt; to read from
+	 * @return &lt;code&gt;Document&lt;/code&gt; resultant Document object
+	 * @throws JDOMException when errors occur in parsing
+	 */
+	public Document build(XMLEventReader events) throws JDOMException {
+<span class="fc" id="L280">		return process(factory, events);</span>
+	}
+	
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

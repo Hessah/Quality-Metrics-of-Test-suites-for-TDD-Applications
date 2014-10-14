@@ -1,0 +1,814 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>SAXOutputter.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.output</a> &gt; <span class="el_source">SAXOutputter.java</span></div><h1>SAXOutputter.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2000-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.output;
+
+import static org.jdom2.JDOMConstants.*;
+
+import java.util.List;
+
+import org.xml.sax.ContentHandler;
+import org.xml.sax.DTDHandler;
+import org.xml.sax.EntityResolver;
+import org.xml.sax.ErrorHandler;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXNotRecognizedException;
+import org.xml.sax.SAXNotSupportedException;
+import org.xml.sax.SAXParseException;
+import org.xml.sax.ext.DeclHandler;
+import org.xml.sax.ext.LexicalHandler;
+
+import org.jdom2.CDATA;
+import org.jdom2.Comment;
+import org.jdom2.Content;
+import org.jdom2.DocType;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.EntityRef;
+import org.jdom2.JDOMException;
+import org.jdom2.ProcessingInstruction;
+import org.jdom2.Text;
+import org.jdom2.output.support.AbstractSAXOutputProcessor;
+import org.jdom2.output.support.SAXOutputProcessor;
+import org.jdom2.output.support.SAXTarget;
+
+/**
+ * Outputs a JDOM document as a stream of SAX2 events.
+ * &lt;p&gt;
+ * Most ContentHandler callbacks are supported. BOTH
+ * &lt;code&gt;ignorableWhitespace()&lt;/code&gt; and &lt;code&gt;skippedEntity()&lt;/code&gt; have not
+ * been implemented. The &lt;code&gt;{@link JDOMLocator}&lt;/code&gt; class returned by
+ * &lt;code&gt;{@link #getLocator}&lt;/code&gt; exposes the current node being operated
+ * upon.
+ * &lt;p&gt;
+ * At this time, it is not possible to access notations and unparsed entity
+ * references in a DTD from JDOM. Therefore, &lt;code&gt;DTDHandler&lt;/code&gt; callbacks
+ * have not been implemented yet.
+ * &lt;p&gt;
+ * The &lt;code&gt;ErrorHandler&lt;/code&gt; callbacks have not been implemented, since
+ * these are supposed to be invoked when the document is parsed and at this
+ * point the document exists in memory and is known to have no errors.
+ * &lt;/p&gt;
+ * 
+ * @author Brett McLaughlin
+ * @author Jason Hunter
+ * @author Fred Trimble
+ * @author Bradley S. Huffman
+ */
+public class SAXOutputter {
+
+<span class="fc" id="L111">	private static final class DefaultSAXOutputProcessor extends</span>
+			AbstractSAXOutputProcessor {
+		// nothing.
+	}
+
+<span class="fc" id="L116">	private static final SAXOutputProcessor DEFAULT_PROCESSOR = new DefaultSAXOutputProcessor();</span>
+
+	/** registered &lt;code&gt;ContentHandler&lt;/code&gt; */
+	private ContentHandler contentHandler;
+
+	/** registered &lt;code&gt;ErrorHandler&lt;/code&gt; */
+	private ErrorHandler errorHandler;
+
+	/** registered &lt;code&gt;DTDHandler&lt;/code&gt; */
+	private DTDHandler dtdHandler;
+
+	/** registered &lt;code&gt;EntityResolver&lt;/code&gt; */
+	private EntityResolver entityResolver;
+
+	/** registered &lt;code&gt;LexicalHandler&lt;/code&gt; */
+	private LexicalHandler lexicalHandler;
+
+	/** registered &lt;code&gt;DeclHandler&lt;/code&gt; */
+	private DeclHandler declHandler;
+
+	/**
+	 * Whether to report attribute namespace declarations as xmlns attributes.
+	 * Defaults to &lt;code&gt;false&lt;/code&gt; as per SAX specifications.
+	 * 
+	 * @see &lt;a href=&quot;http://www.megginson.com/SAX/Java/namespaces.html&quot;&gt; SAX
+	 *      namespace specifications&lt;/a&gt;
+	 */
+<span class="fc" id="L143">	private boolean declareNamespaces = false;</span>
+
+	/**
+	 * Whether to report DTD events to DeclHandlers and LexicalHandlers.
+	 * Defaults to &lt;code&gt;true&lt;/code&gt;.
+	 */
+<span class="fc" id="L149">	private boolean reportDtdEvents = true;</span>
+
+	/**
+	 * A SAXOutputProcessor
+	 */
+<span class="fc" id="L154">	private SAXOutputProcessor processor = DEFAULT_PROCESSOR;</span>
+
+	/**
+	 * The Format to use for output.
+	 */
+<span class="fc" id="L159">	private Format format = Format.getRawFormat();</span>
+
+	/**
+	 * This will create a &lt;code&gt;SAXOutputter&lt;/code&gt; without any registered
+	 * handler. The application is then responsible for registering them using
+	 * the &lt;code&gt;setXxxHandler()&lt;/code&gt; methods.
+	 */
+<span class="fc" id="L166">	public SAXOutputter() {</span>
+<span class="fc" id="L167">	}</span>
+
+	/**
+	 * This will create a &lt;code&gt;SAXOutputter&lt;/code&gt; with the specified
+	 * &lt;code&gt;ContentHandler&lt;/code&gt;.
+	 * 
+	 * @param contentHandler
+	 *        contains &lt;code&gt;ContentHandler&lt;/code&gt; callback methods
+	 */
+	public SAXOutputter(ContentHandler contentHandler) {
+<span class="fc" id="L177">		this(contentHandler, null, null, null, null);</span>
+<span class="fc" id="L178">	}</span>
+
+	/**
+	 * This will create a &lt;code&gt;SAXOutputter&lt;/code&gt; with the specified SAX2
+	 * handlers. At this time, only &lt;code&gt;ContentHandler&lt;/code&gt; and
+	 * &lt;code&gt;EntityResolver&lt;/code&gt; are supported.
+	 * 
+	 * @param contentHandler
+	 *        contains &lt;code&gt;ContentHandler&lt;/code&gt; callback methods
+	 * @param errorHandler
+	 *        contains &lt;code&gt;ErrorHandler&lt;/code&gt; callback methods
+	 * @param dtdHandler
+	 *        contains &lt;code&gt;DTDHandler&lt;/code&gt; callback methods
+	 * @param entityResolver
+	 *        contains &lt;code&gt;EntityResolver&lt;/code&gt; callback methods
+	 */
+	public SAXOutputter(ContentHandler contentHandler,
+			ErrorHandler errorHandler, DTDHandler dtdHandler,
+			EntityResolver entityResolver) {
+<span class="fc" id="L197">		this(contentHandler, errorHandler, dtdHandler, entityResolver, null);</span>
+<span class="fc" id="L198">	}</span>
+
+	/**
+	 * This will create a &lt;code&gt;SAXOutputter&lt;/code&gt; with the specified SAX2
+	 * handlers. At this time, only &lt;code&gt;ContentHandler&lt;/code&gt; and
+	 * &lt;code&gt;EntityResolver&lt;/code&gt; are supported.
+	 * 
+	 * @param contentHandler
+	 *        contains &lt;code&gt;ContentHandler&lt;/code&gt; callback methods
+	 * @param errorHandler
+	 *        contains &lt;code&gt;ErrorHandler&lt;/code&gt; callback methods
+	 * @param dtdHandler
+	 *        contains &lt;code&gt;DTDHandler&lt;/code&gt; callback methods
+	 * @param entityResolver
+	 *        contains &lt;code&gt;EntityResolver&lt;/code&gt; callback methods
+	 * @param lexicalHandler
+	 *        contains &lt;code&gt;LexicalHandler&lt;/code&gt; callbacks.
+	 */
+	public SAXOutputter(ContentHandler contentHandler,
+			ErrorHandler errorHandler, DTDHandler dtdHandler,
+<span class="fc" id="L218">			EntityResolver entityResolver, LexicalHandler lexicalHandler) {</span>
+<span class="fc" id="L219">		this.contentHandler = contentHandler;</span>
+<span class="fc" id="L220">		this.errorHandler = errorHandler;</span>
+<span class="fc" id="L221">		this.dtdHandler = dtdHandler;</span>
+<span class="fc" id="L222">		this.entityResolver = entityResolver;</span>
+<span class="fc" id="L223">		this.lexicalHandler = lexicalHandler;</span>
+<span class="fc" id="L224">	}</span>
+
+	/**
+	 * This will create a &lt;code&gt;SAXOutputter&lt;/code&gt; with the specified SAX2
+	 * handlers. At this time, only &lt;code&gt;ContentHandler&lt;/code&gt; and
+	 * &lt;code&gt;EntityResolver&lt;/code&gt; are supported.
+	 * 
+	 * @param processor
+	 *        the {@link SAXOutputProcessor} to use for output.
+	 * @param format
+	 *        the {@link Format} to use for output.
+	 * @param contentHandler
+	 *        contains &lt;code&gt;ContentHandler&lt;/code&gt; callback methods
+	 * @param errorHandler
+	 *        contains &lt;code&gt;ErrorHandler&lt;/code&gt; callback methods
+	 * @param dtdHandler
+	 *        contains &lt;code&gt;DTDHandler&lt;/code&gt; callback methods
+	 * @param entityResolver
+	 *        contains &lt;code&gt;EntityResolver&lt;/code&gt; callback methods
+	 * @param lexicalHandler
+	 *        contains &lt;code&gt;LexicalHandler&lt;/code&gt; callbacks.
+	 */
+	public SAXOutputter(SAXOutputProcessor processor, Format format,
+			ContentHandler contentHandler, ErrorHandler errorHandler,
+			DTDHandler dtdHandler, EntityResolver entityResolver,
+<span class="fc" id="L249">			LexicalHandler lexicalHandler) {</span>
+<span class="pc bpc" id="L250" title="1 of 2 branches missed.">		this.processor = processor == null ? DEFAULT_PROCESSOR : processor;</span>
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">		this.format = format == null ? Format.getRawFormat() : format;</span>
+<span class="fc" id="L252">		this.contentHandler = contentHandler;</span>
+<span class="fc" id="L253">		this.errorHandler = errorHandler;</span>
+<span class="fc" id="L254">		this.dtdHandler = dtdHandler;</span>
+<span class="fc" id="L255">		this.entityResolver = entityResolver;</span>
+<span class="fc" id="L256">		this.lexicalHandler = lexicalHandler;</span>
+<span class="fc" id="L257">	}</span>
+
+	/**
+	 * This will set the &lt;code&gt;ContentHandler&lt;/code&gt;.
+	 * 
+	 * @param contentHandler
+	 *        contains &lt;code&gt;ContentHandler&lt;/code&gt; callback methods.
+	 */
+	public void setContentHandler(ContentHandler contentHandler) {
+<span class="fc" id="L266">		this.contentHandler = contentHandler;</span>
+<span class="fc" id="L267">	}</span>
+
+	/**
+	 * Returns the registered &lt;code&gt;ContentHandler&lt;/code&gt;.
+	 * 
+	 * @return the current &lt;code&gt;ContentHandler&lt;/code&gt; or &lt;code&gt;null&lt;/code&gt; if
+	 *         none was registered.
+	 */
+	public ContentHandler getContentHandler() {
+<span class="fc" id="L276">		return this.contentHandler;</span>
+	}
+
+	/**
+	 * This will set the &lt;code&gt;ErrorHandler&lt;/code&gt;.
+	 * 
+	 * @param errorHandler
+	 *        contains &lt;code&gt;ErrorHandler&lt;/code&gt; callback methods.
+	 */
+	public void setErrorHandler(ErrorHandler errorHandler) {
+<span class="fc" id="L286">		this.errorHandler = errorHandler;</span>
+<span class="fc" id="L287">	}</span>
+
+	/**
+	 * Return the registered &lt;code&gt;ErrorHandler&lt;/code&gt;.
+	 * 
+	 * @return the current &lt;code&gt;ErrorHandler&lt;/code&gt; or &lt;code&gt;null&lt;/code&gt; if
+	 *         none was registered.
+	 */
+	public ErrorHandler getErrorHandler() {
+<span class="fc" id="L296">		return this.errorHandler;</span>
+	}
+
+	/**
+	 * This will set the &lt;code&gt;DTDHandler&lt;/code&gt;.
+	 * 
+	 * @param dtdHandler
+	 *        contains &lt;code&gt;DTDHandler&lt;/code&gt; callback methods.
+	 */
+	public void setDTDHandler(DTDHandler dtdHandler) {
+<span class="fc" id="L306">		this.dtdHandler = dtdHandler;</span>
+<span class="fc" id="L307">	}</span>
+
+	/**
+	 * Return the registered &lt;code&gt;DTDHandler&lt;/code&gt;.
+	 * 
+	 * @return the current &lt;code&gt;DTDHandler&lt;/code&gt; or &lt;code&gt;null&lt;/code&gt; if none
+	 *         was registered.
+	 */
+	public DTDHandler getDTDHandler() {
+<span class="fc" id="L316">		return this.dtdHandler;</span>
+	}
+
+	/**
+	 * This will set the &lt;code&gt;EntityResolver&lt;/code&gt;.
+	 * 
+	 * @param entityResolver
+	 *        contains EntityResolver callback methods.
+	 */
+	public void setEntityResolver(EntityResolver entityResolver) {
+<span class="fc" id="L326">		this.entityResolver = entityResolver;</span>
+<span class="fc" id="L327">	}</span>
+
+	/**
+	 * Return the registered &lt;code&gt;EntityResolver&lt;/code&gt;.
+	 * 
+	 * @return the current &lt;code&gt;EntityResolver&lt;/code&gt; or &lt;code&gt;null&lt;/code&gt; if
+	 *         none was registered.
+	 */
+	public EntityResolver getEntityResolver() {
+<span class="fc" id="L336">		return this.entityResolver;</span>
+	}
+
+	/**
+	 * This will set the &lt;code&gt;LexicalHandler&lt;/code&gt;.
+	 * 
+	 * @param lexicalHandler
+	 *        contains lexical callback methods.
+	 */
+	public void setLexicalHandler(LexicalHandler lexicalHandler) {
+<span class="fc" id="L346">		this.lexicalHandler = lexicalHandler;</span>
+<span class="fc" id="L347">	}</span>
+
+	/**
+	 * Return the registered &lt;code&gt;LexicalHandler&lt;/code&gt;.
+	 * 
+	 * @return the current &lt;code&gt;LexicalHandler&lt;/code&gt; or &lt;code&gt;null&lt;/code&gt; if
+	 *         none was registered.
+	 */
+	public LexicalHandler getLexicalHandler() {
+<span class="fc" id="L356">		return this.lexicalHandler;</span>
+	}
+
+	/**
+	 * This will set the &lt;code&gt;DeclHandler&lt;/code&gt;.
+	 * 
+	 * @param declHandler
+	 *        contains declaration callback methods.
+	 */
+	public void setDeclHandler(DeclHandler declHandler) {
+<span class="fc" id="L366">		this.declHandler = declHandler;</span>
+<span class="fc" id="L367">	}</span>
+
+	/**
+	 * Return the registered &lt;code&gt;DeclHandler&lt;/code&gt;.
+	 * 
+	 * @return the current &lt;code&gt;DeclHandler&lt;/code&gt; or &lt;code&gt;null&lt;/code&gt; if none
+	 *         was registered.
+	 */
+	public DeclHandler getDeclHandler() {
+<span class="fc" id="L376">		return this.declHandler;</span>
+	}
+
+	/**
+	 * Returns whether attribute namespace declarations shall be reported as
+	 * &quot;xmlns&quot; attributes.
+	 * 
+	 * @return whether attribute namespace declarations shall be reported as
+	 *         &quot;xmlns&quot; attributes.
+	 */
+	public boolean getReportNamespaceDeclarations() {
+<span class="fc" id="L387">		return declareNamespaces;</span>
+	}
+
+	/**
+	 * This will define whether attribute namespace declarations shall be
+	 * reported as &quot;xmlns&quot; attributes. This flag defaults to &lt;code&gt;false&lt;/code&gt;
+	 * and behaves as the &quot;namespace-prefixes&quot; SAX core feature.
+	 * 
+	 * @param declareNamespaces
+	 *        whether attribute namespace declarations shall be reported as
+	 *        &quot;xmlns&quot; attributes.
+	 */
+	public void setReportNamespaceDeclarations(boolean declareNamespaces) {
+<span class="fc" id="L400">		this.declareNamespaces = declareNamespaces;</span>
+<span class="fc" id="L401">	}</span>
+
+	/**
+	 * Returns whether DTD events will be reported.
+	 * 
+	 * @return whether DTD events will be reported
+	 */
+	public boolean getReportDTDEvents() {
+<span class="fc" id="L409">		return reportDtdEvents;</span>
+	}
+
+	/**
+	 * This will define whether to report DTD events to SAX DeclHandlers and
+	 * LexicalHandlers if these handlers are registered and the document to
+	 * output includes a DocType declaration.
+	 * 
+	 * @param reportDtdEvents
+	 *        whether to notify DTD events.
+	 */
+	public void setReportDTDEvents(boolean reportDtdEvents) {
+<span class="fc" id="L421">		this.reportDtdEvents = reportDtdEvents;</span>
+<span class="fc" id="L422">	}</span>
+
+	/**
+	 * This will set the state of a SAX feature.
+	 * &lt;p&gt;
+	 * All XMLReaders are required to support setting to true and to false.
+	 * &lt;/p&gt;
+	 * &lt;p&gt;
+	 * SAXOutputter currently supports the following SAX core features:
+	 * &lt;dl&gt;
+	 * &lt;dt&gt;&lt;code&gt;http://xml.org/sax/features/namespaces&lt;/code&gt;&lt;/dt&gt;
+	 * &lt;dd&gt;&lt;strong&gt;description:&lt;/strong&gt; &lt;code&gt;true&lt;/code&gt; indicates namespace
+	 * URIs and unprefixed local names for element and attribute names will be
+	 * available&lt;/dd&gt;
+	 * &lt;dd&gt;&lt;strong&gt;access:&lt;/strong&gt; read/write, but always &lt;code&gt;true&lt;/code&gt;!&lt;/dd&gt;
+	 * &lt;dt&gt;&lt;code&gt;http://xml.org/sax/features/namespace-prefixes&lt;/code&gt;&lt;/dt&gt;
+	 * &lt;dd&gt;&lt;strong&gt;description:&lt;/strong&gt; &lt;code&gt;true&lt;/code&gt; indicates XML 1.0
+	 * names (with prefixes) and attributes (including xmlns* attributes) will
+	 * be available&lt;/dd&gt;
+	 * &lt;dd&gt;&lt;strong&gt;access:&lt;/strong&gt; read/write&lt;/dd&gt;
+	 * &lt;dt&gt;&lt;code&gt;http://xml.org/sax/features/validation&lt;/code&gt;&lt;/dt&gt;
+	 * &lt;dd&gt;&lt;strong&gt;description:&lt;/strong&gt; controls whether SAXOutputter is
+	 * reporting DTD-related events; if &lt;code&gt;true&lt;/code&gt;, the DocType internal
+	 * subset will be parsed to fire DTD events&lt;/dd&gt;
+	 * &lt;dd&gt;&lt;strong&gt;access:&lt;/strong&gt; read/write, defaults to &lt;code&gt;true&lt;/code&gt;&lt;/dd&gt;
+	 * &lt;/dl&gt;
+	 * &lt;/p&gt;
+	 * 
+	 * @param name
+	 *        &lt;code&gt;String&lt;/code&gt; the feature name, which is a fully-qualified
+	 *        URI.
+	 * @param value
+	 *        &lt;code&gt;boolean&lt;/code&gt; the requested state of the feature (true or
+	 *        false).
+	 * @throws SAXNotRecognizedException
+	 *         when SAXOutputter does not recognize the feature name.
+	 * @throws SAXNotSupportedException
+	 *         when SAXOutputter recognizes the feature name but cannot set the
+	 *         requested value.
+	 */
+	public void setFeature(String name, boolean value)
+			throws SAXNotRecognizedException, SAXNotSupportedException {
+<span class="fc bfc" id="L464" title="All 2 branches covered.">		if (SAX_FEATURE_NAMESPACE_PREFIXES.equals(name)) {</span>
+			// Namespace prefix declarations.
+<span class="fc" id="L466">			this.setReportNamespaceDeclarations(value);</span>
+		} else {
+<span class="fc bfc" id="L468" title="All 2 branches covered.">			if (SAX_FEATURE_NAMESPACES.equals(name)) {</span>
+<span class="fc bfc" id="L469" title="All 2 branches covered.">				if (value != true) {</span>
+					// Namespaces feature always supported by SAXOutputter.
+<span class="fc" id="L471">					throw new SAXNotSupportedException(name);</span>
+				}
+				// Else: true is OK!
+			} else {
+<span class="fc bfc" id="L475" title="All 2 branches covered.">				if (SAX_FEATURE_VALIDATION.equals(name)) {</span>
+					// Report DTD events.
+<span class="fc" id="L477">					this.setReportDTDEvents(value);</span>
+				} else {
+					// Not a supported feature.
+<span class="fc" id="L480">					throw new SAXNotRecognizedException(name);</span>
+				}
+			}
+		}
+<span class="fc" id="L484">	}</span>
+
+	/**
+	 * This will look up the value of a SAX feature.
+	 * 
+	 * @param name
+	 *        &lt;code&gt;String&lt;/code&gt; the feature name, which is a fully-qualified
+	 *        URI.
+	 * @return &lt;code&gt;boolean&lt;/code&gt; the current state of the feature (true or
+	 *         false).
+	 * @throws SAXNotRecognizedException
+	 *         when SAXOutputter does not recognize the feature name.
+	 * @throws SAXNotSupportedException
+	 *         when SAXOutputter recognizes the feature name but determine its
+	 *         value at this time.
+	 */
+	public boolean getFeature(String name) throws SAXNotRecognizedException,
+			SAXNotSupportedException {
+<span class="fc bfc" id="L502" title="All 2 branches covered.">		if (SAX_FEATURE_NAMESPACE_PREFIXES.equals(name)) {</span>
+			// Namespace prefix declarations.
+<span class="fc" id="L504">			return (this.declareNamespaces);</span>
+		}
+<span class="fc bfc" id="L506" title="All 2 branches covered.">		if (SAX_FEATURE_NAMESPACES.equals(name)) {</span>
+			// Namespaces feature always supported by SAXOutputter.
+<span class="fc" id="L508">			return (true);</span>
+		}
+<span class="fc bfc" id="L510" title="All 2 branches covered.">		if (SAX_FEATURE_VALIDATION.equals(name)) {</span>
+			// Report DTD events.
+<span class="fc" id="L512">			return (this.reportDtdEvents);</span>
+		}
+		// Not a supported feature.
+<span class="fc" id="L515">		throw new SAXNotRecognizedException(name);</span>
+	}
+
+	/**
+	 * This will set the value of a SAX property. This method is also the
+	 * standard mechanism for setting extended handlers.
+	 * &lt;p&gt;
+	 * SAXOutputter currently supports the following SAX properties:
+	 * &lt;dl&gt;
+	 * &lt;dt&gt;&lt;code&gt;http://xml.org/sax/properties/lexical-handler&lt;/code&gt;&lt;/dt&gt;
+	 * &lt;dd&gt;&lt;strong&gt;data type:&lt;/strong&gt;
+	 * &lt;code&gt;org.xml.sax.ext.LexicalHandler&lt;/code&gt;&lt;/dd&gt;
+	 * &lt;dd&gt;&lt;strong&gt;description:&lt;/strong&gt; An optional extension handler for
+	 * lexical events like comments.&lt;/dd&gt;
+	 * &lt;dd&gt;&lt;strong&gt;access:&lt;/strong&gt; read/write&lt;/dd&gt;
+	 * &lt;dt&gt;&lt;code&gt;http://xml.org/sax/properties/declaration-handler&lt;/code&gt;&lt;/dt&gt;
+	 * &lt;dd&gt;&lt;strong&gt;data type:&lt;/strong&gt; &lt;code&gt;org.xml.sax.ext.DeclHandler&lt;/code&gt;&lt;/dd&gt;
+	 * &lt;dd&gt;&lt;strong&gt;description:&lt;/strong&gt; An optional extension handler for
+	 * DTD-related events other than notations and unparsed entities.&lt;/dd&gt;
+	 * &lt;dd&gt;&lt;strong&gt;access:&lt;/strong&gt; read/write&lt;/dd&gt;
+	 * &lt;/dl&gt;
+	 * &lt;/p&gt;
+	 * 
+	 * @param name
+	 *        &lt;code&gt;String&lt;/code&gt; the property name, which is a fully-qualified
+	 *        URI.
+	 * @param value
+	 *        &lt;code&gt;Object&lt;/code&gt; the requested value for the property.
+	 * @throws SAXNotRecognizedException
+	 *         when SAXOutputter does not recognize the property name.
+	 * @throws SAXNotSupportedException
+	 *         when SAXOutputter recognizes the property name but cannot set the
+	 *         requested value.
+	 */
+	public void setProperty(String name, Object value)
+			throws SAXNotRecognizedException, SAXNotSupportedException {
+<span class="fc bfc" id="L551" title="All 4 branches covered.">		if ((SAX_PROPERTY_LEXICAL_HANDLER.equals(name))</span>
+				|| (SAX_PROPERTY_LEXICAL_HANDLER_ALT.equals(name))) {
+<span class="fc" id="L553">			this.setLexicalHandler((LexicalHandler) value);</span>
+		} else {
+<span class="fc bfc" id="L555" title="All 4 branches covered.">			if ((SAX_PROPERTY_DECLARATION_HANDLER.equals(name))</span>
+					|| (SAX_PROPERTY_DECLARATION_HANDLER_ALT.equals(name))) {
+<span class="fc" id="L557">				this.setDeclHandler((DeclHandler) value);</span>
+			} else {
+<span class="fc" id="L559">				throw new SAXNotRecognizedException(name);</span>
+			}
+		}
+<span class="fc" id="L562">	}</span>
+
+	/**
+	 * This will look up the value of a SAX property.
+	 * 
+	 * @param name
+	 *        &lt;code&gt;String&lt;/code&gt; the property name, which is a fully-qualified
+	 *        URI.
+	 * @return &lt;code&gt;Object&lt;/code&gt; the current value of the property.
+	 * @throws SAXNotRecognizedException
+	 *         when SAXOutputter does not recognize the property name.
+	 * @throws SAXNotSupportedException
+	 *         when SAXOutputter recognizes the property name but cannot
+	 *         determine its value at this time.
+	 */
+	public Object getProperty(String name) throws SAXNotRecognizedException,
+			SAXNotSupportedException {
+<span class="pc bpc" id="L579" title="1 of 4 branches missed.">		if ((SAX_PROPERTY_LEXICAL_HANDLER.equals(name))</span>
+				|| (SAX_PROPERTY_LEXICAL_HANDLER_ALT.equals(name))) {
+<span class="fc" id="L581">			return this.getLexicalHandler();</span>
+		}
+<span class="pc bpc" id="L583" title="1 of 4 branches missed.">		if ((SAX_PROPERTY_DECLARATION_HANDLER.equals(name))</span>
+				|| (SAX_PROPERTY_DECLARATION_HANDLER_ALT.equals(name))) {
+<span class="fc" id="L585">			return this.getDeclHandler();</span>
+		}
+<span class="fc" id="L587">		throw new SAXNotRecognizedException(name);</span>
+	}
+
+	/**
+	 * Get the current {@link SAXOutputProcessor} being used for output.
+	 * 
+	 * @return The current SAXOutputProcessor
+	 */
+	public SAXOutputProcessor getSAXOutputProcessor() {
+<span class="fc" id="L596">		return processor;</span>
+	}
+
+	/**
+	 * Set the current {@link SAXOutputProcessor} to be used for output.
+	 * 
+	 * @param processor
+	 *        the new SAXOutputProcessor
+	 */
+	public void setSAXOutputProcessor(SAXOutputProcessor processor) {
+<span class="fc bfc" id="L606" title="All 2 branches covered.">		this.processor = processor == null ? DEFAULT_PROCESSOR : processor;</span>
+<span class="fc" id="L607">	}</span>
+
+	/**
+	 * Get the current {@link Format} being used for output
+	 * 
+	 * @return the current Format
+	 */
+	public Format getFormat() {
+<span class="fc" id="L615">		return format;</span>
+	}
+
+	/**
+	 * Set the current {@link Format} to be used for output.
+	 * 
+	 * @param format
+	 *        the new Format
+	 */
+	public void setFormat(Format format) {
+<span class="fc bfc" id="L625" title="All 2 branches covered.">		this.format = format == null ? Format.getRawFormat() : format;</span>
+<span class="fc" id="L626">	}</span>
+
+	private final SAXTarget buildTarget(Document doc) {
+<span class="fc" id="L629">		String publicID = null;</span>
+<span class="fc" id="L630">		String systemID = null;</span>
+<span class="fc bfc" id="L631" title="All 2 branches covered.">		if (doc != null) {</span>
+<span class="fc" id="L632">			DocType dt = doc.getDocType();</span>
+<span class="fc bfc" id="L633" title="All 2 branches covered.">			if (dt != null) {</span>
+<span class="fc" id="L634">				publicID = dt.getPublicID();</span>
+<span class="fc" id="L635">				systemID = dt.getSystemID();</span>
+			}
+		}
+<span class="fc" id="L638">		return new SAXTarget(contentHandler, errorHandler, dtdHandler,</span>
+				entityResolver, lexicalHandler, declHandler, declareNamespaces,
+				reportDtdEvents, publicID, systemID);
+	}
+
+	/**
+	 * This will output the &lt;code&gt;JDOM Document&lt;/code&gt;, firing off the SAX
+	 * events that have been registered.
+	 * 
+	 * @param document
+	 *        &lt;code&gt;JDOM Document&lt;/code&gt; to output.
+	 * @throws JDOMException
+	 *         if any error occurred.
+	 */
+	public void output(Document document) throws JDOMException {
+<span class="fc" id="L653">		processor.process(buildTarget(document), format, document);</span>
+<span class="fc" id="L654">	}</span>
+
+	/**
+	 * This will output a list of JDOM nodes as a document, firing off the SAX
+	 * events that have been registered.
+	 * &lt;p&gt;
+	 * &lt;strong&gt;Warning&lt;/strong&gt;: This method may output ill-formed XML documents
+	 * if the list contains top-level objects that are not legal at the document
+	 * level (e.g. Text or CDATA nodes, multiple Element nodes, etc.). Thus, it
+	 * should only be used to output document portions towards ContentHandlers
+	 * capable of accepting such ill-formed documents (such as XSLT processors).
+	 * &lt;/p&gt;
+	 * 
+	 * @param nodes
+	 *        &lt;code&gt;List&lt;/code&gt; of JDOM nodes to output.
+	 * @throws JDOMException
+	 *         if any error occurred.
+	 * @see #output(org.jdom2.Document)
+	 */
+	public void output(List&lt;? extends Content&gt; nodes) throws JDOMException {
+<span class="fc" id="L674">		processor.processAsDocument(buildTarget(null), format, nodes);</span>
+<span class="fc" id="L675">	}</span>
+
+	/**
+	 * This will output a single JDOM element as a document, firing off the SAX
+	 * events that have been registered.
+	 * 
+	 * @param node
+	 *        the &lt;code&gt;Element&lt;/code&gt; node to output.
+	 * @throws JDOMException
+	 *         if any error occurred.
+	 */
+	public void output(Element node) throws JDOMException {
+<span class="fc" id="L687">		processor.processAsDocument(buildTarget(null), format, node);</span>
+<span class="fc" id="L688">	}</span>
+
+	/**
+	 * This will output a list of JDOM nodes as a fragment of an XML document,
+	 * firing off the SAX events that have been registered.
+	 * &lt;p&gt;
+	 * &lt;strong&gt;Warning&lt;/strong&gt;: This method does not call the
+	 * {@link ContentHandler#setDocumentLocator},
+	 * {@link ContentHandler#startDocument} and
+	 * {@link ContentHandler#endDocument} callbacks on the
+	 * {@link #setContentHandler ContentHandler}. The user shall invoke these
+	 * methods directly prior/after outputting the document fragments.
+	 * &lt;/p&gt;
+	 * 
+	 * @param nodes
+	 *        &lt;code&gt;List&lt;/code&gt; of JDOM nodes to output.
+	 * @throws JDOMException
+	 *         if any error occurred.
+	 * @see #outputFragment(org.jdom2.Content)
+	 */
+	public void outputFragment(List&lt;? extends Content&gt; nodes)
+			throws JDOMException {
+<span class="fc bfc" id="L710" title="All 2 branches covered.">		if (nodes == null) {</span>
+<span class="fc" id="L711">			return;</span>
+		}
+<span class="fc" id="L713">		processor.process(buildTarget(null), format, nodes);</span>
+<span class="fc" id="L714">	}</span>
+
+	/**
+	 * This will output a single JDOM nodes as a fragment of an XML document,
+	 * firing off the SAX events that have been registered.
+	 * &lt;p&gt;
+	 * &lt;strong&gt;Warning&lt;/strong&gt;: This method does not call the
+	 * {@link ContentHandler#setDocumentLocator},
+	 * {@link ContentHandler#startDocument} and
+	 * {@link ContentHandler#endDocument} callbacks on the
+	 * {@link #setContentHandler ContentHandler}. The user shall invoke these
+	 * methods directly prior/after outputting the document fragments.
+	 * &lt;/p&gt;
+	 * 
+	 * @param node
+	 *        the &lt;code&gt;Content&lt;/code&gt; node to output.
+	 * @throws JDOMException
+	 *         if any error occurred.
+	 * @see #outputFragment(java.util.List)
+	 */
+	public void outputFragment(Content node) throws JDOMException {
+<span class="fc bfc" id="L735" title="All 2 branches covered.">		if (node == null) {</span>
+<span class="fc" id="L736">			return;</span>
+		}
+
+<span class="fc" id="L739">		SAXTarget out = buildTarget(null);</span>
+
+<span class="pc bpc" id="L741" title="1 of 7 branches missed.">		switch (node.getCType()) {</span>
+			case CDATA:
+<span class="fc" id="L743">				processor.process(out, format, (CDATA) node);</span>
+<span class="fc" id="L744">				break;</span>
+			case Comment:
+<span class="fc" id="L746">				processor.process(out, format, (Comment) node);</span>
+<span class="fc" id="L747">				break;</span>
+			case Element:
+<span class="fc" id="L749">				processor.process(out, format, (Element) node);</span>
+<span class="fc" id="L750">				break;</span>
+			case EntityRef:
+<span class="fc" id="L752">				processor.process(out, format, (EntityRef) node);</span>
+<span class="fc" id="L753">				break;</span>
+			case ProcessingInstruction:
+<span class="fc" id="L755">				processor.process(out, format, (ProcessingInstruction) node);</span>
+<span class="fc" id="L756">				break;</span>
+			case Text:
+<span class="fc" id="L758">				processor.process(out, format, (Text) node);</span>
+<span class="fc" id="L759">				break;</span>
+			default:
+<span class="nc" id="L761">				handleError(new JDOMException(&quot;Invalid element content: &quot; + node));</span>
+		}
+
+<span class="fc" id="L764">	}</span>
+	
+	/**
+	 * &lt;p&gt;
+	 * Notifies the registered {@link ErrorHandler SAX error handler}
+	 * (if any) of an input processing error. The error handler can
+	 * choose to absorb the error and let the processing continue.
+	 * &lt;/p&gt;
+	 *
+	 * @param exception &lt;code&gt;JDOMException&lt;/code&gt; containing the
+	 *                  error information; will be wrapped in a
+	 *                  {@link SAXParseException} when reported to
+	 *                  the SAX error handler.
+	 *
+	 * @throws JDOMException if no error handler has been registered
+	 *                       or if the error handler fired a
+	 *                       {@link SAXException}.
+	 */
+	private void handleError(JDOMException exception) throws JDOMException {
+<span class="fc bfc" id="L783" title="All 2 branches covered.">		if (errorHandler != null) {</span>
+			try {
+<span class="nc" id="L785">				errorHandler.error(new SAXParseException(</span>
+						exception.getMessage(), null, exception));
+			}
+<span class="fc" id="L788">			catch (SAXException se) {</span>
+<span class="pc bpc" id="L789" title="1 of 2 branches missed.">				if (se.getException() instanceof JDOMException) {</span>
+<span class="nc" id="L790">					throw (JDOMException)(se.getException());</span>
+				}
+<span class="fc" id="L792">				throw new JDOMException(se.getMessage(), se);</span>
+<span class="nc" id="L793">			}</span>
+		}
+		else {
+<span class="fc" id="L796">			throw exception;</span>
+		}
+<span class="nc" id="L798">	}</span>
+	
+
+	/**
+	 * Returns null.
+	 * 
+	 * @return null
+	 * @deprecated there is no way to get a meaningful document Locator outside
+	 *             of an active output process, and the contents of the locator
+	 *             are meaningless outside of an active output process anyway.
+	 */
+	@Deprecated
+	public JDOMLocator getLocator() {
+<span class="fc" id="L811">		return null;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

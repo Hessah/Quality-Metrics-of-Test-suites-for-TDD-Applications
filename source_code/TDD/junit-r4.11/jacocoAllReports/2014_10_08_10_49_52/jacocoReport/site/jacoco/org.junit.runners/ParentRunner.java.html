@@ -1,0 +1,392 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ParentRunner.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Junit-r4.11</a> &gt; <a href="index.source.html" class="el_package">org.junit.runners</a> &gt; <span class="el_source">ParentRunner.java</span></div><h1>ParentRunner.java</h1><pre class="source lang-java linenums">package org.junit.runners;
+
+import static org.junit.internal.runners.rules.RuleFieldValidator.CLASS_RULE_METHOD_VALIDATOR;
+import static org.junit.internal.runners.rules.RuleFieldValidator.CLASS_RULE_VALIDATOR;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+import org.junit.ClassRule;
+import org.junit.Rule;
+import org.junit.internal.AssumptionViolatedException;
+import org.junit.internal.runners.model.EachTestNotifier;
+import org.junit.internal.runners.statements.RunAfters;
+import org.junit.internal.runners.statements.RunBefores;
+import org.junit.rules.RunRules;
+import org.junit.rules.TestRule;
+import org.junit.runner.Description;
+import org.junit.runner.Runner;
+import org.junit.runner.manipulation.Filter;
+import org.junit.runner.manipulation.Filterable;
+import org.junit.runner.manipulation.NoTestsRemainException;
+import org.junit.runner.manipulation.Sortable;
+import org.junit.runner.manipulation.Sorter;
+import org.junit.runner.notification.RunNotifier;
+import org.junit.runner.notification.StoppedByUserException;
+import org.junit.runners.model.FrameworkMethod;
+import org.junit.runners.model.InitializationError;
+import org.junit.runners.model.MultipleFailureException;
+import org.junit.runners.model.RunnerScheduler;
+import org.junit.runners.model.Statement;
+import org.junit.runners.model.TestClass;
+
+/**
+ * Provides most of the functionality specific to a Runner that implements a
+ * &quot;parent node&quot; in the test tree, with children defined by objects of some data
+ * type {@code T}. (For {@link BlockJUnit4ClassRunner}, {@code T} is
+ * {@link Method} . For {@link Suite}, {@code T} is {@link Class}.) Subclasses
+ * must implement finding the children of the node, describing each child, and
+ * running each child. ParentRunner will filter and sort children, handle
+ * {@code @BeforeClass} and {@code @AfterClass} methods,
+ * handle annotated {@link ClassRule}s, create a composite
+ * {@link Description}, and run children sequentially.
+ *
+ * @since 4.5
+ */
+public abstract class ParentRunner&lt;T&gt; extends Runner implements Filterable,
+        Sortable {
+    private final TestClass fTestClass;
+
+<span class="fc" id="L57">    private Sorter fSorter = Sorter.NULL;</span>
+
+<span class="fc" id="L59">    private List&lt;T&gt; fFilteredChildren = null;</span>
+
+<span class="fc" id="L61">    private RunnerScheduler fScheduler = new RunnerScheduler() {</span>
+        public void schedule(Runnable childStatement) {
+<span class="fc" id="L63">            childStatement.run();</span>
+<span class="fc" id="L64">        }</span>
+
+        public void finished() {
+            // do nothing
+<span class="fc" id="L68">        }</span>
+    };
+
+    /**
+     * Constructs a new {@code ParentRunner} that will run {@code @TestClass}
+     */
+<span class="fc" id="L74">    protected ParentRunner(Class&lt;?&gt; testClass) throws InitializationError {</span>
+<span class="fc" id="L75">        fTestClass = new TestClass(testClass);</span>
+<span class="fc" id="L76">        validate();</span>
+<span class="fc" id="L77">    }</span>
+
+    //
+    // Must be overridden
+    //
+
+    /**
+     * Returns a list of objects that define the children of this Runner.
+     */
+    protected abstract List&lt;T&gt; getChildren();
+
+    /**
+     * Returns a {@link Description} for {@code child}, which can be assumed to
+     * be an element of the list returned by {@link ParentRunner#getChildren()}
+     */
+    protected abstract Description describeChild(T child);
+
+    /**
+     * Runs the test corresponding to {@code child}, which can be assumed to be
+     * an element of the list returned by {@link ParentRunner#getChildren()}.
+     * Subclasses are responsible for making sure that relevant test events are
+     * reported through {@code notifier}
+     */
+    protected abstract void runChild(T child, RunNotifier notifier);
+
+    //
+    // May be overridden
+    //
+
+    /**
+     * Adds to {@code errors} a throwable for each problem noted with the test class (available from {@link #getTestClass()}).
+     * Default implementation adds an error for each method annotated with
+     * {@code @BeforeClass} or {@code @AfterClass} that is not
+     * {@code public static void} with no arguments.
+     */
+    protected void collectInitializationErrors(List&lt;Throwable&gt; errors) {
+<span class="fc" id="L113">        validatePublicVoidNoArgMethods(BeforeClass.class, true, errors);</span>
+<span class="fc" id="L114">        validatePublicVoidNoArgMethods(AfterClass.class, true, errors);</span>
+<span class="fc" id="L115">        validateClassRules(errors);</span>
+<span class="fc" id="L116">    }</span>
+
+    /**
+     * Adds to {@code errors} if any method in this class is annotated with
+     * {@code annotation}, but:
+     * &lt;ul&gt;
+     * &lt;li&gt;is not public, or
+     * &lt;li&gt;takes parameters, or
+     * &lt;li&gt;returns something other than void, or
+     * &lt;li&gt;is static (given {@code isStatic is false}), or
+     * &lt;li&gt;is not static (given {@code isStatic is true}).
+     */
+    protected void validatePublicVoidNoArgMethods(Class&lt;? extends Annotation&gt; annotation,
+            boolean isStatic, List&lt;Throwable&gt; errors) {
+<span class="fc" id="L130">        List&lt;FrameworkMethod&gt; methods = getTestClass().getAnnotatedMethods(annotation);</span>
+
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        for (FrameworkMethod eachTestMethod : methods) {</span>
+<span class="fc" id="L133">            eachTestMethod.validatePublicVoidNoArg(isStatic, errors);</span>
+<span class="fc" id="L134">        }</span>
+<span class="fc" id="L135">    }</span>
+
+    private void validateClassRules(List&lt;Throwable&gt; errors) {
+<span class="fc" id="L138">        CLASS_RULE_VALIDATOR.validate(getTestClass(), errors);</span>
+<span class="fc" id="L139">        CLASS_RULE_METHOD_VALIDATOR.validate(getTestClass(), errors);</span>
+<span class="fc" id="L140">    }</span>
+
+    /**
+     * Constructs a {@code Statement} to run all of the tests in the test class. Override to add pre-/post-processing.
+     * Here is an outline of the implementation:
+     * &lt;ul&gt;
+     * &lt;li&gt;Call {@link #runChild(Object, RunNotifier)} on each object returned by {@link #getChildren()} (subject to any imposed filter and sort).&lt;/li&gt;
+     * &lt;li&gt;ALWAYS run all non-overridden {@code @BeforeClass} methods on this class
+     * and superclasses before the previous step; if any throws an
+     * Exception, stop execution and pass the exception on.
+     * &lt;li&gt;ALWAYS run all non-overridden {@code @AfterClass} methods on this class
+     * and superclasses before any of the previous steps; all AfterClass methods are
+     * always executed: exceptions thrown by previous steps are combined, if
+     * necessary, with exceptions from AfterClass methods into a
+     * {@link MultipleFailureException}.
+     * &lt;/ul&gt;
+     *
+     * @return {@code Statement}
+     */
+    protected Statement classBlock(final RunNotifier notifier) {
+<span class="fc" id="L160">        Statement statement = childrenInvoker(notifier);</span>
+<span class="fc" id="L161">        statement = withBeforeClasses(statement);</span>
+<span class="fc" id="L162">        statement = withAfterClasses(statement);</span>
+<span class="fc" id="L163">        statement = withClassRules(statement);</span>
+<span class="fc" id="L164">        return statement;</span>
+    }
+
+    /**
+     * Returns a {@link Statement}: run all non-overridden {@code @BeforeClass} methods on this class
+     * and superclasses before executing {@code statement}; if any throws an
+     * Exception, stop execution and pass the exception on.
+     */
+    protected Statement withBeforeClasses(Statement statement) {
+<span class="fc" id="L173">        List&lt;FrameworkMethod&gt; befores = fTestClass</span>
+                .getAnnotatedMethods(BeforeClass.class);
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        return befores.isEmpty() ? statement :</span>
+                new RunBefores(statement, befores, null);
+    }
+
+    /**
+     * Returns a {@link Statement}: run all non-overridden {@code @AfterClass} methods on this class
+     * and superclasses before executing {@code statement}; all AfterClass methods are
+     * always executed: exceptions thrown by previous steps are combined, if
+     * necessary, with exceptions from AfterClass methods into a
+     * {@link MultipleFailureException}.
+     */
+    protected Statement withAfterClasses(Statement statement) {
+<span class="fc" id="L187">        List&lt;FrameworkMethod&gt; afters = fTestClass</span>
+                .getAnnotatedMethods(AfterClass.class);
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        return afters.isEmpty() ? statement :</span>
+                new RunAfters(statement, afters, null);
+    }
+
+    /**
+     * Returns a {@link Statement}: apply all
+     * static fields assignable to {@link TestRule}
+     * annotated with {@link ClassRule}.
+     *
+     * @param statement the base statement
+     * @return a RunRules statement if any class-level {@link Rule}s are
+     *         found, or the base statement
+     */
+    private Statement withClassRules(Statement statement) {
+<span class="fc" id="L203">        List&lt;TestRule&gt; classRules = classRules();</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">        return classRules.isEmpty() ? statement :</span>
+                new RunRules(statement, classRules, getDescription());
+    }
+
+    /**
+     * @return the {@code ClassRule}s that can transform the block that runs
+     *         each method in the tested class.
+     */
+    protected List&lt;TestRule&gt; classRules() {
+<span class="fc" id="L213">        List&lt;TestRule&gt; result = fTestClass.getAnnotatedMethodValues(null, ClassRule.class, TestRule.class);</span>
+
+<span class="fc" id="L215">        result.addAll(fTestClass.getAnnotatedFieldValues(null, ClassRule.class, TestRule.class));</span>
+
+<span class="fc" id="L217">        return result;</span>
+    }
+
+    /**
+     * Returns a {@link Statement}: Call {@link #runChild(Object, RunNotifier)}
+     * on each object returned by {@link #getChildren()} (subject to any imposed
+     * filter and sort)
+     */
+    protected Statement childrenInvoker(final RunNotifier notifier) {
+<span class="fc" id="L226">        return new Statement() {</span>
+            @Override
+            public void evaluate() {
+<span class="fc" id="L229">                runChildren(notifier);</span>
+<span class="fc" id="L230">            }</span>
+        };
+    }
+
+    private void runChildren(final RunNotifier notifier) {
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        for (final T each : getFilteredChildren()) {</span>
+<span class="fc" id="L236">            fScheduler.schedule(new Runnable() {</span>
+                public void run() {
+<span class="fc" id="L238">                    ParentRunner.this.runChild(each, notifier);</span>
+<span class="fc" id="L239">                }</span>
+            });
+<span class="fc" id="L241">        }</span>
+<span class="fc" id="L242">        fScheduler.finished();</span>
+<span class="fc" id="L243">    }</span>
+
+    /**
+     * Returns a name used to describe this Runner
+     */
+    protected String getName() {
+<span class="fc" id="L249">        return fTestClass.getName();</span>
+    }
+
+    //
+    // Available for subclasses
+    //
+
+    /**
+     * Returns a {@link TestClass} object wrapping the class to be executed.
+     */
+    public final TestClass getTestClass() {
+<span class="fc" id="L260">        return fTestClass;</span>
+    }
+
+    /**
+     * Runs a {@link Statement} that represents a leaf (aka atomic) test.
+     */
+    protected final void runLeaf(Statement statement, Description description,
+            RunNotifier notifier) {
+<span class="fc" id="L268">        EachTestNotifier eachNotifier = new EachTestNotifier(notifier, description);</span>
+<span class="fc" id="L269">        eachNotifier.fireTestStarted();</span>
+        try {
+<span class="fc" id="L271">            statement.evaluate();</span>
+<span class="fc" id="L272">        } catch (AssumptionViolatedException e) {</span>
+<span class="fc" id="L273">            eachNotifier.addFailedAssumption(e);</span>
+<span class="fc" id="L274">        } catch (Throwable e) {</span>
+<span class="fc" id="L275">            eachNotifier.addFailure(e);</span>
+        } finally {
+<span class="pc" id="L277">            eachNotifier.fireTestFinished();</span>
+<span class="fc" id="L278">        }</span>
+<span class="fc" id="L279">    }</span>
+
+    /**
+     * @return the annotations that should be attached to this runner's
+     *         description.
+     */
+    protected Annotation[] getRunnerAnnotations() {
+<span class="fc" id="L286">        return fTestClass.getAnnotations();</span>
+    }
+
+    //
+    // Implementation of Runner
+    //
+
+    @Override
+    public Description getDescription() {
+<span class="fc" id="L295">        Description description = Description.createSuiteDescription(getName(),</span>
+                getRunnerAnnotations());
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        for (T child : getFilteredChildren()) {</span>
+<span class="fc" id="L298">            description.addChild(describeChild(child));</span>
+<span class="fc" id="L299">        }</span>
+<span class="fc" id="L300">        return description;</span>
+    }
+
+    @Override
+    public void run(final RunNotifier notifier) {
+<span class="fc" id="L305">        EachTestNotifier testNotifier = new EachTestNotifier(notifier,</span>
+                getDescription());
+        try {
+<span class="fc" id="L308">            Statement statement = classBlock(notifier);</span>
+<span class="fc" id="L309">            statement.evaluate();</span>
+<span class="fc" id="L310">        } catch (AssumptionViolatedException e) {</span>
+<span class="fc" id="L311">            testNotifier.fireTestIgnored();</span>
+<span class="fc" id="L312">        } catch (StoppedByUserException e) {</span>
+<span class="fc" id="L313">            throw e;</span>
+<span class="fc" id="L314">        } catch (Throwable e) {</span>
+<span class="fc" id="L315">            testNotifier.addFailure(e);</span>
+<span class="fc" id="L316">        }</span>
+<span class="fc" id="L317">    }</span>
+
+    //
+    // Implementation of Filterable and Sortable
+    //
+
+    public void filter(Filter filter) throws NoTestsRemainException {
+<span class="fc bfc" id="L324" title="All 2 branches covered.">        for (Iterator&lt;T&gt; iter = getFilteredChildren().iterator(); iter.hasNext(); ) {</span>
+<span class="fc" id="L325">            T each = iter.next();</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">            if (shouldRun(filter, each)) {</span>
+                try {
+<span class="fc" id="L328">                    filter.apply(each);</span>
+<span class="fc" id="L329">                } catch (NoTestsRemainException e) {</span>
+<span class="fc" id="L330">                    iter.remove();</span>
+<span class="fc" id="L331">                }</span>
+            } else {
+<span class="fc" id="L333">                iter.remove();</span>
+            }
+<span class="fc" id="L335">        }</span>
+<span class="fc bfc" id="L336" title="All 2 branches covered.">        if (getFilteredChildren().isEmpty()) {</span>
+<span class="fc" id="L337">            throw new NoTestsRemainException();</span>
+        }
+<span class="fc" id="L339">    }</span>
+
+    public void sort(Sorter sorter) {
+<span class="fc" id="L342">        fSorter = sorter;</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">        for (T each : getFilteredChildren()) {</span>
+<span class="fc" id="L344">            sortChild(each);</span>
+<span class="fc" id="L345">        }</span>
+<span class="fc" id="L346">        Collections.sort(getFilteredChildren(), comparator());</span>
+<span class="fc" id="L347">    }</span>
+
+    //
+    // Private implementation
+    //
+
+    private void validate() throws InitializationError {
+<span class="fc" id="L354">        List&lt;Throwable&gt; errors = new ArrayList&lt;Throwable&gt;();</span>
+<span class="fc" id="L355">        collectInitializationErrors(errors);</span>
+<span class="fc bfc" id="L356" title="All 2 branches covered.">        if (!errors.isEmpty()) {</span>
+<span class="fc" id="L357">            throw new InitializationError(errors);</span>
+        }
+<span class="fc" id="L359">    }</span>
+
+    private List&lt;T&gt; getFilteredChildren() {
+<span class="fc bfc" id="L362" title="All 2 branches covered.">        if (fFilteredChildren == null) {</span>
+<span class="fc" id="L363">            fFilteredChildren = new ArrayList&lt;T&gt;(getChildren());</span>
+        }
+<span class="fc" id="L365">        return fFilteredChildren;</span>
+    }
+
+    private void sortChild(T child) {
+<span class="fc" id="L369">        fSorter.apply(child);</span>
+<span class="fc" id="L370">    }</span>
+
+    private boolean shouldRun(Filter filter, T each) {
+<span class="fc" id="L373">        return filter.shouldRun(describeChild(each));</span>
+    }
+
+    private Comparator&lt;? super T&gt; comparator() {
+<span class="fc" id="L377">        return new Comparator&lt;T&gt;() {</span>
+            public int compare(T o1, T o2) {
+<span class="fc" id="L379">                return fSorter.compare(describeChild(o1), describeChild(o2));</span>
+            }
+        };
+    }
+
+    /**
+     * Sets a scheduler that determines the order and parallelization
+     * of children.  Highly experimental feature that may change.
+     */
+    public void setScheduler(RunnerScheduler scheduler) {
+<span class="fc" id="L389">        this.fScheduler = scheduler;</span>
+<span class="fc" id="L390">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

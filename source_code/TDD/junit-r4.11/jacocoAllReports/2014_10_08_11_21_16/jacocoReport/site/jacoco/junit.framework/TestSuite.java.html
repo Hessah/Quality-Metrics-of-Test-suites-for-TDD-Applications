@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>TestSuite.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Junit-r4.11</a> &gt; <a href="index.source.html" class="el_package">junit.framework</a> &gt; <span class="el_source">TestSuite.java</span></div><h1>TestSuite.java</h1><pre class="source lang-java linenums">package junit.framework;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.Vector;
+
+import org.junit.internal.MethodSorter;
+
+/**
+ * &lt;p&gt;A &lt;code&gt;TestSuite&lt;/code&gt; is a &lt;code&gt;Composite&lt;/code&gt; of Tests.
+ * It runs a collection of test cases. Here is an example using
+ * the dynamic test definition.
+ * &lt;pre&gt;
+ * TestSuite suite= new TestSuite();
+ * suite.addTest(new MathTest(&quot;testAdd&quot;));
+ * suite.addTest(new MathTest(&quot;testDivideByZero&quot;));
+ * &lt;/pre&gt;
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;Alternatively, a TestSuite can extract the tests to be run automatically.
+ * To do so you pass the class of your TestCase class to the
+ * TestSuite constructor.
+ * &lt;pre&gt;
+ * TestSuite suite= new TestSuite(MathTest.class);
+ * &lt;/pre&gt;
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;This constructor creates a suite with all the methods
+ * starting with &quot;test&quot; that take no arguments.&lt;/p&gt;
+ *
+ * &lt;p&gt;A final option is to do the same for a large array of test classes.
+ * &lt;pre&gt;
+ * Class[] testClasses = { MathTest.class, AnotherTest.class }
+ * TestSuite suite= new TestSuite(testClasses);
+ * &lt;/pre&gt;
+ * &lt;/p&gt;
+ *
+ * @see Test
+ */
+public class TestSuite implements Test {
+
+    /**
+     * ...as the moon sets over the early morning Merlin, Oregon
+     * mountains, our intrepid adventurers type...
+     */
+    static public Test createTest(Class&lt;?&gt; theClass, String name) {
+        Constructor&lt;?&gt; constructor;
+        try {
+<span class="fc" id="L56">            constructor = getTestConstructor(theClass);</span>
+<span class="nc" id="L57">        } catch (NoSuchMethodException e) {</span>
+<span class="nc" id="L58">            return warning(&quot;Class &quot; + theClass.getName() + &quot; has no public constructor TestCase(String name) or TestCase()&quot;);</span>
+<span class="fc" id="L59">        }</span>
+        Object test;
+        try {
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            if (constructor.getParameterTypes().length == 0) {</span>
+<span class="fc" id="L63">                test = constructor.newInstance(new Object[0]);</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">                if (test instanceof TestCase) {</span>
+<span class="fc" id="L65">                    ((TestCase) test).setName(name);</span>
+                }
+            } else {
+<span class="fc" id="L68">                test = constructor.newInstance(new Object[]{name});</span>
+            }
+<span class="nc" id="L70">        } catch (InstantiationException e) {</span>
+<span class="nc" id="L71">            return (warning(&quot;Cannot instantiate test case: &quot; + name + &quot; (&quot; + exceptionToString(e) + &quot;)&quot;));</span>
+<span class="nc" id="L72">        } catch (InvocationTargetException e) {</span>
+<span class="nc" id="L73">            return (warning(&quot;Exception in constructor: &quot; + name + &quot; (&quot; + exceptionToString(e.getTargetException()) + &quot;)&quot;));</span>
+<span class="nc" id="L74">        } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L75">            return (warning(&quot;Cannot access test case: &quot; + name + &quot; (&quot; + exceptionToString(e) + &quot;)&quot;));</span>
+<span class="fc" id="L76">        }</span>
+<span class="fc" id="L77">        return (Test) test;</span>
+    }
+
+    /**
+     * Gets a constructor which takes a single String as
+     * its argument or a no arg constructor.
+     */
+    public static Constructor&lt;?&gt; getTestConstructor(Class&lt;?&gt; theClass) throws NoSuchMethodException {
+        try {
+<span class="fc" id="L86">            return theClass.getConstructor(String.class);</span>
+<span class="fc" id="L87">        } catch (NoSuchMethodException e) {</span>
+            // fall through
+        }
+<span class="fc" id="L90">        return theClass.getConstructor(new Class[0]);</span>
+    }
+
+    /**
+     * Returns a test which will fail and log a warning message.
+     */
+    public static Test warning(final String message) {
+<span class="fc" id="L97">        return new TestCase(&quot;warning&quot;) {</span>
+            @Override
+            protected void runTest() {
+<span class="nc" id="L100">                fail(message);</span>
+<span class="nc" id="L101">            }</span>
+        };
+    }
+
+    /**
+     * Converts the stack trace into a string
+     */
+    private static String exceptionToString(Throwable t) {
+<span class="nc" id="L109">        StringWriter stringWriter = new StringWriter();</span>
+<span class="nc" id="L110">        PrintWriter writer = new PrintWriter(stringWriter);</span>
+<span class="nc" id="L111">        t.printStackTrace(writer);</span>
+<span class="nc" id="L112">        return stringWriter.toString();</span>
+    }
+
+    private String fName;
+
+<span class="fc" id="L117">    private Vector&lt;Test&gt; fTests = new Vector&lt;Test&gt;(10); // Cannot convert this to List because it is used directly by some test runners</span>
+
+    /**
+     * Constructs an empty TestSuite.
+     */
+<span class="fc" id="L122">    public TestSuite() {</span>
+<span class="fc" id="L123">    }</span>
+
+    /**
+     * Constructs a TestSuite from the given class. Adds all the methods
+     * starting with &quot;test&quot; as test cases to the suite.
+     * Parts of this method were written at 2337 meters in the Hueffihuette,
+     * Kanton Uri
+     */
+<span class="fc" id="L131">    public TestSuite(final Class&lt;?&gt; theClass) {</span>
+<span class="fc" id="L132">        addTestsFromTestCase(theClass);</span>
+<span class="fc" id="L133">    }</span>
+
+    private void addTestsFromTestCase(final Class&lt;?&gt; theClass) {
+<span class="fc" id="L136">        fName = theClass.getName();</span>
+        try {
+<span class="fc" id="L138">            getTestConstructor(theClass); // Avoid generating multiple error messages</span>
+<span class="nc" id="L139">        } catch (NoSuchMethodException e) {</span>
+<span class="nc" id="L140">            addTest(warning(&quot;Class &quot; + theClass.getName() + &quot; has no public constructor TestCase(String name) or TestCase()&quot;));</span>
+<span class="nc" id="L141">            return;</span>
+<span class="fc" id="L142">        }</span>
+
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">        if (!Modifier.isPublic(theClass.getModifiers())) {</span>
+<span class="nc" id="L145">            addTest(warning(&quot;Class &quot; + theClass.getName() + &quot; is not public&quot;));</span>
+<span class="nc" id="L146">            return;</span>
+        }
+
+<span class="fc" id="L149">        Class&lt;?&gt; superClass = theClass;</span>
+<span class="fc" id="L150">        List&lt;String&gt; names = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        while (Test.class.isAssignableFrom(superClass)) {</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            for (Method each : MethodSorter.getDeclaredMethods(superClass)) {</span>
+<span class="fc" id="L153">                addTestMethod(each, names, theClass);</span>
+            }
+<span class="fc" id="L155">            superClass = superClass.getSuperclass();</span>
+        }
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (fTests.size() == 0) {</span>
+<span class="fc" id="L158">            addTest(warning(&quot;No tests found in &quot; + theClass.getName()));</span>
+        }
+<span class="fc" id="L160">    }</span>
+
+    /**
+     * Constructs a TestSuite from the given class with the given name.
+     *
+     * @see TestSuite#TestSuite(Class)
+     */
+    public TestSuite(Class&lt;? extends TestCase&gt; theClass, String name) {
+<span class="nc" id="L168">        this(theClass);</span>
+<span class="nc" id="L169">        setName(name);</span>
+<span class="nc" id="L170">    }</span>
+
+    /**
+     * Constructs an empty TestSuite.
+     */
+<span class="fc" id="L175">    public TestSuite(String name) {</span>
+<span class="fc" id="L176">        setName(name);</span>
+<span class="fc" id="L177">    }</span>
+
+    /**
+     * Constructs a TestSuite from the given array of classes.
+     *
+     * @param classes {@link TestCase}s
+     */
+<span class="fc" id="L184">    public TestSuite(Class&lt;?&gt;... classes) {</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        for (Class&lt;?&gt; each : classes) {</span>
+<span class="fc" id="L186">            addTest(testCaseForClass(each));</span>
+        }
+<span class="fc" id="L188">    }</span>
+
+    private Test testCaseForClass(Class&lt;?&gt; each) {
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        if (TestCase.class.isAssignableFrom(each)) {</span>
+<span class="fc" id="L192">            return new TestSuite(each.asSubclass(TestCase.class));</span>
+        } else {
+<span class="nc" id="L194">            return warning(each.getCanonicalName() + &quot; does not extend TestCase&quot;);</span>
+        }
+    }
+
+    /**
+     * Constructs a TestSuite from the given array of classes with the given name.
+     *
+     * @see TestSuite#TestSuite(Class[])
+     */
+    public TestSuite(Class&lt;? extends TestCase&gt;[] classes, String name) {
+<span class="nc" id="L204">        this(classes);</span>
+<span class="nc" id="L205">        setName(name);</span>
+<span class="nc" id="L206">    }</span>
+
+    /**
+     * Adds a test to the suite.
+     */
+    public void addTest(Test test) {
+<span class="fc" id="L212">        fTests.add(test);</span>
+<span class="fc" id="L213">    }</span>
+
+    /**
+     * Adds the tests from the given class to the suite
+     */
+    public void addTestSuite(Class&lt;? extends TestCase&gt; testClass) {
+<span class="fc" id="L219">        addTest(new TestSuite(testClass));</span>
+<span class="fc" id="L220">    }</span>
+
+    /**
+     * Counts the number of test cases that will be run by this test.
+     */
+    public int countTestCases() {
+<span class="fc" id="L226">        int count = 0;</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        for (Test each : fTests) {</span>
+<span class="fc" id="L228">            count += each.countTestCases();</span>
+<span class="fc" id="L229">        }</span>
+<span class="fc" id="L230">        return count;</span>
+    }
+
+    /**
+     * Returns the name of the suite. Not all
+     * test suites have a name and this method
+     * can return null.
+     */
+    public String getName() {
+<span class="fc" id="L239">        return fName;</span>
+    }
+
+    /**
+     * Runs the tests and collects their result in a TestResult.
+     */
+    public void run(TestResult result) {
+<span class="fc bfc" id="L246" title="All 2 branches covered.">        for (Test each : fTests) {</span>
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">            if (result.shouldStop()) {</span>
+<span class="nc" id="L248">                break;</span>
+            }
+<span class="fc" id="L250">            runTest(each, result);</span>
+<span class="fc" id="L251">        }</span>
+<span class="fc" id="L252">    }</span>
+
+    public void runTest(Test test, TestResult result) {
+<span class="fc" id="L255">        test.run(result);</span>
+<span class="fc" id="L256">    }</span>
+
+    /**
+     * Sets the name of the suite.
+     *
+     * @param name the name to set
+     */
+    public void setName(String name) {
+<span class="fc" id="L264">        fName = name;</span>
+<span class="fc" id="L265">    }</span>
+
+    /**
+     * Returns the test at the given index
+     */
+    public Test testAt(int index) {
+<span class="fc" id="L271">        return fTests.get(index);</span>
+    }
+
+    /**
+     * Returns the number of tests in this suite
+     */
+    public int testCount() {
+<span class="fc" id="L278">        return fTests.size();</span>
+    }
+
+    /**
+     * Returns the tests as an enumeration
+     */
+    public Enumeration&lt;Test&gt; tests() {
+<span class="fc" id="L285">        return fTests.elements();</span>
+    }
+
+    /**
+     */
+    @Override
+    public String toString() {
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">        if (getName() != null) {</span>
+<span class="fc" id="L293">            return getName();</span>
+        }
+<span class="nc" id="L295">        return super.toString();</span>
+    }
+
+    private void addTestMethod(Method m, List&lt;String&gt; names, Class&lt;?&gt; theClass) {
+<span class="fc" id="L299">        String name = m.getName();</span>
+<span class="fc bfc" id="L300" title="All 2 branches covered.">        if (names.contains(name)) {</span>
+<span class="fc" id="L301">            return;</span>
+        }
+<span class="fc bfc" id="L303" title="All 2 branches covered.">        if (!isPublicTestMethod(m)) {</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">            if (isTestMethod(m)) {</span>
+<span class="fc" id="L305">                addTest(warning(&quot;Test method isn't public: &quot; + m.getName() + &quot;(&quot; + theClass.getCanonicalName() + &quot;)&quot;));</span>
+            }
+<span class="fc" id="L307">            return;</span>
+        }
+<span class="fc" id="L309">        names.add(name);</span>
+<span class="fc" id="L310">        addTest(createTest(theClass, name));</span>
+<span class="fc" id="L311">    }</span>
+
+    private boolean isPublicTestMethod(Method m) {
+<span class="fc bfc" id="L314" title="All 4 branches covered.">        return isTestMethod(m) &amp;&amp; Modifier.isPublic(m.getModifiers());</span>
+    }
+
+    private boolean isTestMethod(Method m) {
+<span class="fc bfc" id="L318" title="All 6 branches covered.">        return m.getParameterTypes().length == 0 &amp;&amp;</span>
+                m.getName().startsWith(&quot;test&quot;) &amp;&amp;
+                m.getReturnType().equals(Void.TYPE);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

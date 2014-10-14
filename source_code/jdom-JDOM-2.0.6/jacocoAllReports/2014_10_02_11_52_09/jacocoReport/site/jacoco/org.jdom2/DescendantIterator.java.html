@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>DescendantIterator.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2</a> &gt; <span class="el_source">DescendantIterator.java</span></div><h1>DescendantIterator.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2000-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2;
+
+import java.util.*;
+
+import org.jdom2.Content;
+import org.jdom2.Parent;
+import org.jdom2.internal.ArrayCopy;
+import org.jdom2.util.IteratorIterable;
+
+/**
+ * Traverse all a parent's descendants (all children at any level below
+ * the parent - excludes the parent itself).
+ *
+ * @author Bradley S. Huffman
+ * @author Jason Hunter
+ * @author Rolf Lear
+ */
+final class DescendantIterator implements IteratorIterable&lt;Content&gt; {
+	
+	/** Needed to be Iterable! */
+	private final Parent parent;
+	
+	/*
+	 * Note, we use an Array of Object here, even through
+	 * List&lt;Iterator&lt;Content&gt;&gt; would look neater, etc.
+	 * Fact is, for 'hamlet', using a list for the stack takes about
+	 * twice as long as using the Object[] array.
+	 */
+<span class="fc" id="L83">	private Object[] stack = new Object[16];</span>
+<span class="fc" id="L84">	private int ssize = 0;</span>
+
+	/** The iterator that supplied to most recent next() */
+<span class="fc" id="L87">	private Iterator&lt;Content&gt; current = null;</span>
+	/** The iterator going down the tree, null unless next() returned Parent */
+<span class="fc" id="L89">	private Iterator&lt;Content&gt; descending = null;</span>
+	/** The iterator going up the tree, null unless next() returned dead-end */
+<span class="fc" id="L91">	private Iterator&lt;Content&gt; ascending = null;</span>
+	/** what it says... */
+<span class="fc" id="L93">	private boolean hasnext = true;</span>
+
+	/**
+	 * Iterator for the descendants of the supplied object.
+	 *
+	 * @param parent document or element whose descendants will be iterated
+	 */
+<span class="fc" id="L100">	DescendantIterator(Parent parent) {</span>
+<span class="fc" id="L101">		this.parent = parent;</span>
+		// can trust that parent is not null, DescendantIterator is package-private.
+<span class="fc" id="L103">		current = parent.getContent().iterator();</span>
+<span class="fc" id="L104">		hasnext = current.hasNext();</span>
+<span class="fc" id="L105">	}</span>
+	
+	@Override
+	public DescendantIterator iterator() {
+		// Implement the Iterable stuff.
+<span class="fc" id="L110">		return new DescendantIterator(parent);</span>
+	}
+
+	/**
+	 * Returns &lt;b&gt;true&lt;/b&gt; if the iteration has more {@link Content} descendants.
+	 *
+	 * @return true is the iterator has more descendants
+	 */
+	@Override
+	public boolean hasNext() {
+<span class="fc" id="L120">		return hasnext;</span>
+	}
+
+	/**
+	 * Returns the next {@link Content} descendant.
+	 *
+	 * @return the next descendant
+	 */
+	@Override
+	public Content next() {
+		// set the 'current' if it needs changing.
+<span class="fc bfc" id="L131" title="All 2 branches covered.">		if (descending != null) {</span>
+<span class="fc" id="L132">			current = descending;</span>
+<span class="fc" id="L133">			descending = null;</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">		} else if (ascending != null) {</span>
+<span class="fc" id="L135">			current = ascending;</span>
+<span class="fc" id="L136">			ascending = null;</span>
+		}
+		
+<span class="fc" id="L139">		final Content ret = current.next();</span>
+		
+		// got an item to return.
+		// sort out the next state....
+<span class="fc bfc" id="L143" title="All 4 branches covered.">		if ((ret instanceof Element) &amp;&amp; ((Element)ret).getContentSize() &gt; 0) {</span>
+			// there is another descendant, and it has values.
+			// our next will be down....
+<span class="fc" id="L146">			descending = ((Element)ret).getContent().iterator();</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">			if (ssize &gt;= stack.length) {</span>
+<span class="fc" id="L148">				stack = ArrayCopy.copyOf(stack, ssize + 16);</span>
+			}
+<span class="fc" id="L150">			stack[ssize++] = current;</span>
+<span class="fc" id="L151">			return ret;</span>
+		}
+		
+<span class="fc bfc" id="L154" title="All 2 branches covered.">		if (current.hasNext()) {</span>
+			// our next will be along....
+<span class="fc" id="L156">			return ret;</span>
+		}
+		
+		// our next will be up.
+<span class="fc bfc" id="L160" title="All 2 branches covered.">		while (ssize &gt; 0) {</span>
+			
+			// if the stack was generic, this would not be needed, but,
+			// the java.uti.* stack codes are too slow.
+			@SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L165">			final Iterator&lt;Content&gt; subit = (Iterator&lt;Content&gt;)stack[--ssize];</span>
+<span class="fc" id="L166">			ascending = subit;</span>
+<span class="fc" id="L167">			stack[ssize] = null;</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">			if (ascending.hasNext()) {</span>
+<span class="fc" id="L169">				return ret;</span>
+			}
+<span class="fc" id="L171">		}</span>
+
+<span class="fc" id="L173">		ascending = null;</span>
+<span class="fc" id="L174">		hasnext = false;</span>
+<span class="fc" id="L175">		return ret;</span>
+	}
+
+	/**
+	 * Detaches the last {@link org.jdom2.Content} returned by the last call to
+	 * next from it's parent.  &lt;b&gt;Note&lt;/b&gt;: this &lt;b&gt;does not&lt;/b&gt; affect
+	 * iteration and all children, siblings, and any node following the
+	 * removed node (in document order) will be visited.
+	 */
+	@Override
+	public void remove() {
+<span class="fc" id="L186">		current.remove();</span>
+		// if our next move was to go down, we can't.
+		// we can go along, or up.
+<span class="fc" id="L189">		descending = null;</span>
+<span class="fc bfc" id="L190" title="All 4 branches covered.">		if (current.hasNext() || ascending != null) {</span>
+			// we have a next element, or our next move was up anyway.
+<span class="fc" id="L192">			return;</span>
+		}
+		// our next move was going to be down, or accross, but those are not
+		// possible any more, need to check up.
+		// our next will be up.
+<span class="fc bfc" id="L197" title="All 2 branches covered.">		while (ssize &gt; 0) {</span>
+			@SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L199">			final Iterator&lt;Content&gt; subit = (Iterator&lt;Content&gt;)stack[--ssize];</span>
+<span class="fc" id="L200">			stack[ssize] = null;</span>
+<span class="fc" id="L201">			ascending = subit;</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">			if (ascending.hasNext()) {</span>
+<span class="fc" id="L203">				return;</span>
+			}
+<span class="fc" id="L205">		}</span>
+<span class="fc" id="L206">		ascending = null;</span>
+<span class="fc" id="L207">		hasnext = false;</span>
+<span class="fc" id="L208">	}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

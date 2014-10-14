@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>RegexStoryParser.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.parsers</a> &gt; <span class="el_source">RegexStoryParser.java</span></div><h1>RegexStoryParser.java</h1><pre class="source lang-java linenums">package org.jbehave.core.parsers;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.lang.StringUtils;
+import org.jbehave.core.configuration.Keywords;
+import org.jbehave.core.i18n.LocalizedKeywords;
+import org.jbehave.core.model.Description;
+import org.jbehave.core.model.ExamplesTable;
+import org.jbehave.core.model.ExamplesTableFactory;
+import org.jbehave.core.model.GivenStories;
+import org.jbehave.core.model.Lifecycle;
+import org.jbehave.core.model.Meta;
+import org.jbehave.core.model.Narrative;
+import org.jbehave.core.model.Scenario;
+import org.jbehave.core.model.Story;
+
+import static java.util.regex.Pattern.DOTALL;
+import static java.util.regex.Pattern.compile;
+import static org.apache.commons.lang.StringUtils.removeStart;
+
+/**
+ * Pattern-based story parser, which uses the keywords provided to parse the
+ * textual story into a {@link Story}.
+ */
+public class RegexStoryParser implements StoryParser {
+
+    private static final String NONE = &quot;&quot;;
+    private final Keywords keywords;
+    private final ExamplesTableFactory tableFactory;
+
+    public RegexStoryParser() {
+<span class="fc" id="L37">        this(new LocalizedKeywords());</span>
+<span class="fc" id="L38">    }</span>
+
+    public RegexStoryParser(Keywords keywords) {
+<span class="fc" id="L41">        this(keywords, new ExamplesTableFactory());</span>
+<span class="fc" id="L42">    }</span>
+
+    public RegexStoryParser(ExamplesTableFactory tableFactory) {
+<span class="nc" id="L45">        this(new LocalizedKeywords(), tableFactory);</span>
+<span class="nc" id="L46">    }</span>
+
+<span class="fc" id="L48">    public RegexStoryParser(Keywords keywords, ExamplesTableFactory tableFactory) {</span>
+<span class="fc" id="L49">        this.keywords = keywords;</span>
+<span class="fc" id="L50">        this.tableFactory = tableFactory;</span>
+<span class="fc" id="L51">    }</span>
+
+    public Story parseStory(String storyAsText) {
+<span class="fc" id="L54">        return parseStory(storyAsText, null);</span>
+    }
+
+    public Story parseStory(String storyAsText, String storyPath) {
+<span class="fc" id="L58">        Description description = parseDescriptionFrom(storyAsText);</span>
+<span class="fc" id="L59">        Meta meta = parseStoryMetaFrom(storyAsText);</span>
+<span class="fc" id="L60">        Narrative narrative = parseNarrativeFrom(storyAsText);</span>
+<span class="fc" id="L61">        GivenStories givenStories = parseGivenStories(storyAsText);</span>
+<span class="fc" id="L62">        Lifecycle lifecycle = parseLifecycle(storyAsText);</span>
+<span class="fc" id="L63">        List&lt;Scenario&gt; scenarios = parseScenariosFrom(storyAsText);</span>
+<span class="fc" id="L64">        Story story = new Story(storyPath, description, meta, narrative, givenStories, lifecycle, scenarios);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (storyPath != null) {</span>
+<span class="fc" id="L66">            story.namedAs(new File(storyPath).getName());</span>
+        }
+<span class="fc" id="L68">        return story;</span>
+    }
+
+    private Description parseDescriptionFrom(String storyAsText) {
+<span class="fc" id="L72">        Matcher findingDescription = patternToPullDescriptionIntoGroupOne().matcher(storyAsText);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (findingDescription.matches()) {</span>
+<span class="fc" id="L74">            return new Description(findingDescription.group(1).trim());</span>
+        }
+<span class="fc" id="L76">        return Description.EMPTY;</span>
+    }
+
+    private Meta parseStoryMetaFrom(String storyAsText) {
+<span class="fc" id="L80">        Matcher findingMeta = patternToPullStoryMetaIntoGroupOne().matcher(preScenarioText(storyAsText));</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        if (findingMeta.matches()) {</span>
+<span class="fc" id="L82">            String meta = findingMeta.group(1).trim();</span>
+<span class="fc" id="L83">            return Meta.createMeta(meta, keywords);</span>
+        }
+<span class="fc" id="L85">        return Meta.EMPTY;</span>
+    }
+
+    private String preScenarioText(String storyAsText) {
+<span class="fc" id="L89">        String[] split = storyAsText.split(keywords.scenario());</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">        return split.length &gt; 0 ? split[0] : storyAsText;</span>
+    }
+
+    private Narrative parseNarrativeFrom(String storyAsText) {
+<span class="fc" id="L94">        Matcher findingNarrative = patternToPullNarrativeIntoGroupOne().matcher(storyAsText);</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (findingNarrative.matches()) {</span>
+<span class="fc" id="L96">            String narrative = findingNarrative.group(1).trim();</span>
+<span class="fc" id="L97">            return createNarrative(narrative);</span>
+        }
+<span class="fc" id="L99">        return Narrative.EMPTY;</span>
+    }
+
+    private Narrative createNarrative(String narrative) {
+<span class="fc" id="L103">        Matcher findingElements = patternToPullNarrativeElementsIntoGroups().matcher(narrative);</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (findingElements.matches()) {</span>
+<span class="fc" id="L105">            String inOrderTo = findingElements.group(1).trim();</span>
+<span class="fc" id="L106">            String asA = findingElements.group(2).trim();</span>
+<span class="fc" id="L107">            String iWantTo = findingElements.group(3).trim();</span>
+<span class="fc" id="L108">            return new Narrative(inOrderTo, asA, iWantTo);</span>
+        }
+<span class="fc" id="L110">        Matcher findingAlternativeElements = patternToPullAlternativeNarrativeElementsIntoGroups().matcher(narrative);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (findingAlternativeElements.matches()) {            </span>
+<span class="fc" id="L112">            String asA = findingAlternativeElements.group(1).trim();</span>
+<span class="fc" id="L113">            String iWantTo = findingAlternativeElements.group(2).trim();</span>
+<span class="fc" id="L114">            String soThat = findingAlternativeElements.group(3).trim();</span>
+<span class="fc" id="L115">            return new Narrative(&quot;&quot;, asA, iWantTo, soThat);</span>
+        }
+<span class="fc" id="L117">        return Narrative.EMPTY;</span>
+    }
+    
+    private GivenStories parseGivenStories(String storyAsText) {
+<span class="fc" id="L121">        String scenarioKeyword = keywords.scenario();</span>
+        // use text before scenario keyword, if found
+<span class="fc" id="L123">        String beforeScenario = &quot;&quot;;</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (StringUtils.contains(storyAsText, scenarioKeyword)) {</span>
+<span class="fc" id="L125">            beforeScenario = StringUtils.substringBefore(storyAsText, scenarioKeyword);</span>
+        }
+<span class="fc" id="L127">        Matcher findingGivenStories = patternToPullStoryGivenStoriesIntoGroupOne().matcher(beforeScenario);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        String givenStories = findingGivenStories.find() ? findingGivenStories.group(1).trim() : NONE;</span>
+<span class="fc" id="L129">        return new GivenStories(givenStories);</span>
+    }
+
+    private Lifecycle parseLifecycle(String storyAsText) {
+<span class="fc" id="L133">        String scenarioKeyword = keywords.scenario();</span>
+        // use text before scenario keyword, if found
+<span class="fc" id="L135">        String beforeScenario = &quot;&quot;;</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (StringUtils.contains(storyAsText, scenarioKeyword)) {</span>
+<span class="fc" id="L137">            beforeScenario = StringUtils.substringBefore(storyAsText, scenarioKeyword);</span>
+        }
+<span class="fc" id="L139">        Matcher findingLifecycle = patternToPullLifecycleIntoGroupOne().matcher(beforeScenario);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        String lifecycle = findingLifecycle.find() ? findingLifecycle.group(1).trim() : NONE;</span>
+<span class="fc" id="L141">        Matcher findingBeforeAndAfter = compile(&quot;.*&quot; + keywords.before() + &quot;(.*)\\s*&quot; + keywords.after() + &quot;(.*)\\s*&quot; , DOTALL).matcher(lifecycle);</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if ( findingBeforeAndAfter.matches() ){</span>
+<span class="fc" id="L143">            List&lt;String&gt; beforeSteps = findSteps(startingWithNL(findingBeforeAndAfter.group(1).trim()));</span>
+<span class="fc" id="L144">            List&lt;String&gt; afterSteps = findSteps(startingWithNL(findingBeforeAndAfter.group(2).trim()));</span>
+<span class="fc" id="L145">            return new Lifecycle(beforeSteps, afterSteps);</span>
+        }
+<span class="fc" id="L147">        Matcher findingBefore = compile(&quot;.*&quot; + keywords.before() + &quot;(.*)\\s*&quot; , DOTALL).matcher(lifecycle);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        if ( findingBefore.matches() ){</span>
+<span class="fc" id="L149">            List&lt;String&gt; beforeSteps = findSteps(startingWithNL(findingBefore.group(1).trim()));</span>
+<span class="fc" id="L150">            List&lt;String&gt; afterSteps = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L151">            return new Lifecycle(beforeSteps, afterSteps);</span>
+        }
+<span class="fc" id="L153">        Matcher findingAfter = compile(&quot;.*&quot; + keywords.after() + &quot;(.*)\\s*&quot; , DOTALL).matcher(lifecycle);</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if ( findingAfter.matches() ){</span>
+<span class="fc" id="L155">            List&lt;String&gt; beforeSteps = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L156">            List&lt;String&gt; afterSteps = findSteps(startingWithNL(findingAfter.group(1).trim()));</span>
+<span class="fc" id="L157">            return new Lifecycle(beforeSteps, afterSteps);</span>
+        }
+<span class="fc" id="L159">        return Lifecycle.EMPTY;</span>
+    }
+
+    private List&lt;Scenario&gt; parseScenariosFrom(String storyAsText) {
+<span class="fc" id="L163">        List&lt;Scenario&gt; parsed = new ArrayList&lt;Scenario&gt;();</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        for (String scenarioAsText : splitScenarios(storyAsText)) {</span>
+<span class="fc" id="L165">            parsed.add(parseScenario(scenarioAsText));</span>
+<span class="fc" id="L166">        }</span>
+<span class="fc" id="L167">        return parsed;</span>
+    }
+
+    private List&lt;String&gt; splitScenarios(String storyAsText) {
+<span class="fc" id="L171">        List&lt;String&gt; scenarios = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L172">        String scenarioKeyword = keywords.scenario();</span>
+
+        // use text after scenario keyword, if found
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        if (StringUtils.contains(storyAsText, scenarioKeyword)) {</span>
+<span class="fc" id="L176">            storyAsText = StringUtils.substringAfter(storyAsText, scenarioKeyword);</span>
+        }
+
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        for (String scenarioAsText : storyAsText.split(scenarioKeyword)) {</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">            if (scenarioAsText.trim().length() &gt; 0) {</span>
+<span class="fc" id="L181">                scenarios.add(scenarioKeyword + &quot;\n&quot; + scenarioAsText);</span>
+            }
+        }
+        
+<span class="fc" id="L185">        return scenarios;</span>
+    }
+
+    private Scenario parseScenario(String scenarioAsText) {
+<span class="fc" id="L189">        String title = findScenarioTitle(scenarioAsText);</span>
+<span class="fc" id="L190">        String scenarioWithoutKeyword = removeStart(scenarioAsText, keywords.scenario()).trim();</span>
+<span class="fc" id="L191">        String scenarioWithoutTitle = removeStart(scenarioWithoutKeyword, title);</span>
+<span class="fc" id="L192">        scenarioWithoutTitle = startingWithNL(scenarioWithoutTitle);</span>
+<span class="fc" id="L193">        Meta meta = findScenarioMeta(scenarioWithoutTitle);</span>
+<span class="fc" id="L194">        ExamplesTable examplesTable = findExamplesTable(scenarioWithoutTitle);</span>
+<span class="fc" id="L195">        GivenStories givenStories = findScenarioGivenStories(scenarioWithoutTitle);</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        if (givenStories.requireParameters()) {</span>
+<span class="fc" id="L197">            givenStories.useExamplesTable(examplesTable);</span>
+        }
+<span class="fc" id="L199">        List&lt;String&gt; steps = findSteps(scenarioWithoutTitle);</span>
+<span class="fc" id="L200">        return new Scenario(title, meta, givenStories, examplesTable, steps);</span>
+    }
+
+    private String startingWithNL(String text) {
+<span class="fc bfc" id="L204" title="All 2 branches covered.">        if ( !text.startsWith(&quot;\n&quot;) ){ // always ensure starts with newline</span>
+<span class="fc" id="L205">            return &quot;\n&quot; + text;</span>
+        }
+<span class="fc" id="L207">        return text;</span>
+    }
+
+    private String findScenarioTitle(String scenarioAsText) {
+<span class="fc" id="L211">        Matcher findingTitle = patternToPullScenarioTitleIntoGroupOne().matcher(scenarioAsText);</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        return findingTitle.find() ? findingTitle.group(1).trim() : NONE;</span>
+    }
+
+    private Meta findScenarioMeta(String scenarioAsText) {
+<span class="fc" id="L216">        Matcher findingMeta = patternToPullScenarioMetaIntoGroupOne().matcher(scenarioAsText);</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (findingMeta.matches()) {</span>
+<span class="fc" id="L218">            String meta = findingMeta.group(1).trim();</span>
+<span class="fc" id="L219">            return Meta.createMeta(meta, keywords);</span>
+        }
+<span class="fc" id="L221">        return Meta.EMPTY;</span>
+    }
+
+    private ExamplesTable findExamplesTable(String scenarioAsText) {
+<span class="fc" id="L225">        Matcher findingTable = patternToPullExamplesTableIntoGroupOne().matcher(scenarioAsText);</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        String tableInput = findingTable.find() ? findingTable.group(1).trim() : NONE;</span>
+<span class="fc" id="L227">        return tableFactory.createExamplesTable(tableInput);</span>
+    }
+
+    private GivenStories findScenarioGivenStories(String scenarioAsText) {
+<span class="fc" id="L231">        Matcher findingGivenStories = patternToPullScenarioGivenStoriesIntoGroupOne().matcher(scenarioAsText);</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">        String givenStories = findingGivenStories.find() ? findingGivenStories.group(1).trim() : NONE;</span>
+<span class="fc" id="L233">        return new GivenStories(givenStories);</span>
+    }
+
+    private List&lt;String&gt; findSteps(String scenarioAsText) {
+<span class="fc" id="L237">        Matcher matcher = patternToPullStepsIntoGroupOne().matcher(scenarioAsText);</span>
+<span class="fc" id="L238">        List&lt;String&gt; steps = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L239">        int startAt = 0;</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        while (matcher.find(startAt)) {</span>
+<span class="fc" id="L241">            steps.add(StringUtils.substringAfter(matcher.group(1), &quot;\n&quot;));</span>
+<span class="fc" id="L242">            startAt = matcher.start(4);</span>
+        }
+<span class="fc" id="L244">        return steps;</span>
+    }
+
+    // Regex Patterns
+
+    private Pattern patternToPullDescriptionIntoGroupOne() {
+<span class="fc" id="L250">        String metaOrNarrativeOrLifecycleOrScenario = concatenateWithOr(keywords.meta(), keywords.narrative(), keywords.lifecycle(), keywords.scenario());</span>
+<span class="fc" id="L251">        return compile(&quot;(.*?)(&quot; + metaOrNarrativeOrLifecycleOrScenario + &quot;).*&quot;, DOTALL);</span>
+    }
+
+    private Pattern patternToPullStoryMetaIntoGroupOne() {
+<span class="fc" id="L255">        String narrativeOrGivenStories = concatenateWithOr(keywords.narrative(), keywords.givenStories());</span>
+<span class="fc" id="L256">        return compile(&quot;.*&quot; + keywords.meta() + &quot;(.*?)\\s*(\\Z|&quot; + narrativeOrGivenStories + &quot;).*&quot;, DOTALL);</span>
+    }
+
+    private Pattern patternToPullNarrativeIntoGroupOne() {
+<span class="fc" id="L260">        String givenStoriesOrLifecycleOrScenario = concatenateWithOr(keywords.givenStories(), keywords.lifecycle(), keywords.scenario());</span>
+<span class="fc" id="L261">        return compile(&quot;.*&quot; + keywords.narrative() + &quot;(.*?)\\s*(&quot; + givenStoriesOrLifecycleOrScenario + &quot;).*&quot;, DOTALL);</span>
+    }
+
+    private Pattern patternToPullNarrativeElementsIntoGroups() {
+<span class="fc" id="L265">        return compile(&quot;.*&quot; + keywords.inOrderTo() + &quot;(.*)\\s*&quot; + keywords.asA() + &quot;(.*)\\s*&quot; + keywords.iWantTo()</span>
+                + &quot;(.*)&quot;, DOTALL);
+    }
+
+    private Pattern patternToPullAlternativeNarrativeElementsIntoGroups() {
+<span class="fc" id="L270">        return compile(&quot;.*&quot; + keywords.asA() + &quot;(.*)\\s*&quot; + keywords.iWantTo() + &quot;(.*)\\s*&quot; + keywords.soThat()</span>
+                + &quot;(.*)&quot;, DOTALL);
+    }
+    
+    private Pattern patternToPullStoryGivenStoriesIntoGroupOne() {
+<span class="fc" id="L275">        String lifecycleOrScenario = concatenateWithOr(keywords.lifecycle(), keywords.scenario());</span>
+<span class="fc" id="L276">        return compile(&quot;.*&quot; + keywords.givenStories() + &quot;(.*?)\\s*(\\Z|&quot; + lifecycleOrScenario + &quot;).*&quot;, DOTALL);</span>
+    }
+    
+    private Pattern patternToPullLifecycleIntoGroupOne() {
+<span class="fc" id="L280">        return compile(&quot;.*&quot; + keywords.lifecycle() + &quot;\\s*(.*)&quot;, DOTALL);</span>
+    }
+    
+    private Pattern patternToPullScenarioTitleIntoGroupOne() {
+<span class="fc" id="L284">        String startingWords = concatenateWithOr(&quot;\\n&quot;, &quot;&quot;, keywords.startingWords());</span>
+<span class="fc" id="L285">        return compile(keywords.scenario() + &quot;((.)*?)\\s*(&quot; + keywords.meta() + &quot;|&quot; + startingWords + &quot;).*&quot;, DOTALL);</span>
+    }
+
+    private Pattern patternToPullScenarioMetaIntoGroupOne() {
+<span class="fc" id="L289">        String startingWords = concatenateWithOr(&quot;\\n&quot;, &quot;&quot;, keywords.startingWords());</span>
+<span class="fc" id="L290">        return compile(&quot;.*&quot; + keywords.meta() + &quot;(.*?)\\s*(&quot; + keywords.givenStories() + &quot;|&quot; + startingWords + &quot;).*&quot;,</span>
+                DOTALL);
+    }
+
+    private Pattern patternToPullScenarioGivenStoriesIntoGroupOne() {
+<span class="fc" id="L295">        String startingWords = concatenateWithOr(&quot;\\n&quot;, &quot;&quot;, keywords.startingWords());</span>
+<span class="fc" id="L296">        return compile(&quot;\\n&quot; + keywords.givenStories() + &quot;((.|\\n)*?)\\s*(&quot; + startingWords + &quot;).*&quot;, DOTALL);</span>
+    }
+
+    private Pattern patternToPullStepsIntoGroupOne() {
+<span class="fc" id="L300">        String initialStartingWords = concatenateWithOr(&quot;\\n&quot;, &quot;&quot;, keywords.startingWords());</span>
+<span class="fc" id="L301">        String followingStartingWords = concatenateWithOr(&quot;\\n&quot;, &quot;\\s&quot;, keywords.startingWords());</span>
+<span class="fc" id="L302">        return compile(</span>
+                &quot;((&quot; + initialStartingWords + &quot;)\\s(.)*?)\\s*(\\Z|&quot; + followingStartingWords + &quot;|\\n&quot;
+                        + keywords.examplesTable() + &quot;)&quot;, DOTALL);
+    }
+
+    private Pattern patternToPullExamplesTableIntoGroupOne() {
+<span class="fc" id="L308">        return compile(&quot;\\n&quot; + keywords.examplesTable() + &quot;\\s*(.*)&quot;, DOTALL);</span>
+    }
+
+    private String concatenateWithOr(String... keywords) {
+<span class="fc" id="L312">        return concatenateWithOr(null, null, keywords);</span>
+    }
+
+    private String concatenateWithOr(String beforeKeyword, String afterKeyword, String[] keywords) {
+<span class="fc" id="L316">        StringBuilder builder = new StringBuilder();</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        String before = beforeKeyword != null ? beforeKeyword : NONE;</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">        String after = afterKeyword != null ? afterKeyword : NONE;</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        for (String keyword : keywords) {</span>
+<span class="fc" id="L320">            builder.append(before).append(keyword).append(after).append(&quot;|&quot;);</span>
+        }
+<span class="fc" id="L322">        return StringUtils.chomp(builder.toString(), &quot;|&quot;); // chop off the last</span>
+                                                           // &quot;|&quot;
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

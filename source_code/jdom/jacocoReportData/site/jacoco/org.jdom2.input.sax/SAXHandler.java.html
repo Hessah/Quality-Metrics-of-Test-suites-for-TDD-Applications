@@ -1,0 +1,1168 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>SAXHandler.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jdom</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.input.sax</a> &gt; <span class="el_source">SAXHandler.java</span></div><h1>SAXHandler.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2000-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.input.sax;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import javax.xml.XMLConstants;
+
+import org.xml.sax.Attributes;
+import org.xml.sax.DTDHandler;
+import org.xml.sax.Locator;
+import org.xml.sax.SAXException;
+import org.xml.sax.ext.Attributes2;
+import org.xml.sax.ext.DeclHandler;
+import org.xml.sax.ext.LexicalHandler;
+import org.xml.sax.helpers.DefaultHandler;
+
+import org.jdom2.Attribute;
+import org.jdom2.AttributeType;
+import org.jdom2.CDATA;
+import org.jdom2.Comment;
+import org.jdom2.DefaultJDOMFactory;
+import org.jdom2.DocType;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.EntityRef;
+import org.jdom2.JDOMFactory;
+import org.jdom2.Namespace;
+import org.jdom2.Parent;
+import org.jdom2.ProcessingInstruction;
+import org.jdom2.Text;
+import org.jdom2.input.SAXBuilder;
+
+/**
+ * A support class for {@link SAXBuilder} which listens for SAX events.
+ * &lt;p&gt;
+ * People overriding this class are cautioned to ensure that the implementation
+ * of the cleanUp() method resets to a virgin state. The cleanUp() method will
+ * be called when this SAXHandler is reset(), which may happen multiple times
+ * between parses. The cleanUp() method must ensure that there are no references
+ * remaining to any external instances.
+ * &lt;p&gt;
+ * Overriding of this class is permitted to allow for different handling of SAX
+ * events. Once you have created a subclass of this, you also need to create a
+ * custom implementation of {@link SAXHandlerFactory} to supply your instances
+ * to {@link SAXBuilder}
+ * &lt;p&gt;
+ * If the XMLReader producing the SAX Events supports a document Locator, then
+ * this instance will use the locator to supply the line and column data from
+ * the SAX locator to the JDOMFactory. &lt;strong&gt;Note:&lt;/strong&gt; the SAX
+ * specification for the SAX Locator indicates that the line and column
+ * represent the position of the &lt;strong&gt;end&lt;/strong&gt; of the SAX Event. For
+ * example, the line and column of the simple XML &lt;code&gt;&amp;lt;root /&amp;gt;&lt;/code&gt;
+ * would be line 1, column 9.
+ * 
+ * @see org.jdom2.input.sax
+ * @author Brett McLaughlin
+ * @author Jason Hunter
+ * @author Philip Nelson
+ * @author Bradley S. Huffman
+ * @author phil@triloggroup.com
+ * @author Rolf Lear
+ */
+public class SAXHandler extends DefaultHandler implements LexicalHandler,
+		DeclHandler, DTDHandler {
+
+	/** The JDOMFactory used for JDOM object creation */
+	private final JDOMFactory factory;
+
+	/**
+	 * Temporary holder for namespaces that have been declared with
+	 * startPrefixMapping, but are not yet available on the element
+	 */
+<span class="fc" id="L129">	private final List&lt;Namespace&gt; declaredNamespaces = new ArrayList&lt;Namespace&gt;(</span>
+			32);
+
+	/** Temporary holder for the internal subset */
+<span class="fc" id="L133">	private final StringBuilder internalSubset = new StringBuilder();</span>
+
+	/** Temporary holder for Text and CDATA */
+<span class="fc" id="L136">	private final TextBuffer textBuffer = new TextBuffer();</span>
+
+	/** The external entities defined in this document */
+<span class="fc" id="L139">	private final Map&lt;String, String[]&gt; externalEntities = new HashMap&lt;String, String[]&gt;();</span>
+
+	/** &lt;code&gt;Document&lt;/code&gt; object being built - must be cleared on reset() */
+<span class="fc" id="L142">	private Document currentDocument = null;</span>
+
+	/** &lt;code&gt;Element&lt;/code&gt; object being built - must be cleared on reset() */
+<span class="fc" id="L145">	private Element currentElement = null;</span>
+
+	/** The SAX Locator object provided by the parser */
+<span class="fc" id="L148">	private Locator currentLocator = null;</span>
+
+	/** Indicator of where in the document we are - must be reset() */
+<span class="fc" id="L151">	private boolean atRoot = true;</span>
+
+	/**
+	 * Indicator of whether we are in the DocType. Note that the DTD consists of
+	 * both the internal subset (inside the &lt;!DOCTYPE&gt; tag) and the external
+	 * subset (in a separate .dtd file). - must be reset()
+	 */
+<span class="fc" id="L158">	private boolean inDTD = false;</span>
+
+	/** Indicator of whether we are in the internal subset - must be reset() */
+<span class="fc" id="L161">	private boolean inInternalSubset = false;</span>
+
+	/** Indicator of whether we previously were in a CDATA - must be reset() */
+<span class="fc" id="L164">	private boolean previousCDATA = false;</span>
+
+	/** Indicator of whether we are in a CDATA - must be reset() */
+<span class="fc" id="L167">	private boolean inCDATA = false;</span>
+
+	/** Indicator of whether we should expand entities - must be reset() */
+<span class="fc" id="L170">	private boolean expand = true;</span>
+
+	/**
+	 * Indicator of whether we are actively suppressing (non-expanding) a
+	 * current entity - must be reset()
+	 */
+<span class="fc" id="L176">	private boolean suppress = false;</span>
+
+	/** How many nested entities we're currently within - must be reset() */
+<span class="fc" id="L179">	private int entityDepth = 0; // XXX may not be necessary anymore?</span>
+
+	/** Whether to ignore ignorable whitespace */
+<span class="fc" id="L182">	private boolean ignoringWhite = false;</span>
+
+	/** Whether to ignore text containing all whitespace */
+<span class="fc" id="L185">	private boolean ignoringBoundaryWhite = false;</span>
+	
+<span class="fc" id="L187">	private int lastline = 0, lastcol = 0;</span>
+
+	/**
+	 * This will create a new &lt;code&gt;SAXHandler&lt;/code&gt; that listens to SAX events
+	 * and creates a JDOM Document. The objects will be constructed using the
+	 * default factory.
+	 */
+	public SAXHandler() {
+<span class="fc" id="L195">		this(null);</span>
+<span class="fc" id="L196">	}</span>
+
+	/**
+	 * This will create a new &lt;code&gt;SAXHandler&lt;/code&gt; that listens to SAX events
+	 * and creates a JDOM Document. The objects will be constructed using the
+	 * provided factory.
+	 * 
+	 * @param factory
+	 *        &lt;code&gt;JDOMFactory&lt;/code&gt; to be used for constructing objects
+	 */
+<span class="fc" id="L206">	public SAXHandler(final JDOMFactory factory) {</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">		this.factory = factory != null ? factory : new DefaultJDOMFactory();</span>
+<span class="fc" id="L208">		reset();</span>
+<span class="fc" id="L209">	}</span>
+
+	/**
+	 * Override this method if you are a subclasser, and you want to clear the
+	 * state of your SAXHandler instance in preparation for a new parse.
+	 */
+	protected void resetSubCLass() {
+		// override this if you subclass SAXHandler.
+		// it will be called after the base core SAXHandler is reset.
+<span class="fc" id="L218">	}</span>
+
+	/**
+	 * Restore this SAXHandler to a clean state ready for another parse round.
+	 * All internal variables are cleared to an initialized state, and then the
+	 * resetSubClass() method is called to clear any methods that a subclass may
+	 * need to have reset.
+	 */
+	public final void reset() {
+<span class="fc" id="L227">		currentLocator = null;</span>
+<span class="fc" id="L228">		currentDocument = factory.document(null);</span>
+<span class="fc" id="L229">		currentElement = null;</span>
+<span class="fc" id="L230">		atRoot = true;</span>
+<span class="fc" id="L231">		inDTD = false;</span>
+<span class="fc" id="L232">		inInternalSubset = false;</span>
+<span class="fc" id="L233">		previousCDATA = false;</span>
+<span class="fc" id="L234">		inCDATA = false;</span>
+<span class="fc" id="L235">		expand = true;</span>
+<span class="fc" id="L236">		suppress = false;</span>
+<span class="fc" id="L237">		entityDepth = 0;</span>
+<span class="fc" id="L238">		declaredNamespaces.clear();</span>
+<span class="fc" id="L239">		internalSubset.setLength(0);</span>
+<span class="fc" id="L240">		textBuffer.clear();</span>
+<span class="fc" id="L241">		externalEntities.clear();</span>
+<span class="fc" id="L242">		ignoringWhite = false;</span>
+<span class="fc" id="L243">		ignoringBoundaryWhite = false;</span>
+<span class="fc" id="L244">		resetSubCLass();</span>
+<span class="fc" id="L245">	}</span>
+
+	/**
+	 * Pushes an element onto the tree under construction. Allows subclasses to
+	 * put content under a dummy root element which is useful for building
+	 * content that would otherwise be a non-well formed document.
+	 * 
+	 * @param element
+	 *        root element under which content will be built
+	 */
+	protected void pushElement(final Element element) {
+<span class="fc bfc" id="L256" title="All 2 branches covered.">		if (atRoot) {</span>
+<span class="fc" id="L257">			currentDocument.setRootElement(element); // XXX should we use a</span>
+			// factory call?
+<span class="fc" id="L259">			atRoot = false;</span>
+		} else {
+<span class="fc" id="L261">			factory.addContent(currentElement, element);</span>
+		}
+<span class="fc" id="L263">		currentElement = element;</span>
+<span class="fc" id="L264">	}</span>
+
+	/**
+	 * Returns the document. Should be called after parsing is complete.
+	 * 
+	 * @return &lt;code&gt;Document&lt;/code&gt; - Document that was built
+	 */
+	public Document getDocument() {
+<span class="fc" id="L272">		return currentDocument;</span>
+	}
+
+	/**
+	 * Returns the factory used for constructing objects.
+	 * 
+	 * @return &lt;code&gt;JDOMFactory&lt;/code&gt; - the factory used for constructing
+	 *         objects.
+	 * @see #SAXHandler(org.jdom2.JDOMFactory)
+	 */
+	public JDOMFactory getFactory() {
+<span class="fc" id="L283">		return factory;</span>
+	}
+
+	/**
+	 * This sets whether or not to expand entities during the build. A true
+	 * means to expand entities as normal content. A false means to leave
+	 * entities unexpanded as &lt;code&gt;EntityRef&lt;/code&gt; objects. The default is
+	 * true.
+	 * 
+	 * @param expand
+	 *        &lt;code&gt;boolean&lt;/code&gt; indicating whether entity expansion should
+	 *        occur.
+	 */
+	public void setExpandEntities(final boolean expand) {
+<span class="fc" id="L297">		this.expand = expand;</span>
+<span class="fc" id="L298">	}</span>
+
+	/**
+	 * Returns whether or not entities will be expanded during the build.
+	 * 
+	 * @return &lt;code&gt;boolean&lt;/code&gt; - whether entity expansion will occur during
+	 *         build.
+	 * @see #setExpandEntities
+	 */
+	public boolean getExpandEntities() {
+<span class="fc" id="L308">		return expand;</span>
+	}
+
+	/**
+	 * Specifies whether or not the parser should elminate whitespace in element
+	 * content (sometimes known as &quot;ignorable whitespace&quot;) when building the
+	 * document. Only whitespace which is contained within element content that
+	 * has an element only content model will be eliminated (see XML Rec 3.2.1).
+	 * For this setting to take effect requires that validation be turned on.
+	 * The default value of this setting is &lt;code&gt;false&lt;/code&gt;.
+	 * 
+	 * @param ignoringWhite
+	 *        Whether to ignore ignorable whitespace
+	 */
+	public void setIgnoringElementContentWhitespace(final boolean ignoringWhite) {
+<span class="fc" id="L323">		this.ignoringWhite = ignoringWhite;</span>
+<span class="fc" id="L324">	}</span>
+
+	/**
+	 * Specifies whether or not the parser should eliminate text() nodes
+	 * containing only whitespace when building the document. See
+	 * {@link SAXBuilder#setIgnoringBoundaryWhitespace(boolean)}.
+	 * 
+	 * @param ignoringBoundaryWhite
+	 *        Whether to ignore only whitespace content
+	 */
+	public void setIgnoringBoundaryWhitespace(
+			final boolean ignoringBoundaryWhite) {
+<span class="fc" id="L336">		this.ignoringBoundaryWhite = ignoringBoundaryWhite;</span>
+<span class="fc" id="L337">	}</span>
+
+	/**
+	 * Returns whether or not the parser will elminate element content
+	 * containing only whitespace.
+	 * 
+	 * @return &lt;code&gt;boolean&lt;/code&gt; - whether only whitespace content will be
+	 *         ignored during build.
+	 * @see #setIgnoringBoundaryWhitespace
+	 */
+	public boolean getIgnoringBoundaryWhitespace() {
+<span class="fc" id="L348">		return ignoringBoundaryWhite;</span>
+	}
+
+	/**
+	 * Returns whether or not the parser will elminate whitespace in element
+	 * content (sometimes known as &quot;ignorable whitespace&quot;) when building the
+	 * document.
+	 * 
+	 * @return &lt;code&gt;boolean&lt;/code&gt; - whether ignorable whitespace will be
+	 *         ignored during build.
+	 * @see #setIgnoringElementContentWhitespace
+	 */
+	public boolean getIgnoringElementContentWhitespace() {
+<span class="fc" id="L361">		return ignoringWhite;</span>
+	}
+
+	@Override
+	public void startDocument() {
+<span class="fc bfc" id="L366" title="All 2 branches covered.">		if (currentLocator != null) {</span>
+<span class="fc" id="L367">			currentDocument.setBaseURI(currentLocator.getSystemId());</span>
+		}
+<span class="fc" id="L369">	}</span>
+
+	/**
+	 * This is called when the parser encounters an external entity declaration.
+	 * 
+	 * @param name
+	 *        entity name
+	 * @param publicID
+	 *        public id
+	 * @param systemID
+	 *        system id
+	 * @throws SAXException
+	 *         when things go wrong
+	 */
+	@Override
+	public void externalEntityDecl(final String name, final String publicID,
+			final String systemID) throws SAXException {
+		// Store the public and system ids for the name
+<span class="fc" id="L387">		externalEntities.put(name, new String[] { publicID, systemID });</span>
+
+<span class="fc bfc" id="L389" title="All 2 branches covered.">		if (!inInternalSubset)</span>
+<span class="fc" id="L390">			return;</span>
+
+<span class="fc" id="L392">		internalSubset.append(&quot;  &lt;!ENTITY &quot;).append(name);</span>
+<span class="fc" id="L393">		appendExternalId(publicID, systemID);</span>
+<span class="fc" id="L394">		internalSubset.append(&quot;&gt;\n&quot;);</span>
+<span class="fc" id="L395">	}</span>
+
+	/**
+	 * This handles an attribute declaration in the internal subset.
+	 * 
+	 * @param eName
+	 *        &lt;code&gt;String&lt;/code&gt; element name of attribute
+	 * @param aName
+	 *        &lt;code&gt;String&lt;/code&gt; attribute name
+	 * @param type
+	 *        &lt;code&gt;String&lt;/code&gt; attribute type
+	 * @param valueDefault
+	 *        &lt;code&gt;String&lt;/code&gt; default value of attribute
+	 * @param value
+	 *        &lt;code&gt;String&lt;/code&gt; value of attribute
+	 */
+	@Override
+	public void attributeDecl(final String eName, final String aName,
+			final String type, final String valueDefault, final String value) {
+
+<span class="fc bfc" id="L415" title="All 2 branches covered.">		if (!inInternalSubset)</span>
+<span class="fc" id="L416">			return;</span>
+
+<span class="fc" id="L418">		internalSubset.append(&quot;  &lt;!ATTLIST &quot;).append(eName).append(' ')</span>
+				.append(aName).append(' ').append(type).append(' ');
+<span class="fc bfc" id="L420" title="All 2 branches covered.">		if (valueDefault != null) {</span>
+<span class="fc" id="L421">			internalSubset.append(valueDefault);</span>
+		} else {
+<span class="fc" id="L423">			internalSubset.append('\&quot;').append(value).append('\&quot;');</span>
+		}
+<span class="fc bfc" id="L425" title="All 4 branches covered.">		if ((valueDefault != null) &amp;&amp; (valueDefault.equals(&quot;#FIXED&quot;))) {</span>
+<span class="fc" id="L426">			internalSubset.append(&quot; \&quot;&quot;).append(value).append('\&quot;');</span>
+		}
+<span class="fc" id="L428">		internalSubset.append(&quot;&gt;\n&quot;);</span>
+<span class="fc" id="L429">	}</span>
+
+	/**
+	 * Handle an element declaration in a DTD.
+	 * 
+	 * @param name
+	 *        &lt;code&gt;String&lt;/code&gt; name of element
+	 * @param model
+	 *        &lt;code&gt;String&lt;/code&gt; model of the element in DTD syntax
+	 */
+	@Override
+	public void elementDecl(final String name, final String model) {
+		// Skip elements that come from the external subset
+<span class="fc bfc" id="L442" title="All 2 branches covered.">		if (!inInternalSubset)</span>
+<span class="fc" id="L443">			return;</span>
+
+<span class="fc" id="L445">		internalSubset.append(&quot;  &lt;!ELEMENT &quot;).append(name).append(' ')</span>
+				.append(model).append(&quot;&gt;\n&quot;);
+<span class="fc" id="L447">	}</span>
+
+	/**
+	 * Handle an internal entity declaration in a DTD.
+	 * 
+	 * @param name
+	 *        &lt;code&gt;String&lt;/code&gt; name of entity
+	 * @param value
+	 *        &lt;code&gt;String&lt;/code&gt; value of the entity
+	 */
+	@Override
+	public void internalEntityDecl(final String name, final String value) {
+
+		// Skip entities that come from the external subset
+<span class="fc bfc" id="L461" title="All 2 branches covered.">		if (!inInternalSubset)</span>
+<span class="fc" id="L462">			return;</span>
+
+<span class="fc" id="L464">		internalSubset.append(&quot;  &lt;!ENTITY &quot;);</span>
+<span class="fc bfc" id="L465" title="All 2 branches covered.">		if (name.startsWith(&quot;%&quot;)) {</span>
+<span class="fc" id="L466">			internalSubset.append(&quot;% &quot;).append(name.substring(1));</span>
+		} else {
+<span class="fc" id="L468">			internalSubset.append(name);</span>
+		}
+<span class="fc" id="L470">		internalSubset.append(&quot; \&quot;&quot;).append(value).append(&quot;\&quot;&gt;\n&quot;);</span>
+<span class="fc" id="L471">	}</span>
+
+	/**
+	 * This will indicate that a processing instruction has been encountered.
+	 * (The XML declaration is not a processing instruction and will not be
+	 * reported.)
+	 * 
+	 * @param target
+	 *        &lt;code&gt;String&lt;/code&gt; target of PI
+	 * @param data
+	 *        &lt;code&gt;String&lt;/code&gt; containing all data sent to the PI. This
+	 *        typically looks like one or more attribute value pairs.
+	 * @throws SAXException
+	 *         when things go wrong
+	 */
+	@Override
+	public void processingInstruction(final String target, final String data)
+			throws SAXException {
+
+<span class="fc bfc" id="L490" title="All 2 branches covered.">		if (suppress)</span>
+<span class="fc" id="L491">			return;</span>
+
+<span class="fc" id="L493">		flushCharacters();</span>
+
+<span class="fc bfc" id="L495" title="All 2 branches covered.">		final ProcessingInstruction pi = (currentLocator == null) ? factory</span>
+				.processingInstruction(target, data) : factory
+				.processingInstruction(currentLocator.getLineNumber(),
+						currentLocator.getColumnNumber(), target, data);
+
+<span class="fc bfc" id="L500" title="All 2 branches covered.">		if (atRoot) {</span>
+<span class="fc" id="L501">			factory.addContent(currentDocument, pi);</span>
+		} else {
+<span class="fc" id="L503">			factory.addContent(getCurrentElement(), pi);</span>
+		}
+<span class="fc" id="L505">	}</span>
+
+	/**
+	 * This indicates that an unresolvable entity reference has been
+	 * encountered, normally because the external DTD subset has not been read.
+	 * 
+	 * @param name
+	 *        &lt;code&gt;String&lt;/code&gt; name of entity
+	 * @throws SAXException
+	 *         when things go wrong
+	 */
+	@Override
+	public void skippedEntity(final String name) throws SAXException {
+
+		// We don't handle parameter entity references.
+<span class="fc bfc" id="L520" title="All 2 branches covered.">		if (name.startsWith(&quot;%&quot;))</span>
+<span class="fc" id="L521">			return;</span>
+
+<span class="fc" id="L523">		flushCharacters();</span>
+
+<span class="fc bfc" id="L525" title="All 2 branches covered.">		final EntityRef er = currentLocator == null ? factory.entityRef(name)</span>
+				: factory.entityRef(currentLocator.getLineNumber(),
+						currentLocator.getColumnNumber(), name);
+
+<span class="fc" id="L529">		factory.addContent(getCurrentElement(), er);</span>
+<span class="fc" id="L530">	}</span>
+
+	/**
+	 * This will add the prefix mapping to the JDOM &lt;code&gt;Document&lt;/code&gt;
+	 * object.
+	 * 
+	 * @param prefix
+	 *        &lt;code&gt;String&lt;/code&gt; namespace prefix.
+	 * @param uri
+	 *        &lt;code&gt;String&lt;/code&gt; namespace URI.
+	 */
+	@Override
+	public void startPrefixMapping(final String prefix, final String uri)
+			throws SAXException {
+
+<span class="fc bfc" id="L545" title="All 2 branches covered.">		if (suppress)</span>
+<span class="fc" id="L546">			return;</span>
+
+<span class="fc" id="L548">		final Namespace ns = Namespace.getNamespace(prefix, uri);</span>
+<span class="fc" id="L549">		declaredNamespaces.add(ns);</span>
+<span class="fc" id="L550">	}</span>
+
+	/**
+	 * This reports the occurrence of an actual element. It will include the
+	 * element's attributes, with the exception of XML vocabulary specific
+	 * attributes, such as &lt;code&gt;xmlns:[namespace prefix]&lt;/code&gt; and
+	 * &lt;code&gt;xsi:schemaLocation&lt;/code&gt;.
+	 * 
+	 * @param namespaceURI
+	 *        &lt;code&gt;String&lt;/code&gt; namespace URI this element is associated with,
+	 *        or an empty &lt;code&gt;String&lt;/code&gt;
+	 * @param localName
+	 *        &lt;code&gt;String&lt;/code&gt; name of element (with no namespace prefix, if
+	 *        one is present)
+	 * @param qName
+	 *        &lt;code&gt;String&lt;/code&gt; XML 1.0 version of element name: [namespace
+	 *        prefix]:[localName]
+	 * @param atts
+	 *        &lt;code&gt;Attributes&lt;/code&gt; list for this element
+	 * @throws SAXException
+	 *         when things go wrong
+	 */
+	@Override
+	public void startElement(final String namespaceURI, String localName,
+			final String qName, final Attributes atts) throws SAXException {
+<span class="fc bfc" id="L575" title="All 2 branches covered.">		if (suppress)</span>
+<span class="fc" id="L576">			return;</span>
+
+<span class="fc" id="L578">		String prefix = &quot;&quot;;</span>
+
+		// If QName is set, then set prefix and local name as necessary
+<span class="fc bfc" id="L581" title="All 2 branches covered.">		if (!&quot;&quot;.equals(qName)) {</span>
+<span class="fc" id="L582">			final int colon = qName.indexOf(':');</span>
+
+<span class="fc bfc" id="L584" title="All 2 branches covered.">			if (colon &gt; 0) {</span>
+<span class="fc" id="L585">				prefix = qName.substring(0, colon);</span>
+			}
+
+			// If local name is not set, try to get it from the QName
+<span class="pc bpc" id="L589" title="1 of 4 branches missed.">			if ((localName == null) || (localName.equals(&quot;&quot;))) {</span>
+<span class="fc" id="L590">				localName = qName.substring(colon + 1);</span>
+			}
+		}
+		// At this point either prefix and localName are set correctly or
+		// there is an error in the parser.
+
+<span class="fc" id="L596">		final Namespace namespace = Namespace</span>
+				.getNamespace(prefix, namespaceURI);
+<span class="fc bfc" id="L598" title="All 2 branches covered.">		final Element element = currentLocator == null ? factory.element(</span>
+				localName, namespace) : factory.element(
+				currentLocator.getLineNumber(),
+				currentLocator.getColumnNumber(), localName, namespace);
+
+		// Take leftover declared namespaces and add them to this element's
+		// map of namespaces
+<span class="fc bfc" id="L605" title="All 2 branches covered.">		if (declaredNamespaces.size() &gt; 0) {</span>
+<span class="fc" id="L606">			transferNamespaces(element);</span>
+		}
+
+<span class="fc" id="L609">		flushCharacters();</span>
+
+<span class="fc bfc" id="L611" title="All 2 branches covered.">		if (atRoot) {</span>
+<span class="fc" id="L612">			factory.setRoot(currentDocument, element); // Yes, use a factory</span>
+			// call...
+<span class="fc" id="L614">			atRoot = false;</span>
+		} else {
+<span class="fc" id="L616">			factory.addContent(getCurrentElement(), element);</span>
+		}
+<span class="fc" id="L618">		currentElement = element;</span>
+
+		// Handle attributes
+<span class="fc bfc" id="L621" title="All 2 branches covered.">		for (int i = 0, len = atts.getLength(); i &lt; len; i++) {</span>
+
+<span class="fc" id="L623">			String attPrefix = &quot;&quot;;</span>
+<span class="fc" id="L624">			String attLocalName = atts.getLocalName(i);</span>
+<span class="fc" id="L625">			final String attQName = atts.getQName(i);</span>
+<span class="fc bfc" id="L626" title="All 2 branches covered.">			final boolean specified = (atts instanceof Attributes2) ? ((Attributes2)atts).isSpecified(i) : true;</span>
+
+			// If attribute QName is set, then set attribute prefix and
+			// attribute local name as necessary
+<span class="fc bfc" id="L630" title="All 2 branches covered.">			if (!attQName.equals(&quot;&quot;)) {</span>
+				// Bypass any xmlns attributes which might appear, as we got
+				// them already in startPrefixMapping(). This is sometimes
+				// necessary when SAXHandler is used with another source than
+				// SAXBuilder, as with JDOMResult.
+<span class="fc bfc" id="L635" title="All 4 branches covered.">				if (attQName.startsWith(&quot;xmlns:&quot;) || attQName.equals(&quot;xmlns&quot;)) {</span>
+<span class="fc" id="L636">					continue;</span>
+				}
+
+<span class="fc" id="L639">				final int attColon = attQName.indexOf(':');</span>
+
+<span class="fc bfc" id="L641" title="All 2 branches covered.">				if (attColon &gt; 0) {</span>
+<span class="fc" id="L642">					attPrefix = attQName.substring(0, attColon);</span>
+				}
+
+				// If localName is not set, try to get it from the QName
+<span class="fc bfc" id="L646" title="All 2 branches covered.">				if (&quot;&quot;.equals(attLocalName)) {</span>
+<span class="fc" id="L647">					attLocalName = attQName.substring(attColon + 1);</span>
+				}
+			}
+
+<span class="fc" id="L651">			final AttributeType attType = AttributeType.getAttributeType(atts</span>
+					.getType(i));
+<span class="fc" id="L653">			final String attValue = atts.getValue(i);</span>
+<span class="fc" id="L654">			final String attURI = atts.getURI(i);</span>
+
+<span class="pc bpc" id="L656" title="2 of 6 branches missed.">			if (XMLConstants.XMLNS_ATTRIBUTE.equals(attLocalName)</span>
+					|| XMLConstants.XMLNS_ATTRIBUTE.equals(attPrefix)
+					|| XMLConstants.XMLNS_ATTRIBUTE_NS_URI.equals(attURI)) {
+				// use the actual Namespace to check too, because, in theory, a
+				// namespace-aware parser does not need to set the qName unless
+				// the namespace-prefixes feature is set as well.
+<span class="fc" id="L662">				continue;</span>
+			}
+			// At this point either attPrefix and attLocalName are set
+			// correctly or there is an error in the parser.
+
+			// just one thing to sort out....
+			// the prefix for the namespace.
+<span class="fc bfc" id="L669" title="All 4 branches covered.">			if (!&quot;&quot;.equals(attURI) &amp;&amp; &quot;&quot;.equals(attPrefix)) {</span>
+				// the localname and qName are the same, but there is a
+				// Namspace URI. We need to figure out the namespace prefix.
+				// this is an unusual condition. Currently the only known
+				// trigger
+				// is when there is a fixed/defaulted attribute from a
+				// validating
+				// XMLSchema, and the attribute is in a different namespace
+				// than the rest of the document, this happens whenever there
+				// is an attribute definition that has form=&quot;qualified&quot;.
+				// &lt;xs:attribute name=&quot;attname&quot; form=&quot;qualified&quot; ... /&gt;
+				// or the schema sets attributeFormDefault=&quot;qualified&quot;
+<span class="fc" id="L681">				final HashMap&lt;String, Namespace&gt; tmpmap = new HashMap&lt;String, Namespace&gt;();</span>
+<span class="fc bfc" id="L682" title="All 2 branches covered.">				for (final Namespace nss : element.getNamespacesInScope()) {</span>
+<span class="fc bfc" id="L683" title="All 4 branches covered.">					if (nss.getPrefix().length() &gt; 0</span>
+							&amp;&amp; nss.getURI().equals(attURI)) {
+<span class="fc" id="L685">						attPrefix = nss.getPrefix();</span>
+<span class="fc" id="L686">						break;</span>
+					}
+<span class="fc" id="L688">					tmpmap.put(nss.getPrefix(), nss);</span>
+<span class="fc" id="L689">				}</span>
+
+<span class="fc bfc" id="L691" title="All 2 branches covered.">				if (&quot;&quot;.equals(attPrefix)) {</span>
+					// we cannot find a 'prevailing' namespace that has a prefix
+					// that is for this namespace.
+					// This basically means that there's an XMLSchema, for the
+					// DEFAULT namespace, and there's a defaulted/fixed
+					// attribute definition in the XMLSchema that's targeted
+					// for this namespace,... but, the user has either not
+					// declared a prefixed version of the namespace, or has
+					// re-declared the same prefix at a lower level with a
+					// different namespace.
+					// All of these things are possible.
+					// Create some sort of default prefix.
+<span class="fc" id="L703">					int cnt = 0;</span>
+<span class="fc" id="L704">					final String base = &quot;attns&quot;;</span>
+<span class="fc" id="L705">					String pfx = base + cnt;</span>
+<span class="fc bfc" id="L706" title="All 2 branches covered.">					while (tmpmap.containsKey(pfx)) {</span>
+<span class="fc" id="L707">						cnt++;</span>
+<span class="fc" id="L708">						pfx = base + cnt;</span>
+					}
+<span class="fc" id="L710">					attPrefix = pfx;</span>
+				}
+			}
+<span class="fc" id="L713">			final Namespace attNs = Namespace.getNamespace(attPrefix, attURI);</span>
+
+<span class="fc" id="L715">			final Attribute attribute = factory.attribute(attLocalName,</span>
+					attValue, attType, attNs);
+<span class="fc bfc" id="L717" title="All 2 branches covered.">			if (!specified) {</span>
+				// it is a DTD defaulted value.
+<span class="fc" id="L719">				attribute.setSpecified(false);</span>
+			}
+<span class="fc" id="L721">			factory.setAttribute(element, attribute);</span>
+		}
+
+<span class="fc" id="L724">	}</span>
+
+	/**
+	 * This will take the supplied &lt;code&gt;{@link Element}&lt;/code&gt; and transfer its
+	 * namespaces to the global namespace storage.
+	 * 
+	 * @param element
+	 *        &lt;code&gt;Element&lt;/code&gt; to read namespaces from.
+	 */
+	private void transferNamespaces(final Element element) {
+<span class="fc bfc" id="L734" title="All 2 branches covered.">		for (final Namespace ns : declaredNamespaces) {</span>
+<span class="fc bfc" id="L735" title="All 2 branches covered.">			if (ns != element.getNamespace()) {</span>
+<span class="fc" id="L736">				element.addNamespaceDeclaration(ns);</span>
+			}
+<span class="fc" id="L738">		}</span>
+<span class="fc" id="L739">		declaredNamespaces.clear();</span>
+<span class="fc" id="L740">	}</span>
+
+	/**
+	 * This will report character data (within an element).
+	 * 
+	 * @param ch
+	 *        &lt;code&gt;char[]&lt;/code&gt; character array with character data
+	 * @param start
+	 *        &lt;code&gt;int&lt;/code&gt; index in array where data starts.
+	 * @param length
+	 *        &lt;code&gt;int&lt;/code&gt; length of data.
+	 */
+	@Override
+	public void characters(final char[] ch, final int start, final int length)
+			throws SAXException {
+
+<span class="fc bfc" id="L756" title="All 6 branches covered.">		if (suppress || (length == 0 &amp;&amp; !inCDATA))</span>
+<span class="fc" id="L757">			return;</span>
+
+<span class="fc bfc" id="L759" title="All 2 branches covered.">		if (previousCDATA != inCDATA) {</span>
+<span class="fc" id="L760">			flushCharacters();</span>
+		}
+
+<span class="fc" id="L763">		textBuffer.append(ch, start, length);</span>
+		
+<span class="fc bfc" id="L765" title="All 2 branches covered.">		if (currentLocator != null) {</span>
+<span class="fc" id="L766">			lastline = currentLocator.getLineNumber();</span>
+<span class="fc" id="L767">			lastcol = currentLocator.getColumnNumber();</span>
+		}
+<span class="fc" id="L769">	}</span>
+
+	/**
+	 * Capture ignorable whitespace as text. If
+	 * setIgnoringElementContentWhitespace(true) has been called then this
+	 * method does nothing.
+	 * 
+	 * @param ch
+	 *        &lt;code&gt;[]&lt;/code&gt; - char array of ignorable whitespace
+	 * @param start
+	 *        &lt;code&gt;int&lt;/code&gt; - starting position within array
+	 * @param length
+	 *        &lt;code&gt;int&lt;/code&gt; - length of whitespace after start
+	 * @throws SAXException
+	 *         when things go wrong
+	 */
+	@Override
+	public void ignorableWhitespace(final char[] ch, final int start,
+			final int length) throws SAXException {
+<span class="fc bfc" id="L788" title="All 2 branches covered.">		if (!ignoringWhite) {</span>
+<span class="fc" id="L789">			characters(ch, start, length);</span>
+		}
+<span class="fc" id="L791">	}</span>
+
+	/**
+	 * This will flush any characters from SAX character calls we've been
+	 * buffering.
+	 * 
+	 * @throws SAXException
+	 *         when things go wrong
+	 */
+	protected void flushCharacters() throws SAXException {
+<span class="fc bfc" id="L801" title="All 2 branches covered.">		if (ignoringBoundaryWhite) {</span>
+<span class="fc bfc" id="L802" title="All 2 branches covered.">			if (!textBuffer.isAllWhitespace()) {</span>
+<span class="fc" id="L803">				flushCharacters(textBuffer.toString());</span>
+			}
+		} else {
+<span class="fc" id="L806">			flushCharacters(textBuffer.toString());</span>
+		}
+<span class="fc" id="L808">		textBuffer.clear();</span>
+<span class="fc" id="L809">	}</span>
+
+	/**
+	 * Flush the given string into the document. This is a protected method so
+	 * subclassers can control text handling without knowledge of the internals
+	 * of this class.
+	 * 
+	 * @param data
+	 *        string to flush
+	 * @throws SAXException
+	 *         if the state of the handler does not allow this.
+	 */
+	protected void flushCharacters(final String data) throws SAXException {
+<span class="fc bfc" id="L822" title="All 4 branches covered.">		if (data.length() == 0 &amp;&amp; !inCDATA) {</span>
+<span class="fc" id="L823">			previousCDATA = inCDATA;</span>
+<span class="fc" id="L824">			return;</span>
+		}
+
+		/**
+		 * This is commented out because of some problems with the inline DTDs
+		 * that Xerces seems to have. if (!inDTD) { if (inEntity) {
+		 * getCurrentElement().setContent(factory.text(data)); } else {
+		 * getCurrentElement().addContent(factory.text(data)); }
+		 */
+
+<span class="fc bfc" id="L834" title="All 2 branches covered.">		if (previousCDATA) {</span>
+<span class="fc bfc" id="L835" title="All 2 branches covered.">			final CDATA cdata = currentLocator == null ? factory.cdata(data)</span>
+					: factory.cdata(lastline, lastcol, data);
+<span class="fc" id="L837">			factory.addContent(getCurrentElement(), cdata);</span>
+<span class="fc" id="L838">		} else {</span>
+<span class="fc bfc" id="L839" title="All 2 branches covered.">			final Text text = currentLocator == null ? factory.text(data)</span>
+					: factory.text(lastline, lastcol, data);
+<span class="fc" id="L841">			factory.addContent(getCurrentElement(), text);</span>
+		}
+
+<span class="fc" id="L844">		previousCDATA = inCDATA;</span>
+<span class="fc" id="L845">	}</span>
+
+	/**
+	 * Indicates the end of an element (&lt;code&gt;&amp;lt;/[element name]&amp;gt;&lt;/code&gt;) is
+	 * reached. Note that the parser does not distinguish between empty elements
+	 * and non-empty elements, so this will occur uniformly.
+	 * 
+	 * @param namespaceURI
+	 *        &lt;code&gt;String&lt;/code&gt; URI of namespace this element is associated
+	 *        with
+	 * @param localName
+	 *        &lt;code&gt;String&lt;/code&gt; name of element without prefix
+	 * @param qName
+	 *        &lt;code&gt;String&lt;/code&gt; name of element in XML 1.0 form
+	 * @throws SAXException
+	 *         when things go wrong
+	 */
+	@Override
+	public void endElement(final String namespaceURI, final String localName,
+			final String qName) throws SAXException {
+
+<span class="fc bfc" id="L866" title="All 2 branches covered.">		if (suppress)</span>
+<span class="fc" id="L867">			return;</span>
+
+<span class="fc" id="L869">		flushCharacters();</span>
+
+<span class="fc bfc" id="L871" title="All 2 branches covered.">		if (!atRoot) {</span>
+<span class="fc" id="L872">			final Parent p = currentElement.getParent();</span>
+<span class="fc bfc" id="L873" title="All 2 branches covered.">			if (p instanceof Document) {</span>
+<span class="fc" id="L874">				atRoot = true;</span>
+			} else {
+<span class="fc" id="L876">				currentElement = (Element) p;</span>
+			}
+<span class="fc" id="L878">		} else {</span>
+<span class="fc" id="L879">			throw new SAXException(</span>
+					&quot;Ill-formed XML document (missing opening tag for &quot;
+							+ localName + &quot;)&quot;);
+		}
+<span class="fc" id="L883">	}</span>
+
+	/**
+	 * This will signify that a DTD is being parsed, and can be used to ensure
+	 * that comments and other lexical structures in the DTD are not added to
+	 * the JDOM &lt;code&gt;Document&lt;/code&gt; object.
+	 * 
+	 * @param name
+	 *        &lt;code&gt;String&lt;/code&gt; name of element listed in DTD
+	 * @param publicID
+	 *        &lt;code&gt;String&lt;/code&gt; public ID of DTD
+	 * @param systemID
+	 *        &lt;code&gt;String&lt;/code&gt; system ID of DTD
+	 */
+	@Override
+	public void startDTD(final String name, final String publicID,
+			final String systemID) throws SAXException {
+
+<span class="fc" id="L901">		flushCharacters(); // Is this needed here?</span>
+
+<span class="fc bfc" id="L903" title="All 2 branches covered.">		final DocType doctype = currentLocator == null ? factory.docType(name,</span>
+				publicID, systemID) : factory.docType(
+				currentLocator.getLineNumber(),
+				currentLocator.getColumnNumber(), name, publicID, systemID);
+<span class="fc" id="L907">		factory.addContent(currentDocument, doctype);</span>
+<span class="fc" id="L908">		inDTD = true;</span>
+<span class="fc" id="L909">		inInternalSubset = true;</span>
+<span class="fc" id="L910">	}</span>
+
+	/**
+	 * This signifies that the reading of the DTD is complete.
+	 */
+	@Override
+	public void endDTD() {
+
+<span class="fc" id="L918">		currentDocument.getDocType().setInternalSubset(</span>
+				internalSubset.toString());
+<span class="fc" id="L920">		inDTD = false;</span>
+<span class="fc" id="L921">		inInternalSubset = false;</span>
+<span class="fc" id="L922">	}</span>
+
+	@Override
+	public void startEntity(final String name) throws SAXException {
+<span class="fc" id="L926">		entityDepth++;</span>
+
+<span class="fc bfc" id="L928" title="All 4 branches covered.">		if (expand || entityDepth &gt; 1) {</span>
+			// Short cut out if we're expanding or if we're nested
+<span class="fc" id="L930">			return;</span>
+		}
+
+		// A &quot;[dtd]&quot; entity indicates the beginning of the external subset
+<span class="fc bfc" id="L934" title="All 2 branches covered.">		if (name.equals(&quot;[dtd]&quot;)) {</span>
+<span class="fc" id="L935">			inInternalSubset = false;</span>
+<span class="fc" id="L936">			return;</span>
+		}
+
+		// Ignore DTD references, and translate the standard 5
+<span class="pc bpc" id="L940" title="1 of 12 branches missed.">		if ((!inDTD) &amp;&amp; (!name.equals(&quot;amp&quot;)) &amp;&amp; (!name.equals(&quot;lt&quot;))</span>
+				&amp;&amp; (!name.equals(&quot;gt&quot;)) &amp;&amp; (!name.equals(&quot;apos&quot;))
+				&amp;&amp; (!name.equals(&quot;quot&quot;))) {
+
+<span class="pc bpc" id="L944" title="1 of 2 branches missed.">			if (!expand) {</span>
+<span class="fc" id="L945">				String pub = null;</span>
+<span class="fc" id="L946">				String sys = null;</span>
+<span class="fc" id="L947">				final String[] ids = externalEntities.get(name);</span>
+<span class="fc bfc" id="L948" title="All 2 branches covered.">				if (ids != null) {</span>
+<span class="fc" id="L949">					pub = ids[0]; // may be null, that's OK</span>
+<span class="fc" id="L950">					sys = ids[1]; // may be null, that's OK</span>
+				}
+				/**
+				 * if no current element, this entity belongs to an attribute in
+				 * these cases, it is an error on the part of the parser to call
+				 * startEntity but this will help in some cases. See
+				 * org/xml/sax/
+				 * ext/LexicalHandler.html#startEntity(java.lang.String) for
+				 * more information
+				 */
+<span class="fc bfc" id="L960" title="All 2 branches covered.">				if (!atRoot) {</span>
+<span class="fc" id="L961">					flushCharacters();</span>
+<span class="fc bfc" id="L962" title="All 2 branches covered.">					final EntityRef entity = currentLocator == null ? factory</span>
+							.entityRef(name, pub, sys) : factory.entityRef(
+							currentLocator.getLineNumber(),
+							currentLocator.getColumnNumber(), name, pub, sys);
+
+					// no way to tell if the entity was from an attribute or
+					// element so just assume element
+<span class="fc" id="L969">					factory.addContent(getCurrentElement(), entity);</span>
+				}
+<span class="fc" id="L971">				suppress = true;</span>
+			}
+		}
+<span class="fc" id="L974">	}</span>
+
+	@Override
+	public void endEntity(final String name) throws SAXException {
+<span class="fc" id="L978">		entityDepth--;</span>
+<span class="fc bfc" id="L979" title="All 2 branches covered.">		if (entityDepth == 0) {</span>
+			// No way are we suppressing if not in an entity,
+			// regardless of the &quot;expand&quot; value
+<span class="fc" id="L982">			suppress = false;</span>
+		}
+<span class="fc bfc" id="L984" title="All 2 branches covered.">		if (name.equals(&quot;[dtd]&quot;)) {</span>
+<span class="fc" id="L985">			inInternalSubset = true;</span>
+		}
+<span class="fc" id="L987">	}</span>
+
+	/**
+	 * Report a CDATA section
+	 */
+	@Override
+	public void startCDATA() {
+<span class="fc bfc" id="L994" title="All 2 branches covered.">		if (suppress)</span>
+<span class="fc" id="L995">			return;</span>
+
+<span class="fc" id="L997">		inCDATA = true;</span>
+<span class="fc" id="L998">	}</span>
+
+	/**
+	 * Report a CDATA section
+	 */
+	@Override
+	public void endCDATA() throws SAXException {
+<span class="fc bfc" id="L1005" title="All 2 branches covered.">		if (suppress)</span>
+<span class="fc" id="L1006">			return;</span>
+
+<span class="fc" id="L1008">		previousCDATA = true;</span>
+<span class="fc" id="L1009">		flushCharacters();</span>
+<span class="fc" id="L1010">		previousCDATA = false;</span>
+<span class="fc" id="L1011">		inCDATA = false;</span>
+<span class="fc" id="L1012">	}</span>
+
+	/**
+	 * This reports that a comments is parsed. If not in the DTD, this comment
+	 * is added to the current JDOM &lt;code&gt;Element&lt;/code&gt;, or the
+	 * &lt;code&gt;Document&lt;/code&gt; itself if at that level.
+	 * 
+	 * @param ch
+	 *        &lt;code&gt;ch[]&lt;/code&gt; array of comment characters.
+	 * @param start
+	 *        &lt;code&gt;int&lt;/code&gt; index to start reading from.
+	 * @param length
+	 *        &lt;code&gt;int&lt;/code&gt; length of data.
+	 * @throws SAXException
+	 *         if the state of the handler disallows this call
+	 */
+	@Override
+	public void comment(final char[] ch, final int start, final int length)
+			throws SAXException {
+
+<span class="fc bfc" id="L1032" title="All 2 branches covered.">		if (suppress)</span>
+<span class="fc" id="L1033">			return;</span>
+
+<span class="fc" id="L1035">		flushCharacters();</span>
+
+<span class="fc" id="L1037">		final String commentText = new String(ch, start, length);</span>
+<span class="fc bfc" id="L1038" title="All 6 branches covered.">		if (inDTD &amp;&amp; inInternalSubset &amp;&amp; (expand == false)) {</span>
+<span class="fc" id="L1039">			internalSubset.append(&quot;  &lt;!--&quot;).append(commentText).append(&quot;--&gt;\n&quot;);</span>
+<span class="fc" id="L1040">			return;</span>
+		}
+<span class="pc bpc" id="L1042" title="1 of 4 branches missed.">		if ((!inDTD) &amp;&amp; (!commentText.equals(&quot;&quot;))) {</span>
+<span class="fc bfc" id="L1043" title="All 2 branches covered.">			final Comment comment = currentLocator == null ? factory</span>
+					.comment(commentText) : factory.comment(
+					currentLocator.getLineNumber(),
+					currentLocator.getColumnNumber(), commentText);
+<span class="fc bfc" id="L1047" title="All 2 branches covered.">			if (atRoot) {</span>
+<span class="fc" id="L1048">				factory.addContent(currentDocument, comment);</span>
+			} else {
+<span class="fc" id="L1050">				factory.addContent(getCurrentElement(), comment);</span>
+			}
+		}
+<span class="fc" id="L1053">	}</span>
+
+	/**
+	 * Handle the declaration of a Notation in a DTD
+	 * 
+	 * @param name
+	 *        name of the notation
+	 * @param publicID
+	 *        the public ID of the notation
+	 * @param systemID
+	 *        the system ID of the notation
+	 */
+	@Override
+	public void notationDecl(final String name, final String publicID,
+			final String systemID) throws SAXException {
+
+<span class="fc bfc" id="L1069" title="All 2 branches covered.">		if (!inInternalSubset)</span>
+<span class="fc" id="L1070">			return;</span>
+
+<span class="fc" id="L1072">		internalSubset.append(&quot;  &lt;!NOTATION &quot;).append(name);</span>
+<span class="fc" id="L1073">		appendExternalId(publicID, systemID);</span>
+<span class="fc" id="L1074">		internalSubset.append(&quot;&gt;\n&quot;);</span>
+<span class="fc" id="L1075">	}</span>
+
+	/**
+	 * Handler for unparsed entity declarations in the DTD
+	 * 
+	 * @param name
+	 *        &lt;code&gt;String&lt;/code&gt; of the unparsed entity decl
+	 * @param publicID
+	 *        &lt;code&gt;String&lt;/code&gt; of the unparsed entity decl
+	 * @param systemID
+	 *        &lt;code&gt;String&lt;/code&gt; of the unparsed entity decl
+	 * @param notationName
+	 *        &lt;code&gt;String&lt;/code&gt; of the unparsed entity decl
+	 */
+	@Override
+	public void unparsedEntityDecl(final String name, final String publicID,
+			final String systemID, final String notationName) {
+
+<span class="fc bfc" id="L1093" title="All 2 branches covered.">		if (!inInternalSubset)</span>
+<span class="fc" id="L1094">			return;</span>
+
+<span class="fc" id="L1096">		internalSubset.append(&quot;  &lt;!ENTITY &quot;).append(name);</span>
+<span class="fc" id="L1097">		appendExternalId(publicID, systemID);</span>
+<span class="fc" id="L1098">		internalSubset.append(&quot; NDATA &quot;).append(notationName);</span>
+<span class="fc" id="L1099">		internalSubset.append(&quot;&gt;\n&quot;);</span>
+<span class="fc" id="L1100">	}</span>
+
+	/**
+	 * Appends an external ID to the internal subset buffer. Either publicID or
+	 * systemID may be null, but not both.
+	 * 
+	 * @param publicID
+	 *        the public ID
+	 * @param systemID
+	 *        the system ID
+	 */
+	private void appendExternalId(final String publicID, final String systemID) {
+<span class="fc bfc" id="L1112" title="All 2 branches covered.">		if (publicID != null) {</span>
+<span class="fc" id="L1113">			internalSubset.append(&quot; PUBLIC \&quot;&quot;).append(publicID).append('\&quot;');</span>
+		}
+<span class="fc bfc" id="L1115" title="All 2 branches covered.">		if (systemID != null) {</span>
+<span class="fc bfc" id="L1116" title="All 2 branches covered.">			if (publicID == null) {</span>
+<span class="fc" id="L1117">				internalSubset.append(&quot; SYSTEM &quot;);</span>
+			} else {
+<span class="fc" id="L1119">				internalSubset.append(' ');</span>
+			}
+<span class="fc" id="L1121">			internalSubset.append('\&quot;').append(systemID).append('\&quot;');</span>
+		}
+<span class="fc" id="L1123">	}</span>
+
+	/**
+	 * Returns the being-parsed element.
+	 * 
+	 * @return &lt;code&gt;Element&lt;/code&gt; - element being built.
+	 * @throws SAXException
+	 *         if the state of the handler disallows this call
+	 */
+	public Element getCurrentElement() throws SAXException {
+<span class="fc bfc" id="L1133" title="All 2 branches covered.">		if (currentElement == null) {</span>
+<span class="fc" id="L1134">			throw new SAXException(</span>
+					&quot;Ill-formed XML document (multiple root elements detected)&quot;);
+		}
+<span class="fc" id="L1137">		return currentElement;</span>
+	}
+
+	/**
+	 * Receives an object for locating the origin of SAX document events. This
+	 * method is invoked by the SAX parser.
+	 * &lt;p&gt;
+	 * {@link org.jdom2.JDOMFactory} implementations can use the
+	 * {@link #getDocumentLocator} method to get access to the {@link Locator}
+	 * during parse.
+	 * &lt;/p&gt;
+	 * 
+	 * @param locator
+	 *        &lt;code&gt;Locator&lt;/code&gt; an object that can return the location of any
+	 *        SAX document event.
+	 */
+	@Override
+	public void setDocumentLocator(final Locator locator) {
+<span class="fc" id="L1155">		this.currentLocator = locator;</span>
+<span class="fc" id="L1156">	}</span>
+
+	/**
+	 * Provides access to the {@link Locator} object provided by the SAX parser.
+	 * 
+	 * @return &lt;code&gt;Locator&lt;/code&gt; an object that can return the location of
+	 *         any SAX document event.
+	 */
+	public Locator getDocumentLocator() {
+<span class="fc" id="L1165">		return currentLocator;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

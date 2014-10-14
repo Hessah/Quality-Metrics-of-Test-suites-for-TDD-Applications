@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>XMLReaders.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jdom</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.input.sax</a> &gt; <span class="el_source">XMLReaders.java</span></div><h1>XMLReaders.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2011 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.input.sax;
+
+import javax.xml.XMLConstants;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.parsers.SAXParserFactory;
+import javax.xml.validation.Schema;
+import javax.xml.validation.SchemaFactory;
+
+import org.xml.sax.SAXException;
+import org.xml.sax.XMLReader;
+
+import org.jdom2.JDOMException;
+
+/**
+ * An enumeration of {@link XMLReaderJDOMFactory} that allows for a single
+ * central location to create XMLReaders. The Singletons (members) of this
+ * enumeration can produce the most common XMLReaders: non-validating, XSD
+ * validating, and DocType validating.
+ * &lt;p&gt;
+ * See the {@link org.jdom2.input.sax package documentation} for details of how
+ * to create the SAXParser you desire.
+ * 
+ * @see org.jdom2.input.sax
+ * @author Rolf Lear
+ */
+<span class="pc" id="L80">public enum XMLReaders implements XMLReaderJDOMFactory {</span>
+
+	/**
+	 * The non-validating singleton
+	 */
+<span class="fc" id="L85">	NONVALIDATING(0),</span>
+
+	/**
+	 * The DTD-validating Singleton
+	 */
+<span class="fc" id="L90">	DTDVALIDATING(1),</span>
+
+	/**
+	 * The XSD-validating Singleton
+	 */
+<span class="fc" id="L95">	XSDVALIDATING(2);</span>
+
+	/** the actual SAXParserFactory in the respective singletons. */
+	private final SAXParserFactory jaxpfactory;
+	private final Exception failcause;
+	/** Is this a validating parser */
+	private final boolean validates;
+
+	/** Private constructor */
+<span class="fc" id="L104">	private XMLReaders(int validate) {</span>
+<span class="fc" id="L105">		SAXParserFactory fac = SAXParserFactory.newInstance();</span>
+<span class="fc" id="L106">		boolean val = false;</span>
+<span class="fc" id="L107">		Exception problem = null;</span>
+		// All JDOM parsers are namespace aware.
+<span class="fc" id="L109">		fac.setNamespaceAware(true);</span>
+<span class="pc bpc" id="L110" title="1 of 4 branches missed.">		switch (validate) {</span>
+			case 0:
+<span class="fc" id="L112">				fac.setValidating(false);</span>
+<span class="fc" id="L113">				break;</span>
+			case 1:
+<span class="fc" id="L115">				fac.setValidating(true);</span>
+<span class="fc" id="L116">				val = true;</span>
+<span class="fc" id="L117">				break;</span>
+			case 2:
+<span class="fc" id="L119">				fac.setValidating(false);</span>
+				try {
+<span class="fc" id="L121">					SchemaFactory sfac = SchemaFactory.</span>
+							newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
+<span class="fc" id="L123">					Schema schema = sfac.newSchema();</span>
+<span class="fc" id="L124">					fac.setSchema(schema);</span>
+<span class="fc" id="L125">					val = true;</span>
+<span class="nc" id="L126">				} catch (SAXException se) {</span>
+					// we could not get a validating system, set the fac to null
+<span class="nc" id="L128">					fac = null;</span>
+<span class="nc" id="L129">					problem = se;</span>
+<span class="nc" id="L130">				} catch (IllegalArgumentException iae) {</span>
+					// this system does not support XSD Validation.... which is true for android!
+					// we could not get a validating system, set the fac to null
+<span class="nc" id="L133">					fac = null;</span>
+<span class="nc" id="L134">					problem = iae;</span>
+<span class="nc" id="L135">				} catch (UnsupportedOperationException uoe) {</span>
+					// SAXParserFactory throws this exception when setSchema is called.
+					// Therefore every factory throws this exception unless it overrides
+					// setSchema. A popular example is Apache Xerces SAXParserFactoryImpl
+					// before version 2.7.0.
+<span class="nc" id="L140">					fac = null;</span>
+<span class="nc" id="L141">					problem = uoe;</span>
+<span class="pc" id="L142">				}</span>
+				break;
+		}
+<span class="fc" id="L145">		jaxpfactory = fac;</span>
+<span class="fc" id="L146">		validates = val;</span>
+<span class="fc" id="L147">		failcause = problem;</span>
+<span class="fc" id="L148">	}</span>
+
+	/**
+	 * Get a new XMLReader from this JAXP-based {@link XMLReaderJDOMFactory}.
+	 * &lt;p&gt;
+	 * 
+	 * @return a new XMLReader instance.
+	 * @throws JDOMException
+	 *         if there is a problem creating the XMLReader
+	 */
+	@Override
+	public XMLReader createXMLReader() throws JDOMException {
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">		if (jaxpfactory == null) {</span>
+<span class="nc" id="L161">			throw new JDOMException(&quot;It was not possible to configure a &quot; +</span>
+					&quot;suitable XMLReader to support &quot; + this, failcause);
+		}
+		try {
+<span class="fc" id="L165">			return jaxpfactory.newSAXParser().getXMLReader();</span>
+<span class="nc" id="L166">		} catch (SAXException e) {</span>
+<span class="nc" id="L167">			throw new JDOMException(</span>
+					&quot;Unable to create a new XMLReader instance&quot;, e);
+<span class="nc" id="L169">		} catch (ParserConfigurationException e) {</span>
+<span class="nc" id="L170">			throw new JDOMException(</span>
+					&quot;Unable to create a new XMLReader instance&quot;, e);
+		}
+	}
+
+	@Override
+	public boolean isValidating() {
+<span class="fc" id="L177">		return validates;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

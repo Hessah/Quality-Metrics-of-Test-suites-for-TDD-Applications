@@ -1,0 +1,818 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>AbstractStAXStreamReader.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jdom</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.output.support</a> &gt; <span class="el_source">AbstractStAXStreamReader.java</span></div><h1>AbstractStAXStreamReader.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2000-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.output.support;
+
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+
+import javax.xml.XMLConstants;
+import javax.xml.namespace.NamespaceContext;
+import javax.xml.namespace.QName;
+import javax.xml.stream.Location;
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
+
+import org.jdom2.Attribute;
+import org.jdom2.Content;
+import org.jdom2.DocType;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.EntityRef;
+import org.jdom2.Namespace;
+import org.jdom2.ProcessingInstruction;
+import org.jdom2.Verifier;
+import org.jdom2.internal.ArrayCopy;
+import org.jdom2.output.Format;
+import org.jdom2.output.StAXStreamOutputter;
+import org.jdom2.output.StAXStreamReader;
+import org.jdom2.output.XMLOutputter;
+import org.jdom2.output.Format.TextMode;
+import org.jdom2.util.JDOMNamespaceContext;
+import org.jdom2.util.NamespaceStack;
+
+/**
+ * An {@link XMLStreamReader} implementation that reads the XML document
+ * out of a JDOM {@link Document}. This class is marked as abstract even though it is
+ * a full implementation of the XMLReader. This class can be overridden if needed.
+ * If you extend this class, you will need to also extend {@link AbstractStAXStreamReaderProcessor}
+ * and supply an instance of that customised class to the {@link StAXStreamReader} class.
+ * &lt;p&gt;
+ * The reader reads XML Events by walking the JDOM tree, reporting all XML stream
+ * events as it encounters them in the JDOM.
+ * &lt;p&gt;
+ * This class is the inverse of the class {@link StAXStreamOutputter} in the sense that
+ * this class is read from (it's an XMLStreamReader implementation) by interpreting a JDOM
+ * Document whereas the StAXStreamOutputter interprets a JDOM Document and &lt;strong&gt;writes to&lt;/strong&gt;
+ *  a user-supplied XMLStreamWriter. It is the difference between a 'pull' concept and a
+ *  'push' concept.
+ * 
+ * @author gordon burgett https://github.com/gburgett
+ * @author Rolf Lear
+ * @since JDOM 2.1
+ */
+public abstract class AbstractStAXStreamReader extends AbstractOutputProcessor implements XMLStreamReader {
+	
+	private static final class DocumentWalker implements Walker {
+		
+		private final Content[] data;
+<span class="fc" id="L112">		private int pos = 0;</span>
+		
+<span class="fc" id="L114">		public DocumentWalker(final Document doc) {</span>
+<span class="fc" id="L115">			data = doc.getContent().toArray(new Content[doc.getContentSize()]);</span>
+<span class="fc" id="L116">		}</span>
+
+		@Override
+		public boolean isAllText() {
+<span class="nc" id="L120">			return false;</span>
+		}
+
+		@Override
+		public boolean isAllWhitespace() {
+<span class="nc" id="L125">			return false;</span>
+		}
+
+		@Override
+		public boolean hasNext() {
+<span class="fc bfc" id="L130" title="All 2 branches covered.">			return pos &lt; data.length;</span>
+		}
+
+		@Override
+		public Content next() {
+<span class="fc" id="L135">			return data[pos++];</span>
+		}
+
+		@Override
+		public String text() {
+<span class="nc" id="L140">			return null;</span>
+		}
+
+		@Override
+		public boolean isCDATA() {
+<span class="nc" id="L145">			return false;</span>
+		}
+		
+	}
+
+	private final FormatStack formatstack;
+<span class="fc" id="L151">	private final NamespaceStack nsstack = new NamespaceStack();</span>
+	
+    private Document document;
+    
+<span class="fc" id="L155">    private String curi = null, clocalname = null, cprefix = null, </span>
+    		ctext = null, ctarget = null, cdata = null;
+<span class="fc" id="L157">    private Element [] emtstack = new Element[32];</span>
+<span class="fc" id="L158">    private Walker[] stack = new Walker[32];</span>
+<span class="fc" id="L159">    private int depth = 0;</span>
+    
+<span class="fc" id="L161">    private int currentEvt = START_DOCUMENT;</span>
+    
+    /**
+     * Create a new AbstractStAXStreamReader that outputs a JDOM Document as an XMLStream.
+     * @param document the document to output.
+     * @param format The output format to use. 
+     */
+<span class="fc" id="L168">    public AbstractStAXStreamReader(Document document, Format format){</span>
+<span class="fc" id="L169">        this.document = document;</span>
+<span class="fc" id="L170">        this.formatstack = new FormatStack(format);</span>
+<span class="fc" id="L171">        stack[0] = new DocumentWalker(document);</span>
+<span class="fc" id="L172">    }</span>
+    
+    /**
+     * Create a new AbstractStAXStreamReader that outputs a JDOM Document as an XMLStream using
+     * the Format.getRawFormat() format.
+     * @param document the document to output.
+     */
+    public AbstractStAXStreamReader(Document document) {
+<span class="nc" id="L180">    	this(document, Format.getRawFormat());</span>
+<span class="nc" id="L181">    }</span>
+    
+    @Override
+    public boolean hasNext() throws XMLStreamException {
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        return depth &gt;= 0;</span>
+    }
+
+    @Override
+    public int next() throws XMLStreamException {
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">    	if (depth &lt; 0) {</span>
+<span class="nc" id="L191">    		throw new NoSuchElementException(&quot;No more data available.&quot;);</span>
+    	}
+    	
+<span class="fc" id="L194">        curi = null;</span>
+<span class="fc" id="L195">        clocalname = null;</span>
+<span class="fc" id="L196">        cprefix = null;</span>
+<span class="fc" id="L197">        ctext = null;</span>
+<span class="fc" id="L198">        ctarget = null;</span>
+<span class="fc" id="L199">        cdata = null;</span>
+        
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (currentEvt == END_ELEMENT) {</span>
+<span class="fc" id="L202">        	nsstack.pop();</span>
+<span class="fc" id="L203">        	formatstack.pop();</span>
+<span class="fc" id="L204">        	emtstack[depth + 1] = null;</span>
+        }
+        
+        // confirm next walker item.
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        if (!stack[depth].hasNext()) {</span>
+        	// no more items at this level.
+<span class="fc" id="L210">        	stack[depth] = null;</span>
+        	// we kill the element stack at the end of the END_ELEMENT event.
+        	// emtstack[depth] = null
+<span class="fc" id="L213">        	depth--;</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        	return currentEvt = (depth &lt; 0 ? END_DOCUMENT : END_ELEMENT);</span>
+        }
+        
+<span class="fc" id="L217">        final Content c = stack[depth].next();</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">        if (c == null) {</span>
+        	// formatted text or CDATA.
+<span class="nc" id="L220">        	ctext = stack[depth].text();</span>
+<span class="nc bnc" id="L221" title="All 2 branches missed.">        	return currentEvt = stack[depth].isCDATA() ? CDATA : CHARACTERS;</span>
+        }
+        
+<span class="pc bpc" id="L224" title="3 of 8 branches missed.">        switch (c.getCType()) {</span>
+        	case CDATA:
+<span class="fc" id="L226">        		ctext = c.getValue();</span>
+<span class="fc" id="L227">        		return currentEvt = CDATA;</span>
+        	case Text:
+<span class="fc" id="L229">        		ctext = c.getValue();</span>
+<span class="fc" id="L230">        		return currentEvt = CHARACTERS;</span>
+        	case Comment:
+<span class="fc" id="L232">        		ctext = c.getValue();</span>
+<span class="fc" id="L233">        		return currentEvt = COMMENT;</span>
+        	case DocType:
+        		// format doctype appropriately.
+<span class="nc" id="L236">        		XMLOutputter xout = new XMLOutputter();</span>
+<span class="nc" id="L237">        		ctext = xout.outputString((DocType)c);</span>
+<span class="nc" id="L238">        		return currentEvt = DTD;</span>
+        	case EntityRef:
+<span class="nc" id="L240">        		clocalname = ((EntityRef)c).getName();</span>
+<span class="nc" id="L241">        		ctext = &quot;&quot;;</span>
+<span class="nc" id="L242">        		return currentEvt = ENTITY_REFERENCE;</span>
+        	case ProcessingInstruction:
+<span class="fc" id="L244">        		final ProcessingInstruction pi = (ProcessingInstruction)c;</span>
+<span class="fc" id="L245">        		ctarget = pi.getTarget();</span>
+<span class="fc" id="L246">        		cdata = pi.getData();</span>
+<span class="fc" id="L247">        		return currentEvt = PROCESSING_INSTRUCTION;</span>
+        	case Element:
+        		// great
+        		// we deal with Element outside the switch statement.
+<span class="fc" id="L251">        		break;</span>
+        	default:
+<span class="nc" id="L253">        		throw new IllegalStateException(&quot;Unexpected content &quot; + c);</span>
+        }
+        // OK, we break out here if we are an Element start.
+<span class="fc" id="L256">        final Element emt = (Element)c;</span>
+<span class="fc" id="L257">    	clocalname = emt.getName();</span>
+<span class="fc" id="L258">    	cprefix = emt.getNamespacePrefix();</span>
+<span class="fc" id="L259">    	curi = emt.getNamespaceURI();</span>
+        
+<span class="fc" id="L261">        nsstack.push(emt);</span>
+<span class="fc" id="L262">        formatstack.push();</span>
+<span class="fc" id="L263">        final String space = emt.getAttributeValue(&quot;space&quot;, Namespace.XML_NAMESPACE);</span>
+		// Check for xml:space and adjust format settings
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">		if (&quot;default&quot;.equals(space)) {</span>
+<span class="nc" id="L266">			formatstack.setTextMode(formatstack.getDefaultMode());</span>
+		}
+<span class="fc bfc" id="L268" title="All 2 branches covered.">		else if (&quot;preserve&quot;.equals(space)) {</span>
+<span class="fc" id="L269">			formatstack.setTextMode(TextMode.PRESERVE);</span>
+		}
+		
+<span class="fc" id="L272">		depth++;</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">		if (depth &gt;= stack.length) {</span>
+<span class="nc" id="L274">			stack = ArrayCopy.copyOf(stack, depth + 32);</span>
+<span class="nc" id="L275">			emtstack = ArrayCopy.copyOf(emtstack, depth+32);</span>
+		}
+		
+<span class="fc" id="L278">		emtstack[depth] = emt;</span>
+<span class="fc" id="L279">		stack[depth] = buildWalker(formatstack, emt.getContent(), false);</span>
+
+<span class="fc" id="L281">		return currentEvt = START_ELEMENT;</span>
+        
+    }
+
+    @Override
+    public int getEventType() {
+<span class="fc" id="L287">        return currentEvt;</span>
+    }
+
+    @Override
+    public boolean isStartElement() {
+<span class="nc bnc" id="L292" title="All 2 branches missed.">        return currentEvt == START_ELEMENT;</span>
+    }
+
+    @Override
+    public boolean isEndElement() {
+<span class="nc bnc" id="L297" title="All 2 branches missed.">        return currentEvt == END_ELEMENT;</span>
+    }
+
+    @Override
+    public boolean isCharacters() {
+<span class="nc bnc" id="L302" title="All 2 branches missed.">        return currentEvt == CHARACTERS;</span>
+    }
+
+    @Override
+    public boolean isWhiteSpace() {
+<span class="nc bnc" id="L307" title="All 3 branches missed.">    	switch (currentEvt) {</span>
+    		case SPACE :
+<span class="nc" id="L309">    			return true;</span>
+    		case CDATA:
+    		case CHARACTERS:
+<span class="nc" id="L312">    			return Verifier.isAllXMLWhitespace(ctext);</span>
+    		default:
+<span class="nc" id="L314">    			return false;</span>
+    	}
+    }
+
+    @Override
+    public void require(int type, String namespaceURI, String localName) throws XMLStreamException {
+<span class="nc bnc" id="L320" title="All 2 branches missed.">        if(type != getEventType()){</span>
+<span class="nc" id="L321">            throw new XMLStreamException(&quot;required event &quot; + type + &quot; but got event &quot; + getEventType());</span>
+        }
+        
+<span class="nc bnc" id="L324" title="All 2 branches missed.">        if(localName != null){</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">            if(!localName.equals(clocalname)){</span>
+<span class="nc" id="L326">                throw new XMLStreamException(&quot;required name &quot; + localName + &quot; but got name &quot; + clocalname);</span>
+            }
+        }
+        
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        if(namespaceURI != null){</span>
+<span class="nc bnc" id="L331" title="All 2 branches missed.">            if(!namespaceURI.equals(curi)){</span>
+<span class="nc" id="L332">                throw new XMLStreamException(&quot;required namespace &quot; + namespaceURI + &quot; but got namespace &quot; + curi);</span>
+            }
+        }
+<span class="nc" id="L335">    }</span>
+
+    @Override
+    public QName getName() {
+<span class="pc bpc" id="L339" title="1 of 3 branches missed.">    	switch (currentEvt) {</span>
+    		case START_ELEMENT:
+<span class="fc" id="L341">    			final Element emts = emtstack[depth];</span>
+<span class="fc" id="L342">    			return new QName(emts.getNamespaceURI(), emts.getName(), emts.getNamespacePrefix());</span>
+    		case END_ELEMENT:
+<span class="fc" id="L344">    			final Element emte = emtstack[depth + 1];</span>
+<span class="fc" id="L345">    			return new QName(emte.getNamespaceURI(), emte.getName(), emte.getNamespacePrefix());</span>
+    		default:
+<span class="nc" id="L347">    			throw new IllegalStateException(&quot;getName not supported for event &quot; + currentEvt);</span>
+        }
+    }
+
+    @Override
+    public String getLocalName() {
+<span class="pc bpc" id="L353" title="1 of 2 branches missed.">    	switch (currentEvt) {</span>
+    		case START_ELEMENT:
+    		case END_ELEMENT:
+            case ENTITY_REFERENCE:
+<span class="fc" id="L357">    			return clocalname;</span>
+    		default:
+<span class="nc" id="L359">    			throw new IllegalStateException(&quot;getLocalName not supported for event &quot; + currentEvt);</span>
+        }
+    }
+
+    @Override
+    public boolean hasName() {
+<span class="nc bnc" id="L365" title="All 4 branches missed.">        return currentEvt == START_ELEMENT || currentEvt == END_ELEMENT;</span>
+    }
+
+    @Override
+    public String getNamespaceURI() {
+<span class="pc bpc" id="L370" title="1 of 2 branches missed.">    	switch (currentEvt) {</span>
+    		case START_ELEMENT:
+    		case END_ELEMENT:
+<span class="fc" id="L373">    			return curi;</span>
+    		default:
+<span class="nc" id="L375">                throw new IllegalStateException(&quot;getNamespaceURI not supported for event &quot; + currentEvt);</span>
+        }
+    }
+
+    @Override
+    public String getPrefix() {
+<span class="pc bpc" id="L381" title="1 of 2 branches missed.">    	switch (currentEvt) {</span>
+    		case START_ELEMENT:
+    		case END_ELEMENT:
+<span class="fc" id="L384">    			return cprefix;</span>
+    		default:
+<span class="nc" id="L386">                throw new IllegalStateException(&quot;getPrefix not supported for event &quot; + currentEvt);</span>
+        }
+    }
+    
+    @Override
+    public String getPITarget() {
+<span class="pc bpc" id="L392" title="1 of 2 branches missed.">    	switch (currentEvt) {</span>
+    		case PROCESSING_INSTRUCTION:
+<span class="fc" id="L394">    			return ctarget;</span>
+    		default:
+<span class="nc" id="L396">                throw new IllegalStateException(&quot;getPITarget not supported for event &quot; + currentEvt);</span>
+        }
+    }
+
+    @Override
+    public String getPIData() {
+<span class="pc bpc" id="L402" title="1 of 2 branches missed.">    	switch (currentEvt) {</span>
+    		case PROCESSING_INSTRUCTION:
+<span class="fc" id="L404">    			return cdata;</span>
+    		default:
+<span class="nc" id="L406">                throw new IllegalStateException(&quot;getPIData not supported for event &quot; + currentEvt);</span>
+        }
+    }
+    
+    
+    @Override
+    public String getElementText() throws XMLStreamException {
+        // copied from documentation.
+<span class="nc bnc" id="L414" title="All 2 branches missed.">        if(getEventType() != XMLStreamConstants.START_ELEMENT) {</span>
+<span class="nc" id="L415">            throw new XMLStreamException(&quot;parser must be on START_ELEMENT to read next text&quot;);</span>
+        }
+        
+<span class="nc" id="L418">        int eventType = next();</span>
+<span class="nc" id="L419">        StringBuilder buf = new StringBuilder();</span>
+<span class="nc bnc" id="L420" title="All 2 branches missed.">        while(eventType != XMLStreamConstants.END_ELEMENT ) {</span>
+<span class="nc bnc" id="L421" title="All 8 branches missed.">            if(eventType == XMLStreamConstants.CHARACTERS</span>
+                    || eventType == XMLStreamConstants.CDATA
+                    || eventType == XMLStreamConstants.SPACE
+                    || eventType == XMLStreamConstants.ENTITY_REFERENCE) {
+<span class="nc" id="L425">                buf.append(getText());</span>
+<span class="nc bnc" id="L426" title="All 4 branches missed.">            } else if(eventType == XMLStreamConstants.PROCESSING_INSTRUCTION</span>
+                    || eventType == XMLStreamConstants.COMMENT) {
+                // skipping
+<span class="nc bnc" id="L429" title="All 2 branches missed.">            } else if(eventType == XMLStreamConstants.END_DOCUMENT) {</span>
+<span class="nc" id="L430">                throw new XMLStreamException(&quot;unexpected end of document when reading element text content&quot;, getLocation());</span>
+<span class="nc bnc" id="L431" title="All 2 branches missed.">            } else if(eventType == XMLStreamConstants.START_ELEMENT) {</span>
+<span class="nc" id="L432">                throw new XMLStreamException(&quot;element text content may not contain START_ELEMENT&quot;, getLocation());</span>
+            } else {
+<span class="nc" id="L434">                throw new XMLStreamException(&quot;Unexpected event type &quot;+eventType, getLocation());</span>
+            }
+            
+<span class="nc" id="L437">            eventType = next();</span>
+        }
+<span class="nc" id="L439">        return buf.toString();</span>
+    }
+
+    @Override
+    public int nextTag() throws XMLStreamException {
+<span class="nc" id="L444">        int eventType = next();</span>
+<span class="nc bnc" id="L445" title="All 14 branches missed.">        while((eventType == XMLStreamConstants.CHARACTERS &amp;&amp; isWhiteSpace()) // skip whitespace</span>
+                    || (eventType == XMLStreamConstants.CDATA &amp;&amp; isWhiteSpace())
+                    // skip whitespace
+                    || eventType == XMLStreamConstants.SPACE
+                    || eventType == XMLStreamConstants.PROCESSING_INSTRUCTION
+                    || eventType == XMLStreamConstants.COMMENT
+                )
+        {
+<span class="nc" id="L453">            eventType = next();</span>
+        }
+        
+<span class="nc bnc" id="L456" title="All 4 branches missed.">        if (eventType != XMLStreamConstants.START_ELEMENT &amp;&amp; eventType != XMLStreamConstants.END_ELEMENT) {</span>
+<span class="nc" id="L457">            throw new XMLStreamException(&quot;expected start or end tag&quot;, getLocation());</span>
+        }
+<span class="nc" id="L459">        return eventType;</span>
+    }
+
+    @Override
+    public void close() throws XMLStreamException {
+<span class="fc" id="L464">        currentEvt = END_DOCUMENT;</span>
+<span class="pc bpc" id="L465" title="1 of 2 branches missed.">        while (depth &gt;= 0) {</span>
+<span class="nc" id="L466">        	stack[depth] = null;</span>
+<span class="nc" id="L467">        	emtstack[depth] = null;</span>
+<span class="nc" id="L468">        	depth--;</span>
+        }
+<span class="fc" id="L470">    	cdata = null;</span>
+<span class="fc" id="L471">    	clocalname = null;</span>
+<span class="fc" id="L472">    	cprefix = null;</span>
+<span class="fc" id="L473">    	ctarget = null;</span>
+<span class="fc" id="L474">    	ctext = null;</span>
+<span class="fc" id="L475">    	curi = null;</span>
+<span class="fc" id="L476">        this.document = null;</span>
+<span class="fc" id="L477">    }</span>
+
+    @Override
+    public String getNamespaceURI(String prefix) {
+<span class="nc" id="L481">    	final Namespace ns = nsstack.getNamespaceForPrefix(prefix);</span>
+<span class="nc bnc" id="L482" title="All 2 branches missed.">    	return ns == null ? null : ns.getURI();</span>
+    }
+
+    @Override
+    public String getAttributeValue(String namespaceURI, String localName) {
+<span class="nc bnc" id="L487" title="All 2 branches missed.">        if(currentEvt != START_ELEMENT){</span>
+<span class="nc" id="L488">            throw new IllegalStateException(&quot;getAttributeCount not supported for event &quot; + currentEvt);</span>
+        }
+        
+<span class="nc" id="L491">        final Element e = emtstack[depth];</span>
+<span class="nc bnc" id="L492" title="All 2 branches missed.">        if (!e.hasAttributes()) {</span>
+<span class="nc" id="L493">        	return null;</span>
+        }
+        
+<span class="nc bnc" id="L496" title="All 2 branches missed.">        if(namespaceURI != null){</span>
+<span class="nc" id="L497">            return e.getAttributeValue(localName, Namespace.getNamespace(namespaceURI));</span>
+        }
+        
+        //else search by local name only
+<span class="nc bnc" id="L501" title="All 2 branches missed.">        for(Attribute a : e.getAttributes()){</span>
+<span class="nc bnc" id="L502" title="All 2 branches missed.">            if(a.getName().equalsIgnoreCase(localName)){</span>
+<span class="nc" id="L503">                return a.getValue();</span>
+            }
+<span class="nc" id="L505">        }</span>
+        
+<span class="nc" id="L507">        return null;</span>
+    }
+
+    @Override
+    public int getAttributeCount() {
+<span class="pc bpc" id="L512" title="1 of 2 branches missed.">        if(currentEvt != START_ELEMENT){</span>
+<span class="nc" id="L513">            throw new IllegalStateException(&quot;getAttributeCount not supported for event &quot; + currentEvt);</span>
+        }
+<span class="fc" id="L515">        return emtstack[depth].getAttributesSize();</span>
+    }
+
+    @Override
+    public QName getAttributeName(int index) {
+<span class="nc bnc" id="L520" title="All 4 branches missed.">        if(currentEvt != START_ELEMENT &amp;&amp; currentEvt != ATTRIBUTE){</span>
+<span class="nc" id="L521">            throw new IllegalStateException(&quot;getAttributeCount not supported for event &quot; + currentEvt);</span>
+        }
+        
+<span class="nc" id="L524">        final Attribute a = emtstack[depth].getAttributes().get(index);</span>
+        
+<span class="nc" id="L526">        String ns = a.getNamespaceURI();</span>
+<span class="nc bnc" id="L527" title="All 2 branches missed.">        if(&quot;&quot;.equals(ns))</span>
+<span class="nc" id="L528">            ns = null;</span>
+<span class="nc" id="L529">        String prefix = a.getNamespacePrefix();</span>
+<span class="nc bnc" id="L530" title="All 4 branches missed.">        if(prefix == null || &quot;&quot;.equals(prefix)){</span>
+<span class="nc" id="L531">            prefix = XMLConstants.DEFAULT_NS_PREFIX;</span>
+        }
+        
+<span class="nc" id="L534">        return new QName(ns, a.getName(), prefix);</span>
+    }
+
+    @Override
+    public String getAttributeNamespace(int index) {
+<span class="pc bpc" id="L539" title="3 of 4 branches missed.">        if(currentEvt != START_ELEMENT &amp;&amp; currentEvt != ATTRIBUTE){</span>
+<span class="nc" id="L540">            throw new IllegalStateException(&quot;getAttributeCount not supported for event &quot; + currentEvt);</span>
+        }
+        
+<span class="fc" id="L543">        final Attribute a = emtstack[depth].getAttributes().get(index);</span>
+<span class="fc" id="L544">        return a.getNamespaceURI();</span>
+    }
+
+    @Override
+    public String getAttributeLocalName(int index) {
+<span class="pc bpc" id="L549" title="3 of 4 branches missed.">        if(currentEvt != START_ELEMENT &amp;&amp; currentEvt != ATTRIBUTE){</span>
+<span class="nc" id="L550">            throw new IllegalStateException(&quot;getAttributeCount not supported for event &quot; + currentEvt);</span>
+        }
+        
+<span class="fc" id="L553">        final Attribute a = emtstack[depth].getAttributes().get(index);</span>
+<span class="fc" id="L554">        return a.getName();</span>
+    }
+
+    @Override
+    public String getAttributePrefix(int index) {
+<span class="pc bpc" id="L559" title="3 of 4 branches missed.">        if(currentEvt != START_ELEMENT &amp;&amp; currentEvt != ATTRIBUTE){</span>
+<span class="nc" id="L560">            throw new IllegalStateException(&quot;getAttributeCount not supported for event &quot; + currentEvt);</span>
+        }
+        
+<span class="fc" id="L563">        final Attribute a = emtstack[depth].getAttributes().get(index);</span>
+<span class="fc" id="L564">        return a.getNamespacePrefix();</span>
+    }
+
+    @Override
+    public String getAttributeType(int index) {
+<span class="pc bpc" id="L569" title="3 of 4 branches missed.">        if(currentEvt != START_ELEMENT &amp;&amp; currentEvt != ATTRIBUTE){</span>
+<span class="nc" id="L570">            throw new IllegalStateException(&quot;getAttributeCount not supported for event &quot; + currentEvt);</span>
+        }
+        
+<span class="fc" id="L573">        final Attribute a = emtstack[depth].getAttributes().get(index);</span>
+<span class="fc" id="L574">        return a.getAttributeType().name();</span>
+    }
+
+    @Override
+    public String getAttributeValue(int index) {
+<span class="pc bpc" id="L579" title="3 of 4 branches missed.">        if(currentEvt != START_ELEMENT &amp;&amp; currentEvt != ATTRIBUTE){</span>
+<span class="nc" id="L580">            throw new IllegalStateException(&quot;getAttributeCount not supported for event &quot; + currentEvt);</span>
+        }
+        
+<span class="fc" id="L583">        final Attribute a = emtstack[depth].getAttributes().get(index);</span>
+<span class="fc" id="L584">        return a.getValue();</span>
+    }
+
+    @Override
+    public boolean isAttributeSpecified(int index) {
+<span class="nc bnc" id="L589" title="All 4 branches missed.">        if(currentEvt != START_ELEMENT &amp;&amp; currentEvt != ATTRIBUTE){</span>
+<span class="nc" id="L590">            throw new IllegalStateException(&quot;getAttributeCount not supported for event &quot; + currentEvt);</span>
+        }
+        
+<span class="nc" id="L593">        final Attribute a = emtstack[depth].getAttributes().get(index);</span>
+<span class="nc" id="L594">        return a.isSpecified();</span>
+    }
+
+    @Override
+    public int getNamespaceCount() {
+<span class="pc bpc" id="L599" title="1 of 2 branches missed.">        switch(currentEvt){</span>
+            case START_ELEMENT:
+            case END_ELEMENT:
+<span class="fc" id="L602">            	final Iterator&lt;?&gt; it = nsstack.addedForward().iterator();</span>
+<span class="fc" id="L603">            	int cnt = 0;</span>
+<span class="fc bfc" id="L604" title="All 2 branches covered.">            	while (it.hasNext()) {</span>
+<span class="fc" id="L605">            		cnt++;</span>
+<span class="fc" id="L606">            		it.next();</span>
+            	}
+<span class="fc" id="L608">            	return cnt;</span>
+        }
+        
+<span class="nc" id="L611">        throw new IllegalStateException(&quot;getNamespaceCount not supported for event &quot; + currentEvt);</span>
+    }
+    
+    private final Namespace getNamespaceByIndex(int index) {
+<span class="fc" id="L615">    	final Iterator&lt;Namespace&gt; it = nsstack.addedForward().iterator();</span>
+<span class="fc" id="L616">    	int cnt = 0;</span>
+<span class="pc bpc" id="L617" title="1 of 2 branches missed.">    	while (it.hasNext()) {</span>
+<span class="fc bfc" id="L618" title="All 2 branches covered.">    		if (cnt == index) {</span>
+<span class="fc" id="L619">    			return it.next();</span>
+    		}
+<span class="fc" id="L621">    		it.next();</span>
+<span class="fc" id="L622">    		cnt++;</span>
+    	}
+<span class="nc" id="L624">    	throw new NoSuchElementException(&quot;No Namespace with index &quot; + index + </span>
+    			&quot; (there are only &quot; + cnt + &quot;).&quot;);
+    }
+
+    @Override
+    public String getNamespacePrefix(int index) {
+<span class="pc bpc" id="L630" title="1 of 2 branches missed.">        switch(currentEvt){</span>
+            case START_ELEMENT:
+            case END_ELEMENT:
+<span class="fc" id="L633">            	return getNamespaceByIndex(index).getPrefix();</span>
+        }
+        
+<span class="nc" id="L636">        throw new IllegalStateException(&quot;getNamespacePrefix not supported for event &quot; + currentEvt);</span>
+    }
+
+    @Override
+    public String getNamespaceURI(int index) {
+        
+<span class="pc bpc" id="L642" title="1 of 2 branches missed.">        switch(currentEvt){</span>
+            case START_ELEMENT:
+            case NAMESPACE:
+            case END_ELEMENT:
+<span class="fc" id="L646">            	return getNamespaceByIndex(index).getURI();</span>
+        }
+        
+<span class="nc" id="L649">        throw new IllegalStateException(&quot;getNamespaceURI not supported for event &quot; + currentEvt);</span>
+    }
+
+    @Override
+    public NamespaceContext getNamespaceContext() {
+<span class="nc" id="L654">        return new JDOMNamespaceContext(nsstack.getScope());</span>
+    }
+
+    @Override
+    public boolean hasText() {
+<span class="nc bnc" id="L659" title="All 2 branches missed.">        switch(currentEvt){</span>
+            case CDATA:
+            case CHARACTERS:
+            case COMMENT:
+            case DTD:
+            case ENTITY_REFERENCE:
+<span class="nc" id="L665">                return true;</span>
+            default:
+<span class="nc" id="L667">                return false;</span>
+        }
+    }
+
+    @Override
+    public String getText() {
+<span class="pc bpc" id="L673" title="1 of 2 branches missed.">        switch(currentEvt){</span>
+            case CDATA:
+            case CHARACTERS:
+            case COMMENT:
+            case DTD:
+            case ENTITY_REFERENCE:
+<span class="fc" id="L679">                return ctext;</span>
+            default:
+<span class="nc" id="L681">                throw new IllegalStateException(&quot;getText not valid for event type &quot; + currentEvt);</span>
+        }
+        
+    }
+
+    @Override
+    public char[] getTextCharacters() {
+<span class="nc" id="L688">        return getText().toCharArray();</span>
+    }
+
+    @Override
+    public int getTextCharacters(int sourceStart, char[] target, int targetStart, int length) throws XMLStreamException {
+<span class="fc" id="L693">        char[] chars = getText().toCharArray();</span>
+<span class="fc" id="L694">        int i = 0;</span>
+<span class="fc bfc" id="L695" title="All 2 branches covered.">        for(; i &lt; length; i++){</span>
+<span class="pc bpc" id="L696" title="1 of 2 branches missed.">            if(sourceStart &gt; chars.length){</span>
+<span class="nc" id="L697">                return i;</span>
+            }
+<span class="pc bpc" id="L699" title="1 of 2 branches missed.">            if(targetStart &gt; target.length){</span>
+<span class="nc" id="L700">                return i;</span>
+            }
+            
+<span class="fc" id="L703">            target[targetStart++] = chars[sourceStart++];</span>
+        }
+        
+<span class="fc" id="L706">        return i;</span>
+    }
+
+    @Override
+    public int getTextStart() {
+<span class="nc" id="L711">        return 0;</span>
+    }
+
+    @Override
+    public int getTextLength() {
+<span class="fc" id="L716">        return getText().length();</span>
+    }
+
+    @Override
+    public String getEncoding() {
+<span class="fc" id="L721">        Object ret = document.getProperty(&quot;ENCODING&quot;);</span>
+<span class="pc bpc" id="L722" title="1 of 2 branches missed.">        if(ret == null)</span>
+<span class="fc" id="L723">            return null;</span>
+        
+<span class="nc" id="L725">        return ret.toString();</span>
+    }
+
+    @Override
+    public Location getLocation() {
+<span class="fc" id="L730">        return new Location(){</span>
+            @Override
+            public int getLineNumber() {
+<span class="nc" id="L733">                return -1;</span>
+            }
+
+            @Override
+            public int getColumnNumber() {
+<span class="nc" id="L738">                return -1;</span>
+            }
+
+            @Override
+            public int getCharacterOffset() {
+<span class="nc" id="L743">                return -1;</span>
+            }
+
+            @Override
+            public String getPublicId() {
+<span class="nc" id="L748">                return null;</span>
+            }
+
+            @Override
+            public String getSystemId() {
+<span class="fc" id="L753">                return null;</span>
+            }
+            
+        };
+    }
+
+
+    @Override
+    public String getVersion() {
+<span class="fc" id="L762">        return null;</span>
+    }
+
+    @Override
+    public boolean isStandalone() {
+<span class="fc" id="L767">        Object ret = document.getProperty(&quot;STANDALONE&quot;);</span>
+<span class="fc" id="L768">        return Boolean.TRUE.equals(ret);</span>
+    }
+
+    @Override
+    public boolean standaloneSet() {
+<span class="nc" id="L773">        throw new UnsupportedOperationException(&quot;Not supported yet.&quot;);</span>
+    }
+
+    @Override
+    public String getCharacterEncodingScheme() {
+<span class="fc" id="L778">        Object ret = document.getProperty(&quot;ENCODING_SCHEME&quot;);</span>
+<span class="pc bpc" id="L779" title="1 of 2 branches missed.">        if(ret == null)</span>
+<span class="fc" id="L780">            return null;</span>
+        
+<span class="nc" id="L782">        return ret.toString();</span>
+    }
+
+    @Override
+    public Object getProperty(final String name) throws IllegalArgumentException {
+<span class="nc bnc" id="L787" title="All 2 branches missed.">    	if (name == null) {</span>
+<span class="nc" id="L788">    		throw new IllegalArgumentException(&quot;Property name is not allowed to be null&quot;);</span>
+    	}
+<span class="nc bnc" id="L790" title="All 2 branches missed.">    	if (XMLInputFactory.ALLOCATOR.equals(name)) {</span>
+<span class="nc" id="L791">    		return null;</span>
+    	}
+<span class="nc bnc" id="L793" title="All 2 branches missed.">    	if (XMLInputFactory.IS_COALESCING.equals(name)) {</span>
+<span class="nc bnc" id="L794" title="All 2 branches missed.">    		return formatstack.getDefaultMode() != TextMode.PRESERVE;</span>
+    	}
+<span class="nc bnc" id="L796" title="All 2 branches missed.">    	if (XMLInputFactory.IS_NAMESPACE_AWARE.equals(name)) {</span>
+<span class="nc" id="L797">    		return Boolean.TRUE;</span>
+    	}
+<span class="nc bnc" id="L799" title="All 2 branches missed.">    	if (XMLInputFactory.IS_REPLACING_ENTITY_REFERENCES.equals(name)) {</span>
+<span class="nc" id="L800">    		return Boolean.FALSE;</span>
+    	}
+<span class="nc bnc" id="L802" title="All 2 branches missed.">    	if (XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES.equals(name)) {</span>
+<span class="nc" id="L803">    		return Boolean.FALSE;</span>
+    	}
+<span class="nc bnc" id="L805" title="All 2 branches missed.">    	if (XMLInputFactory.IS_VALIDATING.equals(name)) {</span>
+<span class="nc" id="L806">    		return Boolean.TRUE;</span>
+    	}
+<span class="nc bnc" id="L808" title="All 2 branches missed.">    	if (XMLInputFactory.REPORTER.equals(name)) {</span>
+<span class="nc" id="L809">    		return null;</span>
+    	}
+<span class="nc bnc" id="L811" title="All 2 branches missed.">    	if (XMLInputFactory.RESOLVER.equals(name)) {</span>
+<span class="nc" id="L812">    		return null;</span>
+    	}
+<span class="nc" id="L814">        return null;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

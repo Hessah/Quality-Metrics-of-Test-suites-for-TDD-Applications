@@ -13,7 +13,7 @@ done
 # commons-lang
 for i in 1
 do
-cd commons-lang3/ 
+cd commons-lang3-3.3.2-src/ 
 sh ./run_major.sh
 cd ..
 done
@@ -29,7 +29,7 @@ done
 # Jdom
 for i in 1
 do
-cd Jdom/
+cd jdom-JDOM-2.0.6/
 sh ./run_major.sh
 cd ..
 done

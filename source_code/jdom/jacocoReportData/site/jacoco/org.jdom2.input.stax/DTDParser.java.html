@@ -1,0 +1,425 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>DTDParser.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jdom</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.input.stax</a> &gt; <span class="el_source">DTDParser.java</span></div><h1>DTDParser.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2011-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.input.stax;
+
+import java.util.HashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.jdom2.DocType;
+import org.jdom2.JDOMException;
+import org.jdom2.JDOMFactory;
+
+/**
+ * Parses out key information from a single String representing a DOCTYPE
+ * declaration. StAX parsers supply a single string representing the DOCTYPE and
+ * this needs to be processed to get items like the SystemID, etc. Additionally
+ * it needs to be reformatted to create a standardised representation.
+ * &lt;p&gt;
+ * The assumption is that the DTD is valid.
+ * &lt;p&gt;
+ * We need to pull out 4 elements of data:
+ * &lt;ol&gt;
+ * &lt;li&gt;The root element name
+ * &lt;li&gt;The SystemID (if available)
+ * &lt;li&gt;The PublicID (if available)
+ * &lt;li&gt;The internal subset (if available)
+ * &lt;/ol&gt;
+ * 
+ * The internal-subset should be re-formatted to conform to the JDOM 'standard'
+ * where each declaration starts on a new line indented with 2 spaces. This
+ * 'standard' is defined by the way that JDOM formats the DTD declarations in the 
+ * SAX parse process, which fires individual events for the content in the DTD.
+ * &lt;p&gt;
+ * We can do this all with a well-structured regular expression, which is
+ * actually simpler than trying to fish out all the components ourselves....
+ * &lt;p&gt;
+ * 
+ * @author Rolf Lear
+ *
+ */
+public class DTDParser {
+	
+	/* 
+	 * =======================================================================
+	 * 
+	 *              READ THIS...
+	 *      
+	 * 
+	 * This code works by using a reg-ex to parse a valid DTD document.
+	 * The pattern is complicated (not as complicated as an actual parser).
+	 * 
+	 * Because the pattern is complicated, this code creates a pattern 'database'
+	 * and then 'pulls' patterns from the database to create the final regex.
+	 * The database patterns are pulled to transform a pattern template into a
+	 * final regular expression. This template is called the 'meta-pattern'.
+	 * 
+	 * So, the pattern is not kept in its final form, but rather it is built
+	 * up at class initialization time based on the meta-pattern, and the
+	 * pattern database in the map.
+	 * 
+	 * This is the final pattern: (broken over a few lines)
+	 * 
+	 * [\s\r\n\t]*&lt;!DOCTYPE[\s\r\n\t]+([^\s\r\n\t\[&gt;]+)([\s\r\n\t]+
+	 * ((SYSTEM[\s\r\n\t]+(('([^']*)')|(&quot;([^&quot;]*)&quot;)))|
+	 * (PUBLIC[\s\r\n\t]+(('([^']*)')|(&quot;([^&quot;]*)&quot;))([\s\r\n\t]+
+	 * (('([^']*)')|(&quot;([^&quot;]*)&quot;)))?)))?([\s\r\n\t]*\[(.*)\])?
+	 * [\s\r\n\t]*&gt;[\s\r\n\t]*
+	 * 
+	 * You will agree that it's simpler to build the pattern than to read it....
+	 * 
+	 * With the above in mind, you can easily follow the way the pattern is
+	 * built as it is simply a repeating use of some of the base constructs.
+	 * =======================================================================
+	 */
+
+	/**
+	 * This is the meta-pattern.
+	 * &lt;p&gt;
+	 * &lt;ul&gt;
+	 * &lt;li&gt;Where you see ' os ' there is optional space.
+	 * &lt;li&gt;Where you see ' name ' there is the element name.
+	 * &lt;li&gt;Where you see ' ms ' there is mandatory space.
+	 * &lt;li&gt;Where you see ' id ' there is some quoted identifier.
+	 * &lt;li&gt;Where you see ' internal ' there is the internal subset.
+	 * &lt;/ul&gt;
+	 * Anything else will become part of the final regex.
+	 * &lt;p&gt;
+	 * Space ('&amp;nbsp;') was chosen for the token delimiter because it
+	 * makes the meta-pattern easy to read. There are a couple of places in
+	 * this expression where there are two ' ' together, and it is critical
+	 * that it does not change because there will be missed token matches then.
+	 */
+	private static final String metapattern =
+			// The lead-in and the Element name
+			&quot; os &lt;!DOCTYPE ms ( name )&quot; + 
+			// The Public/System references, if any
+			&quot;( ms ((SYSTEM ms  id )|(PUBLIC ms  id ( ms  id )?)))?&quot; +
+			// The Internal Subset, if any.
+			&quot;( os \\[( internal )\\])?&quot; +
+			// The lead-out.
+			&quot; os &gt; os &quot;;
+	
+	/**
+	 * This builds a substitution map containing the raw patterns for
+	 * certain types of content we expect.
+	 * @return The populated map.
+	 */
+	private static final HashMap&lt;String,String&gt; populatePatterns() {
+<span class="fc" id="L161">		HashMap&lt;String,String&gt; p = new HashMap&lt;String, String&gt;();</span>
+		// The name is important to understand. The assumption is that the
+		// doctype is valid, hence it is easier to search for what the name is
+		// not, and not what it is. The name will be terminated with either
+		// white-space, [ or &gt;
+<span class="fc" id="L166">		p.put(&quot;name&quot;,     &quot;[^ \\n\\r\\t\\[&gt;]+&quot;); // element name.</span>
+
+		// whitespace: S  ::= (#x20 | #x9 | #xD | #xA)+
+<span class="fc" id="L169">		p.put(&quot;ms&quot;,       &quot;[ \\n\\r\\t]+&quot;);      // mandatory whitespace.</span>
+<span class="fc" id="L170">		p.put(&quot;os&quot;,       &quot;[ \\n\\r\\t]*&quot;);      // optional whitespace.</span>
+		
+		// A quoted 'id'/&quot;id&quot; is anything except the quote
+		// we need to do parenthesis in this to get grouping to work.
+		// also need parenthesis to make the | or condition work
+<span class="fc" id="L175">		p.put(&quot;id&quot;,       &quot;(('([^']*)')|(\&quot;([^\&quot;]*)\&quot;))&quot;); // quoted id.</span>
+		
+		// The internal subset is treated differently by the code, and the
+		// [ ] bracing around the internal subset is specified in the main regex
+<span class="fc" id="L179">		p.put(&quot;internal&quot;, &quot;.*&quot;); // internal subset.</span>
+<span class="fc" id="L180">		return p;</span>
+	}
+	
+	/**
+	 * This method substitutes the simple tokens in the meta-pattern with
+	 * the declared values in the map.
+	 * @param map The map containing substitution tokens/patterns
+	 * @param input The meta-pattern to do the substitutions on.
+	 * @return The substituted pattern
+	 */
+	private static final Pattern buildPattern(
+			HashMap&lt;String,String&gt; map, String input) {
+		// we are going to search for tokens. Each token is marked by a space.
+		// space was chosen because it makes the meta-pattern easy to read.
+<span class="fc" id="L194">		final Pattern search = Pattern.compile(&quot; (\\w+) &quot;);</span>
+<span class="fc" id="L195">		final Matcher mat = search.matcher(input);</span>
+<span class="fc" id="L196">		StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L197">		int pos = 0;</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">		while (mat.find()) {</span>
+<span class="fc" id="L199">			String rep = map.get(mat.group(1));</span>
+//          we wrote this, it can't happen ;-). Live with a 'null' append.
+//			if (rep == null) {
+//				throw new IllegalArgumentException(
+//						&quot;No definition of token '&quot; + mat.group() + &quot;'.&quot;);
+//			}
+			// can't use appendReplacement as we have to escape '\' chars.
+			// and Pattern.quote() does not help
+			// mat.appendReplacement(sb, rep);
+<span class="fc" id="L208">			sb.append(input.substring(pos, mat.start()));</span>
+<span class="fc" id="L209">			sb.append(rep);</span>
+<span class="fc" id="L210">			pos = mat.end();</span>
+<span class="fc" id="L211">		}</span>
+<span class="fc" id="L212">		sb.append(input.substring(pos));</span>
+<span class="fc" id="L213">		return Pattern.compile(sb.toString(), Pattern.DOTALL);</span>
+	}
+	
+	/**
+	 * The following Pattern is the final result after
+	 * parsing/tokenizing/substituting the meta-pattern.
+	 */
+<span class="fc" id="L220">	private static final Pattern pattern = </span>
+			buildPattern(populatePatterns(), metapattern);
+
+	/*
+	 * This pattern relies on pattern grouping to easily pull the values from
+	 * the Matcher. Look at the following to get an idea of the groups that
+	 * come from the reg-ex
+	 * 
+	 * 0 -&gt; &lt;!DOCTYPE root SYSTEM &quot;system&quot;  [internal] &gt;
+	 * 1 -&gt; root
+	 * 2 -&gt;  SYSTEM &quot;system&quot;
+	 * 3 -&gt; SYSTEM &quot;system&quot;
+	 * 4 -&gt; SYSTEM &quot;system&quot;
+	 * 5 -&gt; &quot;system&quot;
+	 * 6 -&gt; null
+	 * 7 -&gt; null
+	 * 8 -&gt; &quot;system&quot;
+	 * 9 -&gt; system
+	 * 10 -&gt; null
+	 * 11 -&gt; null
+	 * 12 -&gt; null
+	 * 13 -&gt; null
+	 * 14 -&gt; null
+	 * 15 -&gt; null
+	 * 16 -&gt; null
+	 * 17 -&gt; null
+	 * 18 -&gt; null
+	 * 19 -&gt; null
+	 * 20 -&gt; null
+	 * 21 -&gt; null
+	 * 22 -&gt;   [internal]
+	 * 23 -&gt; internal
+	 * 
+	 * 
+	 * 0 -&gt; &lt;!DOCTYPE root PUBLIC 'public'  'system'  [internal] &gt;
+	 * 1 -&gt; root
+	 * 2 -&gt;  PUBLIC 'public'  'system'
+	 * 3 -&gt; PUBLIC 'public'  'system'
+	 * 4 -&gt; null
+	 * 5 -&gt; null
+	 * 6 -&gt; null
+	 * 7 -&gt; null
+	 * 8 -&gt; null
+	 * 9 -&gt; null
+	 * 10 -&gt; PUBLIC 'public'  'system'
+	 * 11 -&gt; 'public'
+	 * 12 -&gt; 'public'
+	 * 13 -&gt; public
+	 * 14 -&gt; null
+	 * 15 -&gt; null
+	 * 16 -&gt;   'system'
+	 * 17 -&gt; 'system'
+	 * 18 -&gt; 'system'
+	 * 19 -&gt; system
+	 * 20 -&gt; null
+	 * 21 -&gt; null
+	 * 22 -&gt;   [internal]
+	 * 23 -&gt; internal
+	 * 
+	 * 
+	 */
+	
+	/**
+	 * Looks in any number of matched groups for a value. Returns the first set
+	 * value. The assumption is that, depending on the pattern matches, the
+	 * value could be in a few different locations.
+	 * @param mat The match that has succeeded
+	 * @param groups The groups to check for a value.
+	 * @return The first found value.
+	 */
+	private static final String getGroup(final Matcher mat, final int...groups) {
+<span class="fc bfc" id="L291" title="All 2 branches covered.">		for (final int g : groups) {</span>
+<span class="fc" id="L292">			final String s = mat.group(g);</span>
+<span class="fc bfc" id="L293" title="All 2 branches covered.">			if (s != null) {</span>
+<span class="fc" id="L294">				return s;</span>
+			}
+		}
+<span class="fc" id="L297">		return null;</span>
+	}
+	
+	/**
+	 * return true if the input character is one of the types recognized in the
+	 * DTD spec.
+	 * @param ch The char to check
+	 * @return true if it is a space, tab, newline, or carriage-return.
+	 */
+	private static final boolean isWhite(char ch) {
+<span class="fc bfc" id="L307" title="All 8 branches covered.">		return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r';</span>
+	}
+
+	/**
+	 * Reformat an internal subset.... Each declaration starts on an indented
+	 * newline.
+	 * @param internal the input DocType declaration as found in a StAX Reader.
+	 * @return the formatted input.
+	 */
+	private static String formatInternal(String internal) {
+<span class="fc" id="L317">		StringBuilder sb = new StringBuilder(internal.length());</span>
+<span class="fc" id="L318">		char quote = ' ';</span>
+<span class="fc" id="L319">		boolean white = true;</span>
+<span class="fc bfc" id="L320" title="All 2 branches covered.">		for (char ch : internal.toCharArray()) {</span>
+<span class="fc bfc" id="L321" title="All 2 branches covered.">			if (quote == ' ') {</span>
+				// we are not in a quoted value...
+<span class="fc bfc" id="L323" title="All 2 branches covered.">				if (isWhite(ch)) {</span>
+<span class="fc bfc" id="L324" title="All 2 branches covered.">					if (!white) {</span>
+						// this will be the first whitespace.
+						// replace it with a single ' '
+<span class="fc" id="L327">						sb.append(' ');</span>
+<span class="fc" id="L328">						white = true;</span>
+					}
+					// subsequent (unquoted) whitespace is ignored
+				} else {
+<span class="fc bfc" id="L332" title="All 4 branches covered.">					if (ch == '\'' || ch == '&quot;') {</span>
+						// we are entering a quoted value.
+<span class="fc" id="L334">						quote = ch;</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">					} else if (ch == '&lt;') {</span>
+						// we are starting some form of declaration.
+<span class="fc" id="L337">						sb.append(&quot;  &quot;);</span>
+					}
+					
+<span class="fc bfc" id="L340" title="All 2 branches covered.">					if (ch == '&gt;') {</span>
+						// we are ending a declaration.
+<span class="fc bfc" id="L342" title="All 2 branches covered.">						if (white) {</span>
+							// the declaration ended with whitespace, which we
+							// remove.
+<span class="fc" id="L345">							sb.setCharAt(sb.length() - 1, ch);</span>
+						} else {
+							// the declaration had no whitespace at the end. OK
+<span class="fc" id="L348">							sb.append(ch);</span>
+						}
+						// all declarations end with a new-line.
+<span class="fc" id="L351">						sb.append('\n');</span>
+						// and subsequent lines start as trimmed whitespace.
+<span class="fc" id="L353">						white = true;</span>
+					} else {
+<span class="fc" id="L355">						sb.append(ch);</span>
+<span class="fc" id="L356">						white = false;</span>
+					}
+				}
+			} else {
+				// we are in a quoted value...
+<span class="fc bfc" id="L361" title="All 2 branches covered.">				if (ch == quote) {</span>
+					//we are leaving the quoted value.
+<span class="fc" id="L363">					quote = ' ';</span>
+				}
+<span class="fc" id="L365">				sb.append(ch);</span>
+			}
+		}
+<span class="fc" id="L368">		return sb.toString();</span>
+	}
+
+	/**
+	 * Parse out a DOCTYPE declaration as supplied by the standard StAX
+	 * readers.
+	 * &lt;p&gt;
+	 * Using 'XML' terminology, this method assumes that the input is
+	 * both 'well-formed' and 'valid'. The assumptions that this class makes
+	 * ensure that the 'right thing' is done for valid content, but invalid
+	 * content may or may not fail with a JDOMException. The behaviour of this
+	 * method with invalid input is 'undefined'.
+	 * 
+	 * @param input the input DOCTYPE string to parse. Must be valid.
+	 * @param factory The JDOM factory to use to build the JDOM DocType.
+	 * @return The input string as a DocType.
+	 * @throws JDOMException if the DocType is not generated. 
+	 */
+	public static DocType parse(final String input, final JDOMFactory factory) 
+			throws JDOMException {
+		
+		// Match the input to the DOCTYPE pattern matcher.
+<span class="fc" id="L390">		final Matcher mat = pattern.matcher(input);</span>
+<span class="fc bfc" id="L391" title="All 2 branches covered.">		if (!mat.matches()) {</span>
+<span class="fc" id="L392">			throw new JDOMException(&quot;Doctype input does not appear to be valid: &quot; + input);</span>
+		}
+		
+		// Get the four data components.
+<span class="fc" id="L396">		final String docemt = mat.group(1);</span>
+<span class="fc" id="L397">		final String sysid = getGroup(mat, 7, 9, 19, 21);</span>
+<span class="fc" id="L398">		final String pubid = getGroup(mat, 13, 15);</span>
+<span class="fc" id="L399">		final String internal = getGroup(mat, 23);</span>
+		
+		// Use the appropriate constructor for the DocType.
+<span class="fc" id="L402">		DocType dt = null;</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">		if (pubid != null) {</span>
+<span class="fc" id="L404">			dt = factory.docType(docemt, pubid, sysid);</span>
+<span class="fc bfc" id="L405" title="All 2 branches covered.">		} else if (sysid != null) {</span>
+<span class="fc" id="L406">			dt = factory.docType(docemt, sysid);</span>
+		} else {
+<span class="fc" id="L408">			dt = factory.docType(docemt);</span>
+		}
+		// Set the internal subset, if any.
+<span class="fc bfc" id="L411" title="All 2 branches covered.">		if (internal != null) {</span>
+<span class="fc" id="L412">			dt.setInternalSubset(formatInternal(internal));</span>
+		}
+<span class="fc" id="L414">		return dt;</span>
+	}
+	
+	/**
+	 * Make instances 'impossible'. Everything is static.
+	 */
+<span class="nc" id="L420">	private DTDParser() {</span>
+		// nothing, you are not allowed instances of this class.
+<span class="nc" id="L422">	}</span>
+	
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

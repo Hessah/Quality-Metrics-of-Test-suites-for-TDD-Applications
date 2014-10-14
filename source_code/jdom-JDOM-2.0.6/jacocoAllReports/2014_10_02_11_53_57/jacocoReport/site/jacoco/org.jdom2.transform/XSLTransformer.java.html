@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>XSLTransformer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.transform</a> &gt; <span class="el_source">XSLTransformer.java</span></div><h1>XSLTransformer.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2001-2007 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.transform;
+
+import java.util.*;
+import java.io.*;
+import javax.xml.transform.*;
+import javax.xml.transform.stream.StreamSource;
+import org.jdom2.*;
+import org.xml.sax.EntityResolver;
+
+/**
+ * A convenience class to handle simple transformations. The JAXP TrAX classes
+ * have more bells and whistles and can be used with {@link JDOMSource} and
+ * {@link JDOMResult} for advanced uses. This class handles the common case and
+ * presents a simple interface.  XSLTransformer is thread safe and may be
+ * used from multiple threads.
+ *
+ * &lt;pre&gt;&lt;code&gt;
+ * XSLTransformer transformer = new XSLTransformer(&quot;file.xsl&quot;);
+ *
+ * Document x2 = transformer.transform(x);  // x is a Document
+ * Document y2 = transformer.transform(y);  // y is a Document
+ * &lt;/code&gt;&lt;/pre&gt;
+ *
+ *  JDOM relies on TrAX to perform the transformation.
+ *  The &lt;code&gt;javax.xml.transform.TransformerFactory&lt;/code&gt; Java system property
+ *  determines which XSLT engine TrAX uses. Its value should be
+ *  the fully qualified name of the implementation of the abstract
+ *  &lt;code&gt;javax.xml.transform.TransformerFactory&lt;/code&gt; class.
+ *  Values of this property for popular XSLT processors include:
+ *  &lt;/p&gt;
+ *  &lt;ul&gt;&lt;li&gt;Saxon 6.x: &lt;code&gt;com.icl.saxon.TransformerFactoryImpl&lt;/code&gt;&lt;/li&gt;
+ *  &lt;li&gt;Saxon 7.x: &lt;code&gt;net.sf.saxon.TransformerFactoryImpl&lt;/code&gt;&lt;/li&gt;
+ *  &lt;li&gt;Xalan: &lt;code&gt;org.apache.xalan.processor.TransformerFactoryImpl&lt;/code&gt;&lt;/li&gt;
+ *  &lt;li&gt;jd.xslt: &lt;code&gt;jd.xml.xslt.trax.TransformerFactoryImpl&lt;/code&gt;&lt;/li&gt;
+ *  &lt;li&gt;Oracle: &lt;code&gt;oracle.xml.jaxp.JXSAXTransformerFactory&lt;/code&gt;&lt;/li&gt;
+ *  &lt;/ul&gt;
+ *  &lt;p&gt;
+ *   This property can be set in all the usual ways a Java system property
+ *   can be set. TrAX picks from them in this order:&lt;/p&gt;
+ *   &lt;ol&gt;
+ *   &lt;li&gt; Invoking &lt;code&gt;System.setProperty( &quot;javax.xml.transform.TransformerFactory&quot;,
+ *     &quot;&lt;i&gt;&lt;code&gt;classname&lt;/code&gt;&lt;/i&gt;&quot;)&lt;/code&gt;&lt;/li&gt;
+ *   &lt;li&gt;The value specified at the command line using the
+ *      &lt;tt&gt;-Djavax.xml.transform.TransformerFactory=&lt;i&gt;&lt;code&gt;classname&lt;/code&gt;&lt;/i&gt;&lt;/tt&gt;
+ *      option to the &lt;b&gt;java&lt;/b&gt; interpreter&lt;/li&gt;
+ *    &lt;li&gt;The class named in the  &lt;code&gt;lib/jaxp.properties&lt;/code&gt; properties file
+ *         in the JRE directory, in a line like this one:
+ *      &lt;pre&gt;javax.xml.parsers.DocumentBuilderFactory=&lt;i&gt;&lt;code&gt;classname&lt;/code&gt;&lt;/i&gt;&lt;/pre&gt;&lt;/li&gt;
+ *    &lt;li&gt;The class named in the
+ *   &lt;code&gt;META-INF/services/javax.xml.transform.TransformerFactory&lt;/code&gt; file
+ *   in the JAR archives available to the runtime&lt;/li&gt;
+ *   &lt;li&gt;Finally, if all of the above options fail,
+ *    a default implementation is chosen. In Sun's JDK 1.4, this is
+ *       Xalan 2.2d10. &lt;/li&gt;
+ *    &lt;/ol&gt;
+
+ * @author  Jason Hunter
+ * @author  Elliotte Rusty Harold
+ */
+public class XSLTransformer {
+
+	private Templates templates;
+
+	/**
+	 * The custom JDOM factory to use when building the transformation
+	 * result or &lt;code&gt;null&lt;/code&gt; to use the default JDOM classes.
+	 */
+<span class="fc" id="L122">	private JDOMFactory factory = null;</span>
+
+	// Internal constructor to support the other constructors
+<span class="fc" id="L125">	private XSLTransformer(Source stylesheet) throws XSLTransformException {</span>
+		try {
+<span class="fc" id="L127">			templates = TransformerFactory.newInstance()</span>
+					.newTemplates(stylesheet);
+		}
+<span class="nc" id="L130">		catch (TransformerException e) {</span>
+<span class="nc" id="L131">			throw new XSLTransformException(&quot;Could not construct XSLTransformer&quot;, e);</span>
+<span class="fc" id="L132">		}</span>
+<span class="fc" id="L133">	}</span>
+
+	/**
+	 * Creates a transformer for a given stylesheet system id.
+	 *
+	 * @param  stylesheetSystemId  source stylesheet as a Source object
+	 * @throws XSLTransformException       if there's a problem in the TrAX back-end
+	 */
+	public XSLTransformer(String stylesheetSystemId) throws XSLTransformException {
+<span class="fc" id="L142">		this(new StreamSource(stylesheetSystemId));</span>
+<span class="fc" id="L143">	}</span>
+
+	/**
+	 * &lt;p&gt;
+	 * This will create a new &lt;code&gt;XSLTransformer&lt;/code&gt; by
+	 *  reading the stylesheet from the specified
+	 *   &lt;code&gt;InputStream&lt;/code&gt;.
+	 * &lt;/p&gt;
+	 *
+	 * @param stylesheet &lt;code&gt;InputStream&lt;/code&gt; from which the stylesheet is read.
+	 * @throws XSLTransformException when an IOException, format error, or
+	 * something else prevents the stylesheet from being compiled
+	 */
+	public XSLTransformer(InputStream stylesheet) throws XSLTransformException {
+<span class="fc" id="L157">		this(new StreamSource(stylesheet));</span>
+<span class="fc" id="L158">	}</span>
+
+	/**
+	 * &lt;p&gt;
+	 * This will create a new &lt;code&gt;XSLTransformer&lt;/code&gt; by
+	 *  reading the stylesheet from the specified
+	 *   &lt;code&gt;Reader&lt;/code&gt;.
+	 * &lt;/p&gt;
+	 *
+	 * @param stylesheet &lt;code&gt;Reader&lt;/code&gt; from which the stylesheet is read.
+	 * @throws XSLTransformException when an IOException, format error, or
+	 * something else prevents the stylesheet from being compiled
+	 */
+	public XSLTransformer(Reader stylesheet) throws XSLTransformException {
+<span class="fc" id="L172">		this(new StreamSource(stylesheet));</span>
+<span class="fc" id="L173">	}</span>
+
+	/**
+	 * &lt;p&gt;
+	 * This will create a new &lt;code&gt;XSLTransformer&lt;/code&gt; by
+	 *  reading the stylesheet from the specified
+	 *   &lt;code&gt;File&lt;/code&gt;.
+	 * &lt;/p&gt;
+	 *
+	 * @param stylesheet &lt;code&gt;File&lt;/code&gt; from which the stylesheet is read.
+	 * @throws XSLTransformException when an IOException, format error, or
+	 * something else prevents the stylesheet from being compiled
+	 */
+	public XSLTransformer(File stylesheet) throws XSLTransformException {
+<span class="fc" id="L187">		this(new StreamSource(stylesheet));</span>
+<span class="fc" id="L188">	}</span>
+
+	/**
+	 * &lt;p&gt;
+	 * This will create a new &lt;code&gt;XSLTransformer&lt;/code&gt; by
+	 *  reading the stylesheet from the specified
+	 *   &lt;code&gt;Document&lt;/code&gt;.
+	 * &lt;/p&gt;
+	 *
+	 * @param stylesheet &lt;code&gt;Document&lt;/code&gt; containing the stylesheet.
+	 * @throws XSLTransformException when the supplied &lt;code&gt;Document&lt;/code&gt;
+	 *  is not syntactically correct XSLT
+	 */
+	public XSLTransformer(Document stylesheet) throws XSLTransformException {
+<span class="fc" id="L202">		this(new JDOMSource(stylesheet));</span>
+<span class="fc" id="L203">	}</span>
+
+	/**
+	 * Transforms the given input nodes to a list of output nodes.
+	 *
+	 * @param  inputNodes          input nodes
+	 * @return                     transformed output nodes
+	 * @throws XSLTransformException       if there's a problem in the transformation
+	 */
+	public List&lt;Content&gt; transform(List&lt;Content&gt; inputNodes) throws XSLTransformException {
+<span class="fc" id="L213">		JDOMSource source = new JDOMSource(inputNodes);</span>
+<span class="fc" id="L214">		JDOMResult result = new JDOMResult();</span>
+<span class="fc" id="L215">		result.setFactory(factory);  // null ok</span>
+		try {
+<span class="fc" id="L217">			templates.newTransformer().transform(source, result);</span>
+<span class="fc" id="L218">			return result.getResult();</span>
+		}
+<span class="nc" id="L220">		catch (TransformerException e) {</span>
+<span class="nc" id="L221">			throw new XSLTransformException(&quot;Could not perform transformation&quot;, e);</span>
+		}
+	}
+
+	/**
+	 * Transforms the given document to an output document.
+	 *
+	 * @param  inputDoc            input document
+	 * @return                     transformed output document
+	 * @throws XSLTransformException       if there's a problem in the transformation
+	 */
+	public Document transform(Document inputDoc) throws XSLTransformException {
+<span class="fc" id="L233">		return transform(inputDoc, null);</span>
+	}
+
+	/**
+	 * Transforms the given document to an output document.
+	 *
+	 * @param  inputDoc            input document
+	 * @param  resolver			   entity resolver for the input document
+	 * @return                     transformed output document
+	 * @throws XSLTransformException       if there's a problem in the transformation
+	 */
+	public Document transform(Document inputDoc, EntityResolver resolver) throws XSLTransformException {
+<span class="fc" id="L245">		JDOMSource source = new JDOMSource(inputDoc, resolver);</span>
+<span class="fc" id="L246">		JDOMResult result = new JDOMResult();</span>
+<span class="fc" id="L247">		result.setFactory(factory);  // null ok</span>
+		try {
+<span class="fc" id="L249">			templates.newTransformer().transform(source, result);</span>
+<span class="fc" id="L250">			return result.getDocument();</span>
+		}
+<span class="nc" id="L252">		catch (TransformerException e) {</span>
+<span class="nc" id="L253">			throw new XSLTransformException(&quot;Could not perform transformation&quot;, e);</span>
+		}
+	}
+
+	/**
+	 * Sets a custom JDOMFactory to use when building the
+	 * transformation result. Use a custom factory to build the tree
+	 * with your own subclasses of the JDOM classes.
+	 *
+	 * @param  factory   the custom &lt;code&gt;JDOMFactory&lt;/code&gt; to use or
+	 *                   &lt;code&gt;null&lt;/code&gt; to use the default JDOM
+	 *                   classes.
+	 *
+	 * @see    #getFactory
+	 */
+	public void setFactory(JDOMFactory factory) {
+<span class="fc" id="L269">		this.factory = factory;</span>
+<span class="fc" id="L270">	}</span>
+
+	/**
+	 * Returns the custom JDOMFactory used to build the transformation
+	 * result.
+	 *
+	 * @return the custom &lt;code&gt;JDOMFactory&lt;/code&gt; used to build the
+	 *         transformation result or &lt;code&gt;null&lt;/code&gt; if the
+	 *         default JDOM classes are being used.
+	 *
+	 * @see    #setFactory
+	 */
+	public JDOMFactory getFactory() {
+<span class="fc" id="L283">		return this.factory;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

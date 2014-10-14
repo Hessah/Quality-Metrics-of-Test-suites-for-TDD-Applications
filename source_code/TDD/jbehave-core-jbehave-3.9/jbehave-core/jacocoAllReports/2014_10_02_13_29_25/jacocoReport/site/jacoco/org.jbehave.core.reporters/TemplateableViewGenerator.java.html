@@ -1,0 +1,421 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>TemplateableViewGenerator.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.reporters</a> &gt; <span class="el_source">TemplateableViewGenerator.java</span></div><h1>TemplateableViewGenerator.java</h1><pre class="source lang-java linenums">package org.jbehave.core.reporters;
+
+import static java.util.Arrays.asList;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.FilenameFilter;
+import java.io.InputStream;
+import java.io.Writer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.Enumeration;
+import java.util.Formatter;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.SortedMap;
+import java.util.TreeMap;
+
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang.builder.CompareToBuilder;
+import org.apache.commons.lang.builder.ToStringBuilder;
+import org.apache.commons.lang.builder.ToStringStyle;
+import org.jbehave.core.io.IOUtils;
+import org.jbehave.core.io.StoryNameResolver;
+import org.jbehave.core.model.StoryLanes;
+import org.jbehave.core.model.StoryMaps;
+
+/**
+ * &lt;p&gt;
+ * {@link ViewGenerator}, which uses the configured {@link TemplateProcessor} to
+ * generate the views from templates. The default view properties are
+ * overridable via the method {@link Properties} parameter. To override, specify
+ * the path to the new template under the appropriate key:
+ * 
+ * &lt;pre&gt;
+ * &amp;quot;views&amp;quot;: the path to global view template, including reports and maps views
+ * &amp;quot;maps&amp;quot;: the path to the maps view template
+ * &amp;quot;reports&amp;quot;: the path to the reports view template
+ * &amp;quot;decorated&amp;quot;: the path to the template to generate a decorated (i.e. styled) single report
+ * &amp;quot;nonDecorated&amp;quot;: the path to the template to generated a non decorated single report
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * The view generator provides the following resources:
+ * 
+ * &lt;pre&gt;
+ * &amp;quot;decorateNonHtml&amp;quot; = &amp;quot;true&amp;quot;
+ * &amp;quot;defaultFormats&amp;quot; = &amp;quot;stats&amp;quot;
+ * &amp;quot;viewDirectory&amp;quot; = &amp;quot;view&amp;quot;
+ * &lt;/pre&gt;
+ * 
+ * &lt;/p&gt;
+ * 
+ * @author Mauro Talevi
+ */
+public class TemplateableViewGenerator implements ViewGenerator {
+
+    private final StoryNameResolver nameResolver;
+    private final TemplateProcessor processor;
+    private Properties viewProperties;
+<span class="fc" id="L66">    private List&lt;Report&gt; reports = new ArrayList&lt;Report&gt;();</span>
+
+<span class="fc" id="L68">    public TemplateableViewGenerator(StoryNameResolver nameResolver, TemplateProcessor processor) {</span>
+<span class="fc" id="L69">        this.nameResolver = nameResolver;</span>
+<span class="fc" id="L70">        this.processor = processor;</span>
+<span class="fc" id="L71">    }</span>
+
+    public Properties defaultViewProperties() {
+<span class="nc" id="L74">        Properties properties = new Properties();</span>
+<span class="nc" id="L75">        properties.setProperty(&quot;decorateNonHtml&quot;, &quot;true&quot;);</span>
+<span class="nc" id="L76">        properties.setProperty(&quot;defaultFormats&quot;, &quot;stats&quot;);</span>
+<span class="nc" id="L77">        properties.setProperty(&quot;viewDirectory&quot;, &quot;view&quot;);</span>
+<span class="nc" id="L78">        return properties;</span>
+    }
+
+    private Properties mergeWithDefault(Properties properties) {
+<span class="fc" id="L82">        Properties merged = defaultViewProperties();</span>
+<span class="fc" id="L83">        merged.putAll(properties);</span>
+<span class="fc" id="L84">        return merged;</span>
+    }
+
+    private void generateViewsIndex(File outputDirectory) {
+<span class="fc" id="L88">        String outputName = templateResource(&quot;viewDirectory&quot;) + &quot;/index.html&quot;;</span>
+<span class="fc" id="L89">        String viewsTemplate = templateResource(&quot;views&quot;);</span>
+<span class="fc" id="L90">        Map&lt;String, Object&gt; dataModel = newDataModel();</span>
+<span class="fc" id="L91">        dataModel.put(&quot;date&quot;, new Date());</span>
+<span class="fc" id="L92">        write(outputDirectory, outputName, viewsTemplate, dataModel);</span>
+<span class="fc" id="L93">    }</span>
+
+    public void generateMapsView(File outputDirectory, StoryMaps storyMaps, Properties viewProperties) {
+<span class="fc" id="L96">        this.viewProperties = mergeWithDefault(viewProperties);</span>
+<span class="fc" id="L97">        String outputName = templateResource(&quot;viewDirectory&quot;) + &quot;/maps.html&quot;;</span>
+<span class="fc" id="L98">        String mapsTemplate = templateResource(&quot;maps&quot;);</span>
+<span class="fc" id="L99">        Map&lt;String, Object&gt; dataModel = newDataModel();</span>
+<span class="fc" id="L100">        dataModel.put(&quot;storyLanes&quot;, new StoryLanes(storyMaps, nameResolver));</span>
+<span class="fc" id="L101">        dataModel.put(&quot;date&quot;, new Date());</span>
+<span class="fc" id="L102">        write(outputDirectory, outputName, mapsTemplate, dataModel);</span>
+<span class="fc" id="L103">        generateViewsIndex(outputDirectory);</span>
+<span class="fc" id="L104">    }</span>
+
+    public void generateReportsView(File outputDirectory, List&lt;String&gt; formats, Properties viewProperties) {
+<span class="fc" id="L107">        this.viewProperties = mergeWithDefault(viewProperties);</span>
+<span class="fc" id="L108">        String outputName = templateResource(&quot;viewDirectory&quot;) + &quot;/reports.html&quot;;</span>
+<span class="fc" id="L109">        String reportsTemplate = templateResource(&quot;reports&quot;);</span>
+<span class="fc" id="L110">        List&lt;String&gt; mergedFormats = mergeFormatsWithDefaults(formats);</span>
+<span class="fc" id="L111">        reports = createReports(readReportFiles(outputDirectory, outputName, mergedFormats));</span>
+<span class="fc" id="L112">        Map&lt;String, Object&gt; dataModel = newDataModel();</span>
+<span class="fc" id="L113">        dataModel.put(&quot;reportsTable&quot;, new ReportsTable(reports, nameResolver));</span>
+<span class="fc" id="L114">        dataModel.put(&quot;date&quot;, new Date());</span>
+<span class="fc" id="L115">        dataModel.put(&quot;timeFormatter&quot;, new TimeFormatter());</span>
+<span class="fc" id="L116">        write(outputDirectory, outputName, reportsTemplate, dataModel);</span>
+<span class="fc" id="L117">        generateViewsIndex(outputDirectory);</span>
+<span class="fc" id="L118">    }</span>
+
+    public ReportsCount getReportsCount() {
+<span class="fc" id="L121">        int stories = countStoriesWithScenarios();</span>
+<span class="fc" id="L122">        int storiesNotAllowed = count(&quot;notAllowed&quot;, reports);</span>
+<span class="fc" id="L123">        int storiesPending = count(&quot;pending&quot;, reports);</span>
+<span class="fc" id="L124">        int scenarios = count(&quot;scenarios&quot;, reports);</span>
+<span class="fc" id="L125">        int scenariosFailed = count(&quot;scenariosFailed&quot;, reports);</span>
+<span class="fc" id="L126">        int scenariosNotAllowed = count(&quot;scenariosNotAllowed&quot;, reports);</span>
+<span class="fc" id="L127">        int scenariosPending = count(&quot;scenariosPending&quot;, reports);</span>
+<span class="fc" id="L128">        int stepsFailed = count(&quot;stepsFailed&quot;, reports);</span>
+<span class="fc" id="L129">        return new ReportsCount(stories, storiesNotAllowed, storiesPending, scenarios, scenariosFailed,</span>
+                scenariosNotAllowed, scenariosPending, stepsFailed);
+    }
+
+    private int countStoriesWithScenarios(){
+<span class="fc" id="L134">        int storyCount = 0;</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        for (Report report : reports){</span>
+<span class="fc" id="L136">            Map&lt;String, Integer&gt; stats = report.getStats();</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">            if (stats.containsKey(&quot;scenarios&quot;)){</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">                if (stats.get(&quot;scenarios&quot;) &gt; 0)</span>
+<span class="nc" id="L139">                storyCount++;</span>
+            }
+<span class="fc" id="L141">        }</span>
+<span class="fc" id="L142">        return storyCount;</span>
+    }
+    
+    int count(String event, Collection&lt;Report&gt; reports) {
+<span class="fc" id="L146">        int count = 0;</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        for (Report report : reports) {</span>
+<span class="fc" id="L148">            Properties stats = report.asProperties(&quot;stats&quot;);</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">            if (stats.containsKey(event)) {</span>
+<span class="fc" id="L150">                count = count + Integer.parseInt((String) stats.get(event));</span>
+            }
+<span class="fc" id="L152">        }</span>
+<span class="fc" id="L153">        return count;</span>
+    }
+
+    private List&lt;String&gt; mergeFormatsWithDefaults(List&lt;String&gt; formats) {
+<span class="fc" id="L157">        List&lt;String&gt; merged = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L158">        merged.addAll(asList(templateResource(&quot;defaultFormats&quot;).split(&quot;,&quot;)));</span>
+<span class="fc" id="L159">        merged.addAll(formats);</span>
+<span class="fc" id="L160">        return merged;</span>
+    }
+
+    List&lt;Report&gt; createReports(Map&lt;String, List&lt;File&gt;&gt; reportFiles) {
+        try {
+<span class="fc" id="L165">            String decoratedTemplate = templateResource(&quot;decorated&quot;);</span>
+<span class="fc" id="L166">            String nonDecoratedTemplate = templateResource(&quot;nonDecorated&quot;);</span>
+<span class="fc" id="L167">            String viewDirectory = templateResource(&quot;viewDirectory&quot;);</span>
+<span class="fc" id="L168">            boolean decorateNonHtml = Boolean.valueOf(templateResource(&quot;decorateNonHtml&quot;));</span>
+<span class="fc" id="L169">            List&lt;Report&gt; reports = new ArrayList&lt;Report&gt;();</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            for (String name : reportFiles.keySet()) {</span>
+<span class="fc" id="L171">                Map&lt;String, File&gt; filesByFormat = new HashMap&lt;String, File&gt;();</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">                for (File file : reportFiles.get(name)) {</span>
+<span class="fc" id="L173">                    String fileName = file.getName();</span>
+<span class="fc" id="L174">                    String format = FilenameUtils.getExtension(fileName);</span>
+<span class="fc" id="L175">                    Map&lt;String, Object&gt; dataModel = newDataModel();</span>
+<span class="fc" id="L176">                    dataModel.put(&quot;name&quot;, name);</span>
+<span class="fc" id="L177">                    dataModel.put(&quot;body&quot;, IOUtils.toString(new FileReader(file), true));</span>
+<span class="fc" id="L178">                    dataModel.put(&quot;format&quot;, format);</span>
+<span class="fc" id="L179">                    File outputDirectory = file.getParentFile();</span>
+<span class="fc" id="L180">                    String outputName = viewDirectory + &quot;/&quot; + fileName;</span>
+<span class="fc" id="L181">                    String template = decoratedTemplate;</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                    if (!format.equals(&quot;html&quot;)) {</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">                        if (decorateNonHtml) {</span>
+<span class="fc" id="L184">                            outputName = outputName + &quot;.html&quot;;</span>
+                        } else {
+<span class="fc" id="L186">                            template = nonDecoratedTemplate;</span>
+                        }
+                    }
+<span class="fc" id="L189">                    File written = write(outputDirectory, outputName, template, dataModel);</span>
+<span class="fc" id="L190">                    filesByFormat.put(format, written);</span>
+<span class="fc" id="L191">                }</span>
+<span class="fc" id="L192">                reports.add(new Report(name, filesByFormat));</span>
+<span class="fc" id="L193">            }</span>
+<span class="fc" id="L194">            return reports;</span>
+<span class="fc" id="L195">        } catch (Exception e) {</span>
+<span class="fc" id="L196">            throw new ReportCreationFailed(reportFiles, e);</span>
+        }
+    }
+
+    SortedMap&lt;String, List&lt;File&gt;&gt; readReportFiles(File outputDirectory, final String outputName,
+            final List&lt;String&gt; formats) {
+<span class="fc" id="L202">        SortedMap&lt;String, List&lt;File&gt;&gt; reportFiles = new TreeMap&lt;String, List&lt;File&gt;&gt;();</span>
+<span class="fc bfc" id="L203" title="All 4 branches covered.">        if (outputDirectory == null || !outputDirectory.exists()) {</span>
+<span class="fc" id="L204">            return reportFiles;</span>
+        }
+<span class="fc" id="L206">        String[] fileNames = outputDirectory.list(new FilenameFilter() {</span>
+            public boolean accept(File dir, String name) {
+<span class="fc bfc" id="L208" title="All 4 branches covered.">                return !name.equals(outputName) &amp;&amp; hasFormats(name, formats);</span>
+            }
+
+            private boolean hasFormats(String name, List&lt;String&gt; formats) {
+<span class="fc bfc" id="L212" title="All 2 branches covered.">                for (String format : formats) {</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">                    if (name.endsWith(format)) {</span>
+<span class="fc" id="L214">                        return true;</span>
+                    }
+<span class="fc" id="L216">                }</span>
+<span class="fc" id="L217">                return false;</span>
+            }
+        });
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        for (String fileName : fileNames) {</span>
+<span class="fc" id="L221">            String name = FilenameUtils.getBaseName(fileName);</span>
+<span class="fc" id="L222">            List&lt;File&gt; filesByName = reportFiles.get(name);</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">            if (filesByName == null) {</span>
+<span class="fc" id="L224">                filesByName = new ArrayList&lt;File&gt;();</span>
+<span class="fc" id="L225">                reportFiles.put(name, filesByName);</span>
+            }
+<span class="fc" id="L227">            filesByName.add(new File(outputDirectory, fileName));</span>
+        }
+<span class="fc" id="L229">        return reportFiles;</span>
+    }
+
+    private File write(File outputDirectory, String outputName, String resource, Map&lt;String, Object&gt; dataModel) {
+        try {
+<span class="fc" id="L234">            File file = new File(outputDirectory, outputName);</span>
+<span class="fc" id="L235">            file.getParentFile().mkdirs();</span>
+<span class="fc" id="L236">            Writer writer = new FileWriter(file);</span>
+<span class="fc" id="L237">            processor.process(resource, dataModel, writer);</span>
+<span class="fc" id="L238">            writer.close();</span>
+<span class="fc" id="L239">            return file;</span>
+<span class="fc" id="L240">        } catch (Exception e) {</span>
+<span class="fc" id="L241">            throw new ViewGenerationFailedForTemplate(resource, e);</span>
+        }
+    }
+
+    private String templateResource(String format) {
+<span class="fc" id="L246">        return viewProperties.getProperty(format);</span>
+    }
+
+    private Map&lt;String, Object&gt; newDataModel() {
+<span class="fc" id="L250">        return new HashMap&lt;String, Object&gt;();</span>
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class ReportCreationFailed extends RuntimeException {
+
+        public ReportCreationFailed(Map&lt;String, List&lt;File&gt;&gt; reportFiles, Exception cause) {
+<span class="fc" id="L257">            super(&quot;Report creation failed from file &quot; + reportFiles, cause);</span>
+<span class="fc" id="L258">        }</span>
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class ViewGenerationFailedForTemplate extends RuntimeException {
+
+        public ViewGenerationFailedForTemplate(String resource, Exception cause) {
+<span class="fc" id="L265">            super(resource, cause);</span>
+<span class="fc" id="L266">        }</span>
+
+    }
+
+    public static class ReportsTable {
+
+<span class="fc" id="L272">        private final Map&lt;String, Report&gt; reports = new HashMap&lt;String, Report&gt;();</span>
+        private final StoryNameResolver nameResolver;
+
+<span class="fc" id="L275">        public ReportsTable(List&lt;Report&gt; reports, StoryNameResolver nameResolver) {</span>
+<span class="fc" id="L276">            this.nameResolver = nameResolver;</span>
+<span class="fc" id="L277">            index(reports);</span>
+<span class="fc" id="L278">            addTotalsReport();</span>
+<span class="fc" id="L279">        }</span>
+
+        private void index(List&lt;Report&gt; reports) {
+<span class="fc bfc" id="L282" title="All 2 branches covered.">            for (Report report : reports) {</span>
+<span class="fc" id="L283">                report.nameAs(nameResolver.resolveName(report.getPath()));</span>
+<span class="fc" id="L284">                this.reports.put(report.getName(), report);</span>
+<span class="fc" id="L285">            }</span>
+<span class="fc" id="L286">        }</span>
+
+        private void addTotalsReport() {
+<span class="fc" id="L289">            Report report = totals(reports.values());</span>
+<span class="fc" id="L290">            report.nameAs(nameResolver.resolveName(report.getPath()));</span>
+<span class="fc" id="L291">            reports.put(report.getName(), report);</span>
+<span class="fc" id="L292">        }</span>
+
+        private Report totals(Collection&lt;Report&gt; values) {
+<span class="fc" id="L295">            Map&lt;String, Integer&gt; totals = new HashMap&lt;String, Integer&gt;();</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">            for (Report report : values) {</span>
+<span class="fc" id="L297">                Map&lt;String, Integer&gt; stats = report.getStats();</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">                for (String key : stats.keySet()) {</span>
+<span class="fc" id="L299">                    Integer total = totals.get(key);</span>
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">                    if (total == null) {</span>
+<span class="fc" id="L301">                        total = 0;</span>
+                    }
+<span class="fc" id="L303">                    total = total + stats.get(key);</span>
+<span class="fc" id="L304">                    totals.put(key, total);</span>
+<span class="fc" id="L305">                }</span>
+<span class="fc" id="L306">            }</span>
+<span class="fc" id="L307">            return new Report(&quot;Totals&quot;, new HashMap&lt;String, File&gt;(), totals);</span>
+        }
+
+        public List&lt;Report&gt; getReports() {
+<span class="nc" id="L311">            List&lt;Report&gt; list = new ArrayList&lt;Report&gt;(reports.values());</span>
+<span class="nc" id="L312">            Collections.sort(list);</span>
+<span class="nc" id="L313">            return list;</span>
+        }
+
+        public List&lt;String&gt; getReportNames() {
+<span class="fc" id="L317">            List&lt;String&gt; list = new ArrayList&lt;String&gt;(reports.keySet());</span>
+<span class="fc" id="L318">            Collections.sort(list);</span>
+<span class="fc" id="L319">            return list;</span>
+        }
+
+        public Report getReport(String name) {
+<span class="fc" id="L323">            return reports.get(name);</span>
+        }
+    }
+
+    public static class Report implements Comparable&lt;Report&gt; {
+
+        private final String path;
+        private final Map&lt;String, File&gt; filesByFormat;
+        private Map&lt;String, Integer&gt; stats;
+        private String name;
+
+        public Report(String path, Map&lt;String, File&gt; filesByFormat) {
+<span class="fc" id="L335">            this(path, filesByFormat, null);</span>
+<span class="fc" id="L336">        }</span>
+
+<span class="fc" id="L338">        public Report(String path, Map&lt;String, File&gt; filesByFormat, Map&lt;String, Integer&gt; stats) {</span>
+<span class="fc" id="L339">            this.path = path;</span>
+<span class="fc" id="L340">            this.filesByFormat = filesByFormat;</span>
+<span class="fc" id="L341">            this.stats = stats;</span>
+<span class="fc" id="L342">        }</span>
+
+        public String getPath() {
+<span class="fc" id="L345">            return path;</span>
+        }
+
+        public String getName() {
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">            return name != null ? name : path;</span>
+        }
+
+        public void nameAs(String name) {
+<span class="fc" id="L353">            this.name = name;</span>
+<span class="fc" id="L354">        }</span>
+
+        public Map&lt;String, File&gt; getFilesByFormat() {
+<span class="fc" id="L357">            return filesByFormat;</span>
+        }
+
+        public Properties asProperties(String format) {
+<span class="fc" id="L361">            Properties p = new Properties();</span>
+<span class="fc" id="L362">            File stats = filesByFormat.get(format);</span>
+            try {
+<span class="fc" id="L364">                InputStream inputStream = new FileInputStream(stats);</span>
+<span class="fc" id="L365">                p.load(inputStream);</span>
+<span class="fc" id="L366">                inputStream.close();</span>
+<span class="fc" id="L367">            } catch (Exception e) {</span>
+                // return empty map
+<span class="fc" id="L369">            }</span>
+<span class="fc" id="L370">            return p;</span>
+        }
+
+        public Map&lt;String, Integer&gt; getStats() {
+<span class="fc bfc" id="L374" title="All 2 branches covered.">            if (stats == null) {</span>
+<span class="fc" id="L375">                Properties p = asProperties(&quot;stats&quot;);</span>
+<span class="fc" id="L376">                stats = new HashMap&lt;String, Integer&gt;();</span>
+<span class="fc bfc" id="L377" title="All 2 branches covered.">                for (Enumeration&lt;?&gt; e = p.propertyNames(); e.hasMoreElements();) {</span>
+<span class="fc" id="L378">                    String key = (String) e.nextElement();</span>
+<span class="fc" id="L379">                    stats.put(key, valueOf(key, p));</span>
+<span class="fc" id="L380">                }</span>
+            }
+<span class="fc" id="L382">            return stats;</span>
+        }
+
+        private Integer valueOf(String key, Properties p) {
+            try {
+<span class="nc" id="L387">                return Integer.valueOf(p.getProperty(key));</span>
+<span class="fc" id="L388">            } catch (NumberFormatException e) {</span>
+<span class="fc" id="L389">                return 0;</span>
+            }
+        }
+
+        public int compareTo(Report that) {
+<span class="nc" id="L394">            return CompareToBuilder.reflectionCompare(this.getName(), that.getName());</span>
+        }
+
+        @Override
+        public String toString() {
+<span class="nc" id="L399">            return new ToStringBuilder(this, ToStringStyle.SHORT_PREFIX_STYLE).append(path).toString();</span>
+        }
+    }
+
+<span class="fc" id="L403">    public static class TimeFormatter {</span>
+
+        public String formatMillis(long millis) {
+<span class="fc" id="L406">            int second = 1000;</span>
+<span class="fc" id="L407">            int minute = 60 * second;</span>
+<span class="fc" id="L408">            int hour = 60 * minute;</span>
+<span class="fc" id="L409">            long hours = millis / hour;</span>
+<span class="fc" id="L410">            long minutes = (millis % hour) / minute;</span>
+<span class="fc" id="L411">            long seconds = ((millis % hour) % minute) / second;</span>
+<span class="fc" id="L412">            long milliseconds = ((millis % hour) % minute % second);</span>
+<span class="fc" id="L413">            Formatter formatter = new Formatter();</span>
+<span class="fc" id="L414">            String result = formatter.format(&quot;%02d:%02d:%02d.%03d&quot;, hours, minutes, seconds, milliseconds).toString();</span>
+<span class="fc" id="L415">            formatter.close();</span>
+<span class="fc" id="L416">            return result;</span>
+        }
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

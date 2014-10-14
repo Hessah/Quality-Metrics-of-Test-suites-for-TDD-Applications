@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>BaseTestRunner.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Junit-r4.11</a> &gt; <a href="index.source.html" class="el_package">junit.runner</a> &gt; <span class="el_source">BaseTestRunner.java</span></div><h1>BaseTestRunner.java</h1><pre class="source lang-java linenums">package junit.runner;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintWriter;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.text.NumberFormat;
+import java.util.Properties;
+
+import junit.framework.AssertionFailedError;
+import junit.framework.Test;
+import junit.framework.TestListener;
+import junit.framework.TestSuite;
+
+/**
+ * Base class for all test runners.
+ * This class was born live on stage in Sardinia during XP2000.
+ */
+<span class="fc" id="L27">public abstract class BaseTestRunner implements TestListener {</span>
+    public static final String SUITE_METHODNAME = &quot;suite&quot;;
+
+    private static Properties fPreferences;
+<span class="fc" id="L31">    static int fgMaxMessageLength = 500;</span>
+<span class="fc" id="L32">    static boolean fgFilterStack = true;</span>
+<span class="fc" id="L33">    boolean fLoading = true;</span>
+
+    /*
+    * Implementation of TestListener
+    */
+    public synchronized void startTest(Test test) {
+<span class="nc" id="L39">        testStarted(test.toString());</span>
+<span class="nc" id="L40">    }</span>
+
+    protected static void setPreferences(Properties preferences) {
+<span class="nc" id="L43">        fPreferences = preferences;</span>
+<span class="nc" id="L44">    }</span>
+
+    protected static Properties getPreferences() {
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        if (fPreferences == null) {</span>
+<span class="fc" id="L48">            fPreferences = new Properties();</span>
+<span class="fc" id="L49">            fPreferences.put(&quot;loading&quot;, &quot;true&quot;);</span>
+<span class="fc" id="L50">            fPreferences.put(&quot;filterstack&quot;, &quot;true&quot;);</span>
+<span class="fc" id="L51">            readPreferences();</span>
+        }
+<span class="fc" id="L53">        return fPreferences;</span>
+    }
+
+    public static void savePreferences() throws IOException {
+<span class="nc" id="L57">        FileOutputStream fos = new FileOutputStream(getPreferencesFile());</span>
+        try {
+<span class="nc" id="L59">            getPreferences().store(fos, &quot;&quot;);</span>
+        } finally {
+<span class="nc" id="L61">            fos.close();</span>
+<span class="nc" id="L62">        }</span>
+<span class="nc" id="L63">    }</span>
+
+    public static void setPreference(String key, String value) {
+<span class="nc" id="L66">        getPreferences().put(key, value);</span>
+<span class="nc" id="L67">    }</span>
+
+    public synchronized void endTest(Test test) {
+<span class="nc" id="L70">        testEnded(test.toString());</span>
+<span class="nc" id="L71">    }</span>
+
+    public synchronized void addError(final Test test, final Throwable t) {
+<span class="nc" id="L74">        testFailed(TestRunListener.STATUS_ERROR, test, t);</span>
+<span class="nc" id="L75">    }</span>
+
+    public synchronized void addFailure(final Test test, final AssertionFailedError t) {
+<span class="nc" id="L78">        testFailed(TestRunListener.STATUS_FAILURE, test, t);</span>
+<span class="nc" id="L79">    }</span>
+
+    // TestRunListener implementation
+
+    public abstract void testStarted(String testName);
+
+    public abstract void testEnded(String testName);
+
+    public abstract void testFailed(int status, Test test, Throwable t);
+
+    /**
+     * Returns the Test corresponding to the given suite. This is
+     * a template method, subclasses override runFailed(), clearStatus().
+     */
+    public Test getTest(String suiteClassName) {
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        if (suiteClassName.length() &lt;= 0) {</span>
+<span class="nc" id="L95">            clearStatus();</span>
+<span class="nc" id="L96">            return null;</span>
+        }
+<span class="fc" id="L98">        Class&lt;?&gt; testClass = null;</span>
+        try {
+<span class="fc" id="L100">            testClass = loadSuiteClass(suiteClassName);</span>
+<span class="nc" id="L101">        } catch (ClassNotFoundException e) {</span>
+<span class="nc" id="L102">            String clazz = e.getMessage();</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">            if (clazz == null) {</span>
+<span class="nc" id="L104">                clazz = suiteClassName;</span>
+            }
+<span class="nc" id="L106">            runFailed(&quot;Class not found \&quot;&quot; + clazz + &quot;\&quot;&quot;);</span>
+<span class="nc" id="L107">            return null;</span>
+<span class="nc" id="L108">        } catch (Exception e) {</span>
+<span class="nc" id="L109">            runFailed(&quot;Error: &quot; + e.toString());</span>
+<span class="nc" id="L110">            return null;</span>
+<span class="fc" id="L111">        }</span>
+<span class="fc" id="L112">        Method suiteMethod = null;</span>
+        try {
+<span class="fc" id="L114">            suiteMethod = testClass.getMethod(SUITE_METHODNAME, new Class[0]);</span>
+<span class="nc" id="L115">        } catch (Exception e) {</span>
+            // try to extract a test suite automatically
+<span class="nc" id="L117">            clearStatus();</span>
+<span class="nc" id="L118">            return new TestSuite(testClass);</span>
+<span class="fc" id="L119">        }</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (!Modifier.isStatic(suiteMethod.getModifiers())) {</span>
+<span class="fc" id="L121">            runFailed(&quot;Suite() method must be static&quot;);</span>
+<span class="fc" id="L122">            return null;</span>
+        }
+<span class="fc" id="L124">        Test test = null;</span>
+        try {
+<span class="fc" id="L126">            test = (Test) suiteMethod.invoke(null, (Object[]) new Class[0]); // static method</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">            if (test == null) {</span>
+<span class="nc" id="L128">                return test;</span>
+            }
+<span class="nc" id="L130">        } catch (InvocationTargetException e) {</span>
+<span class="nc" id="L131">            runFailed(&quot;Failed to invoke suite():&quot; + e.getTargetException().toString());</span>
+<span class="nc" id="L132">            return null;</span>
+<span class="nc" id="L133">        } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L134">            runFailed(&quot;Failed to invoke suite():&quot; + e.toString());</span>
+<span class="nc" id="L135">            return null;</span>
+<span class="fc" id="L136">        }</span>
+
+<span class="fc" id="L138">        clearStatus();</span>
+<span class="fc" id="L139">        return test;</span>
+    }
+
+    /**
+     * Returns the formatted string of the elapsed time.
+     */
+    public String elapsedTimeAsString(long runTime) {
+<span class="nc" id="L146">        return NumberFormat.getInstance().format((double) runTime / 1000);</span>
+    }
+
+    /**
+     * Processes the command line arguments and
+     * returns the name of the suite class to run or null
+     */
+    protected String processArguments(String[] args) {
+<span class="nc" id="L154">        String suiteName = null;</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        for (int i = 0; i &lt; args.length; i++) {</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">            if (args[i].equals(&quot;-noloading&quot;)) {</span>
+<span class="nc" id="L157">                setLoading(false);</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">            } else if (args[i].equals(&quot;-nofilterstack&quot;)) {</span>
+<span class="nc" id="L159">                fgFilterStack = false;</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            } else if (args[i].equals(&quot;-c&quot;)) {</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">                if (args.length &gt; i + 1) {</span>
+<span class="nc" id="L162">                    suiteName = extractClassName(args[i + 1]);</span>
+                } else {
+<span class="nc" id="L164">                    System.out.println(&quot;Missing Test class name&quot;);</span>
+                }
+<span class="nc" id="L166">                i++;</span>
+            } else {
+<span class="nc" id="L168">                suiteName = args[i];</span>
+            }
+        }
+<span class="nc" id="L171">        return suiteName;</span>
+    }
+
+    /**
+     * Sets the loading behaviour of the test runner
+     */
+    public void setLoading(boolean enable) {
+<span class="nc" id="L178">        fLoading = enable;</span>
+<span class="nc" id="L179">    }</span>
+
+    /**
+     * Extract the class name from a String in VA/Java style
+     */
+    public String extractClassName(String className) {
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        if (className.startsWith(&quot;Default package for&quot;)) {</span>
+<span class="nc" id="L186">            return className.substring(className.lastIndexOf(&quot;.&quot;) + 1);</span>
+        }
+<span class="nc" id="L188">        return className;</span>
+    }
+
+    /**
+     * Truncates a String to the maximum length.
+     */
+    public static String truncate(String s) {
+<span class="nc bnc" id="L195" title="All 4 branches missed.">        if (fgMaxMessageLength != -1 &amp;&amp; s.length() &gt; fgMaxMessageLength) {</span>
+<span class="nc" id="L196">            s = s.substring(0, fgMaxMessageLength) + &quot;...&quot;;</span>
+        }
+<span class="nc" id="L198">        return s;</span>
+    }
+
+    /**
+     * Override to define how to handle a failed loading of
+     * a test suite.
+     */
+    protected abstract void runFailed(String message);
+
+    /**
+     * Returns the loaded Class for a suite name.
+     */
+    protected Class&lt;?&gt; loadSuiteClass(String suiteClassName) throws ClassNotFoundException {
+<span class="fc" id="L211">        return Class.forName(suiteClassName);</span>
+    }
+
+    /**
+     * Clears the status message.
+     */
+    protected void clearStatus() { // Belongs in the GUI TestRunner class
+<span class="fc" id="L218">    }</span>
+
+    protected boolean useReloadingTestSuiteLoader() {
+<span class="nc bnc" id="L221" title="All 4 branches missed.">        return getPreference(&quot;loading&quot;).equals(&quot;true&quot;) &amp;&amp; fLoading;</span>
+    }
+
+    private static File getPreferencesFile() {
+<span class="fc" id="L225">        String home = System.getProperty(&quot;user.home&quot;);</span>
+<span class="fc" id="L226">        return new File(home, &quot;junit.properties&quot;);</span>
+    }
+
+    private static void readPreferences() {
+<span class="fc" id="L230">        InputStream is = null;</span>
+        try {
+<span class="nc" id="L232">            is = new FileInputStream(getPreferencesFile());</span>
+<span class="nc" id="L233">            setPreferences(new Properties(getPreferences()));</span>
+<span class="nc" id="L234">            getPreferences().load(is);</span>
+<span class="fc" id="L235">        } catch (IOException e) {</span>
+            try {
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">                if (is != null) {</span>
+<span class="nc" id="L238">                    is.close();</span>
+                }
+<span class="nc" id="L240">            } catch (IOException e1) {</span>
+<span class="fc" id="L241">            }</span>
+<span class="nc" id="L242">        }</span>
+<span class="fc" id="L243">    }</span>
+
+    public static String getPreference(String key) {
+<span class="fc" id="L246">        return getPreferences().getProperty(key);</span>
+    }
+
+    public static int getPreference(String key, int dflt) {
+<span class="fc" id="L250">        String value = getPreference(key);</span>
+<span class="fc" id="L251">        int intValue = dflt;</span>
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="fc" id="L253">            return intValue;</span>
+        }
+        try {
+<span class="nc" id="L256">            intValue = Integer.parseInt(value);</span>
+<span class="nc" id="L257">        } catch (NumberFormatException ne) {</span>
+<span class="nc" id="L258">        }</span>
+<span class="nc" id="L259">        return intValue;</span>
+    }
+
+    /**
+     * Returns a filtered stack trace
+     */
+    public static String getFilteredTrace(Throwable t) {
+<span class="nc" id="L266">        StringWriter stringWriter = new StringWriter();</span>
+<span class="nc" id="L267">        PrintWriter writer = new PrintWriter(stringWriter);</span>
+<span class="nc" id="L268">        t.printStackTrace(writer);</span>
+<span class="nc" id="L269">        StringBuffer buffer = stringWriter.getBuffer();</span>
+<span class="nc" id="L270">        String trace = buffer.toString();</span>
+<span class="nc" id="L271">        return BaseTestRunner.getFilteredTrace(trace);</span>
+    }
+
+    /**
+     * Filters stack frames from internal JUnit classes
+     */
+    public static String getFilteredTrace(String stack) {
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">        if (showStackRaw()) {</span>
+<span class="nc" id="L279">            return stack;</span>
+        }
+
+<span class="fc" id="L282">        StringWriter sw = new StringWriter();</span>
+<span class="fc" id="L283">        PrintWriter pw = new PrintWriter(sw);</span>
+<span class="fc" id="L284">        StringReader sr = new StringReader(stack);</span>
+<span class="fc" id="L285">        BufferedReader br = new BufferedReader(sr);</span>
+
+        String line;
+        try {
+<span class="fc bfc" id="L289" title="All 2 branches covered.">            while ((line = br.readLine()) != null) {</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">                if (!filterLine(line)) {</span>
+<span class="fc" id="L291">                    pw.println(line);</span>
+                }
+            }
+<span class="nc" id="L294">        } catch (Exception IOException) {</span>
+<span class="nc" id="L295">            return stack; // return the stack unfiltered</span>
+<span class="fc" id="L296">        }</span>
+<span class="fc" id="L297">        return sw.toString();</span>
+    }
+
+    protected static boolean showStackRaw() {
+<span class="pc bpc" id="L301" title="2 of 4 branches missed.">        return !getPreference(&quot;filterstack&quot;).equals(&quot;true&quot;) || fgFilterStack == false;</span>
+    }
+
+    static boolean filterLine(String line) {
+<span class="fc" id="L305">        String[] patterns = new String[]{</span>
+                &quot;junit.framework.TestCase&quot;,
+                &quot;junit.framework.TestResult&quot;,
+                &quot;junit.framework.TestSuite&quot;,
+                &quot;junit.framework.Assert.&quot;, // don't filter AssertionFailure
+                &quot;junit.swingui.TestRunner&quot;,
+                &quot;junit.awtui.TestRunner&quot;,
+                &quot;junit.textui.TestRunner&quot;,
+                &quot;java.lang.reflect.Method.invoke(&quot;
+        };
+<span class="fc bfc" id="L315" title="All 2 branches covered.">        for (int i = 0; i &lt; patterns.length; i++) {</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">            if (line.indexOf(patterns[i]) &gt; 0) {</span>
+<span class="fc" id="L317">                return true;</span>
+            }
+        }
+<span class="fc" id="L320">        return false;</span>
+    }
+
+    static {
+<span class="fc" id="L324">        fgMaxMessageLength = getPreference(&quot;maxmessage&quot;, fgMaxMessageLength);</span>
+<span class="fc" id="L325">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

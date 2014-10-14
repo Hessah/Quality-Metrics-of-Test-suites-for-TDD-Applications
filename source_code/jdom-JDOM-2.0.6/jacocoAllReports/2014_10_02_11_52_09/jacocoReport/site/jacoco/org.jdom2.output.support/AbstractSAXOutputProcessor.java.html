@@ -1,0 +1,840 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>AbstractSAXOutputProcessor.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.output.support</a> &gt; <span class="el_source">AbstractSAXOutputProcessor.java</span></div><h1>AbstractSAXOutputProcessor.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2000-2007 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.output.support;
+
+import static org.jdom2.JDOMConstants.*;
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.List;
+
+import org.xml.sax.ContentHandler;
+import org.xml.sax.DTDHandler;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXParseException;
+import org.xml.sax.XMLReader;
+import org.xml.sax.ext.DeclHandler;
+import org.xml.sax.ext.LexicalHandler;
+import org.xml.sax.helpers.AttributesImpl;
+import org.xml.sax.helpers.DefaultHandler;
+import org.xml.sax.helpers.XMLReaderFactory;
+
+import org.jdom2.Attribute;
+import org.jdom2.AttributeType;
+import org.jdom2.CDATA;
+import org.jdom2.Comment;
+import org.jdom2.Content;
+import org.jdom2.DocType;
+import org.jdom2.Document;
+import org.jdom2.Element;
+import org.jdom2.EntityRef;
+import org.jdom2.JDOMException;
+import org.jdom2.Namespace;
+import org.jdom2.ProcessingInstruction;
+import org.jdom2.Text;
+import org.jdom2.output.Format;
+import org.jdom2.output.Format.TextMode;
+import org.jdom2.output.XMLOutputter;
+import org.jdom2.util.NamespaceStack;
+
+/**
+ * Outputs a JDOM document as a stream of SAX2 events.
+ * &lt;p&gt;
+ * Most ContentHandler callbacks are supported. Neither
+ * &lt;code&gt;ignorableWhitespace()&lt;/code&gt; nor &lt;code&gt;skippedEntity()&lt;/code&gt; have been
+ * implemented.
+ * &lt;p&gt;
+ * At this time, it is not possible to access notations and unparsed entity
+ * references in a DTD from JDOM. Therefore, full &lt;code&gt;DTDHandler&lt;/code&gt;
+ * call-backs have not been implemented yet.
+ * &lt;p&gt;
+ * The &lt;code&gt;ErrorHandler&lt;/code&gt; call-backs have not been implemented, since
+ * these are supposed to be invoked when the document is parsed and at this
+ * point the document exists in memory and is known to have no errors.
+ * &lt;/p&gt;
+ * The SAX2 API does not support whitespace formatting outside the root element.
+ * As a consequence any Formatting options that would normally affect the
+ * structures outside the root element will be ignored.
+ * 
+ * @author Brett McLaughlin
+ * @author Jason Hunter
+ * @author Fred Trimble
+ * @author Bradley S. Huffman
+ * @author Rolf Lear
+ */
+<span class="fc" id="L121">public class AbstractSAXOutputProcessor extends AbstractOutputProcessor</span>
+		implements SAXOutputProcessor {
+
+	private static void locate(SAXTarget out) {
+<span class="fc" id="L125">		out.getContentHandler().setDocumentLocator(out.getLocator());</span>
+<span class="fc" id="L126">	}</span>
+
+	@Override
+	public void process(SAXTarget out, Format format, Document doc)
+			throws JDOMException {
+		try {
+<span class="fc" id="L132">			locate(out);</span>
+<span class="fc" id="L133">			printDocument(out, new FormatStack(format), new NamespaceStack(),</span>
+					doc);
+<span class="nc" id="L135">		} catch (SAXException se) {</span>
+<span class="nc" id="L136">			throw new JDOMException(</span>
+					&quot;Encountered a SAX exception processing the Document: &quot;, se);
+<span class="fc" id="L138">		}</span>
+<span class="fc" id="L139">	}</span>
+
+	@Override
+	public void process(SAXTarget out, Format format, DocType doctype)
+			throws JDOMException {
+		try {
+<span class="nc" id="L145">			locate(out);</span>
+<span class="nc" id="L146">			printDocType(out, new FormatStack(format), doctype);</span>
+<span class="nc" id="L147">		} catch (SAXException se) {</span>
+<span class="nc" id="L148">			throw new JDOMException(</span>
+					&quot;Encountered a SAX exception processing the DocType: &quot;, se);
+<span class="nc" id="L150">		}</span>
+<span class="nc" id="L151">	}</span>
+
+	@Override
+	public void process(SAXTarget out, Format format, Element element)
+			throws JDOMException {
+		try {
+<span class="fc" id="L157">			locate(out);</span>
+<span class="fc" id="L158">			printElement(out, new FormatStack(format), new NamespaceStack(),</span>
+					element);
+<span class="nc" id="L160">		} catch (SAXException se) {</span>
+<span class="nc" id="L161">			throw new JDOMException(</span>
+					&quot;Encountered a SAX exception processing the Element: &quot;, se);
+<span class="fc" id="L163">		}</span>
+<span class="fc" id="L164">	}</span>
+
+	@Override
+	public void process(SAXTarget out, Format format,
+			List&lt;? extends Content&gt; list) throws JDOMException {
+		try {
+<span class="fc" id="L170">			locate(out);</span>
+<span class="fc" id="L171">			final FormatStack fstack = new FormatStack(format);</span>
+<span class="fc" id="L172">			final Walker walker = buildWalker(fstack, list, false);</span>
+<span class="fc" id="L173">			printContent(out, fstack, new NamespaceStack(), walker);</span>
+<span class="nc" id="L174">		} catch (SAXException se) {</span>
+<span class="nc" id="L175">			throw new JDOMException(</span>
+					&quot;Encountered a SAX exception processing the List: &quot;, se);
+<span class="fc" id="L177">		}</span>
+<span class="fc" id="L178">	}</span>
+
+	@Override
+	public void process(SAXTarget out, Format format, CDATA cdata)
+			throws JDOMException {
+		try {
+<span class="fc" id="L184">			locate(out);</span>
+<span class="fc" id="L185">			final List&lt;CDATA&gt; list = Collections.singletonList(cdata);</span>
+<span class="fc" id="L186">			final FormatStack fstack = new FormatStack(format);</span>
+<span class="fc" id="L187">			final Walker walker = buildWalker(fstack, list, false);</span>
+<span class="fc" id="L188">			printContent(out, fstack, new NamespaceStack(), walker);</span>
+<span class="nc" id="L189">		} catch (SAXException se) {</span>
+<span class="nc" id="L190">			throw new JDOMException(</span>
+					&quot;Encountered a SAX exception processing the CDATA: &quot;, se);
+<span class="fc" id="L192">		}</span>
+<span class="fc" id="L193">	}</span>
+
+	@Override
+	public void process(SAXTarget out, Format format, Text text)
+			throws JDOMException {
+		try {
+<span class="fc" id="L199">			locate(out);</span>
+<span class="fc" id="L200">			final List&lt;Text&gt; list = Collections.singletonList(text);</span>
+<span class="fc" id="L201">			final FormatStack fstack = new FormatStack(format);</span>
+<span class="fc" id="L202">			final Walker walker = buildWalker(fstack, list, false);</span>
+<span class="fc" id="L203">			printContent(out, fstack, new NamespaceStack(), walker);</span>
+<span class="nc" id="L204">		} catch (SAXException se) {</span>
+<span class="nc" id="L205">			throw new JDOMException(</span>
+					&quot;Encountered a SAX exception processing the Text: &quot;, se);
+<span class="fc" id="L207">		}</span>
+<span class="fc" id="L208">	}</span>
+
+	@Override
+	public void process(SAXTarget out, Format format, Comment comment)
+			throws JDOMException {
+		try {
+<span class="fc" id="L214">			locate(out);</span>
+<span class="fc" id="L215">			printComment(out, new FormatStack(format), comment);</span>
+<span class="nc" id="L216">		} catch (SAXException se) {</span>
+<span class="nc" id="L217">			throw new JDOMException(</span>
+					&quot;Encountered a SAX exception processing the Comment: &quot;, se);
+<span class="fc" id="L219">		}</span>
+<span class="fc" id="L220">	}</span>
+
+	@Override
+	public void process(SAXTarget out, Format format, ProcessingInstruction pi)
+			throws JDOMException {
+		try {
+<span class="fc" id="L226">			locate(out);</span>
+<span class="fc" id="L227">			printProcessingInstruction(out, new FormatStack(format), pi);</span>
+<span class="nc" id="L228">		} catch (SAXException se) {</span>
+<span class="nc" id="L229">			throw new JDOMException(</span>
+					&quot;Encountered a SAX exception processing the ProcessingInstruction: &quot;,
+					se);
+<span class="fc" id="L232">		}</span>
+<span class="fc" id="L233">	}</span>
+
+	@Override
+	public void process(SAXTarget out, Format format, EntityRef entity)
+			throws JDOMException {
+		try {
+<span class="fc" id="L239">			locate(out);</span>
+<span class="fc" id="L240">			printEntityRef(out, new FormatStack(format), entity);</span>
+<span class="nc" id="L241">		} catch (SAXException se) {</span>
+<span class="nc" id="L242">			throw new JDOMException(</span>
+					&quot;Encountered a SAX exception processing the EntityRef: &quot;,
+					se);
+<span class="fc" id="L245">		}</span>
+<span class="fc" id="L246">	}</span>
+
+	@Override
+	public void processAsDocument(SAXTarget out, Format format,
+			List&lt;? extends Content&gt; nodes) throws JDOMException {
+		try {
+<span class="fc bfc" id="L252" title="All 4 branches covered.">			if ((nodes == null) || (nodes.size() == 0)) {</span>
+<span class="fc" id="L253">				return;</span>
+			}
+
+<span class="fc" id="L256">			locate(out);</span>
+			// contentHandler.setDocumentLocator()
+<span class="fc" id="L258">			out.getContentHandler().startDocument();</span>
+			
+<span class="fc" id="L260">			FormatStack fstack = new FormatStack(format);</span>
+			
+			// Fire DTD events .. if there is a DocType node
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">			if (out.isReportDTDEvents()) {</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">				for (Content c : nodes) {</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">					if (c instanceof DocType) {</span>
+<span class="fc" id="L266">						printDocType(out, fstack, (DocType)c);</span>
+						// fire only the first DocType's events
+						// subsequent ones are ignored.
+<span class="fc" id="L269">						break;</span>
+					}
+<span class="fc" id="L271">				}</span>
+			}
+
+<span class="fc" id="L274">			Walker walker = buildWalker(fstack, nodes, false);</span>
+
+<span class="fc" id="L276">			printContent(out, fstack, new NamespaceStack(), walker);</span>
+
+			// contentHandler.endDocument()
+<span class="fc" id="L279">			out.getContentHandler().endDocument();</span>
+<span class="nc" id="L280">		} catch (SAXException se) {</span>
+<span class="nc" id="L281">			throw new JDOMException(</span>
+					&quot;Encountered a SAX exception processing the List: &quot;, se);
+<span class="fc" id="L283">		}</span>
+<span class="fc" id="L284">	}</span>
+
+	@Override
+	public void processAsDocument(SAXTarget out, Format format, Element node)
+			throws JDOMException {
+		try {
+<span class="fc bfc" id="L290" title="All 2 branches covered.">			if (node == null) {</span>
+<span class="fc" id="L291">				return;</span>
+			}
+
+<span class="fc" id="L294">			locate(out);</span>
+			// contentHandler.setDocumentLocator()
+<span class="fc" id="L296">			out.getContentHandler().startDocument();</span>
+
+<span class="fc" id="L298">			printElement(out, new FormatStack(format), new NamespaceStack(),</span>
+					node);
+
+			// contentHandler.endDocument()
+<span class="fc" id="L302">			out.getContentHandler().endDocument();</span>
+<span class="nc" id="L303">		} catch (SAXException se) {</span>
+<span class="nc" id="L304">			throw new JDOMException(</span>
+					&quot;Encountered a SAX exception processing the Element: &quot;, se);
+<span class="fc" id="L306">		}</span>
+<span class="fc" id="L307">	}</span>
+
+	/* *******************************************
+	 * Support methods for output. Should all be protected. All content-type
+	 * print methods have a FormatStack. Only printContent is responsible for
+	 * outputting appropriate indenting and newlines, which are easily available
+	 * using the FormatStack.getLevelIndent() and FormatStack.getLevelEOL().
+	 * *******************************************
+	 */
+
+	/**
+	 * This will handle printing of a {@link Document}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;SAXTarget&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param nstack
+	 *        the NamespaceStack
+	 * @param document
+	 *        &lt;code&gt;Document&lt;/code&gt; to write.
+	 * @throws SAXException
+	 *         if the destination SAXTarget fails
+	 */
+	protected void printDocument(final SAXTarget out, final FormatStack fstack,
+			final NamespaceStack nstack, final Document document)
+			throws SAXException {
+<span class="fc bfc" id="L334" title="All 2 branches covered.">		if (document == null) {</span>
+<span class="fc" id="L335">			return;</span>
+		}
+
+		// contentHandler.startDocument()
+<span class="fc" id="L339">		out.getContentHandler().startDocument();</span>
+
+		// Fire DTD events
+<span class="fc bfc" id="L342" title="All 2 branches covered.">		if (out.isReportDTDEvents()) {</span>
+<span class="fc" id="L343">			printDocType(out, fstack, document.getDocType());</span>
+		}
+
+		// Handle root element, as well as any root level
+		// processing instructions and comments
+		// ignore DocType, if any.
+<span class="fc" id="L349">		final int sz = document.getContentSize();</span>
+		
+<span class="fc bfc" id="L351" title="All 2 branches covered.">		if (sz &gt; 0) {</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">			for (int i = 0; i &lt; sz; i++) {</span>
+<span class="fc" id="L353">				final Content c = document.getContent(i);</span>
+<span class="fc" id="L354">				out.getLocator().setNode(c);</span>
+<span class="pc bpc" id="L355" title="1 of 5 branches missed.">				switch (c.getCType()) {</span>
+					case Comment :
+<span class="fc" id="L357">						printComment(out, fstack, (Comment) c);</span>
+<span class="fc" id="L358">						break;</span>
+					case DocType :
+						// cannot simply add a DocType to a SAX stream
+						// it is added when the Stream is created.
+<span class="fc" id="L362">						break;</span>
+					case Element :
+<span class="fc" id="L364">						printElement(out, fstack, nstack, (Element)c);</span>
+<span class="fc" id="L365">						break;</span>
+					case ProcessingInstruction :
+<span class="fc" id="L367">						printProcessingInstruction(out, fstack,  </span>
+								(ProcessingInstruction)c);
+<span class="fc" id="L369">						break;</span>
+<span class="fc" id="L370">					default :</span>
+						// do nothing.
+				}
+			}
+		}
+		
+		// contentHandler.endDocument()
+<span class="fc" id="L377">		out.getContentHandler().endDocument();</span>
+
+<span class="fc" id="L379">	}</span>
+
+	/**
+	 * This will handle printing of a {@link DocType}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;SAXTarget&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param docType
+	 *        &lt;code&gt;DocType&lt;/code&gt; to write.
+	 * @throws SAXException
+	 *         if the destination SAXTarget fails
+	 */
+	protected void printDocType(final SAXTarget out, final FormatStack fstack,
+			final DocType docType) throws SAXException {
+
+		// Fire DTD-related events only if handlers have been registered.
+<span class="fc" id="L397">		final DTDHandler dtdHandler = out.getDTDHandler();</span>
+<span class="fc" id="L398">		final DeclHandler declHandler = out.getDeclHandler();</span>
+<span class="pc bpc" id="L399" title="3 of 6 branches missed.">		if ((docType != null)</span>
+				&amp;&amp; ((dtdHandler != null) || (declHandler != null))) {
+
+			// Build a dummy XML document that only references the DTD...
+<span class="fc" id="L403">			String dtdDoc = new XMLOutputter().outputString(docType);</span>
+
+			try {
+				// And parse it to fire DTD events.
+<span class="nc" id="L407">				createDTDParser(out).parse(</span>
+						new InputSource(new StringReader(dtdDoc)));
+
+				// We should never reach this point as the document is
+				// ill-formed; it does not have any root element.
+<span class="fc" id="L412">			} catch (SAXParseException e) {</span>
+				// Expected exception: There's no root element in document.
+<span class="nc" id="L414">			} catch (IOException e) {</span>
+<span class="nc" id="L415">				throw new SAXException(&quot;DTD parsing error&quot;, e);</span>
+<span class="pc" id="L416">			}</span>
+		}
+
+<span class="fc" id="L419">	}</span>
+
+	/**
+	 * This will handle printing of a {@link ProcessingInstruction}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;SAXTarget&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param pi
+	 *        &lt;code&gt;ProcessingInstruction&lt;/code&gt; to write.
+	 * @throws SAXException
+	 *         if the destination SAXTarget fails
+	 */
+	protected void printProcessingInstruction(final SAXTarget out,
+			final FormatStack fstack, final ProcessingInstruction pi)
+			throws SAXException {
+<span class="fc" id="L436">		out.getContentHandler().processingInstruction(pi.getTarget(),</span>
+				pi.getData());
+<span class="fc" id="L438">	}</span>
+
+	/**
+	 * This will handle printing of a {@link Comment}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;SAXTarget&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param comment
+	 *        &lt;code&gt;Comment&lt;/code&gt; to write.
+	 * @throws SAXException
+	 *         if the destination SAXTarget fails
+	 */
+	protected void printComment(final SAXTarget out, final FormatStack fstack,
+			final Comment comment) throws SAXException {
+<span class="fc bfc" id="L454" title="All 2 branches covered.">		if (out.getLexicalHandler() != null) {</span>
+<span class="fc" id="L455">			char[] c = comment.getText().toCharArray();</span>
+<span class="fc" id="L456">			out.getLexicalHandler().comment(c, 0, c.length);</span>
+		}
+<span class="fc" id="L458">	}</span>
+
+	/**
+	 * This will handle printing of an {@link EntityRef}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;SAXTarget&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param entity
+	 *        &lt;code&gt;EntotyRef&lt;/code&gt; to write.
+	 * @throws SAXException
+	 *         if the destination SAXTarget fails
+	 */
+	protected void printEntityRef(final SAXTarget out,
+			final FormatStack fstack, final EntityRef entity)
+			throws SAXException {
+<span class="fc" id="L475">		out.getContentHandler().skippedEntity(entity.getName());</span>
+<span class="fc" id="L476">	}</span>
+
+	/**
+	 * This will handle printing of a {@link CDATA}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;SAXTarget&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param cdata
+	 *        &lt;code&gt;CDATA&lt;/code&gt; to write.
+	 * @throws SAXException
+	 *         if the destination SAXTarget fails
+	 */
+	protected void printCDATA(final SAXTarget out, final FormatStack fstack,
+			final CDATA cdata) throws SAXException {
+		// CDATAs are treated like text, not indented/newline content.
+<span class="fc" id="L493">		final LexicalHandler lexicalHandler = out.getLexicalHandler();</span>
+<span class="fc" id="L494">		final char[] chars = cdata.getText().toCharArray();</span>
+<span class="fc bfc" id="L495" title="All 2 branches covered.">		if (lexicalHandler != null) {</span>
+<span class="fc" id="L496">			lexicalHandler.startCDATA();</span>
+<span class="fc" id="L497">			out.getContentHandler().characters(chars, 0, chars.length);</span>
+<span class="fc" id="L498">			lexicalHandler.endCDATA();</span>
+		} else {
+<span class="fc" id="L500">			out.getContentHandler().characters(chars, 0, chars.length);</span>
+		}
+<span class="fc" id="L502">	}</span>
+
+	/**
+	 * This will handle printing of a {@link Text}.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;SAXTarget&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param text
+	 *        &lt;code&gt;Text&lt;/code&gt; to write.
+	 * @throws SAXException
+	 *         if the destination SAXTarget fails
+	 */
+	protected void printText(final SAXTarget out, final FormatStack fstack,
+			final Text text) throws SAXException {
+<span class="fc" id="L518">		final char[] chars = text.getText().toCharArray();</span>
+<span class="fc" id="L519">		out.getContentHandler().characters(chars, 0, chars.length);</span>
+<span class="fc" id="L520">	}</span>
+
+	/**
+	 * This will handle printing of an {@link Element}.
+	 * &lt;p&gt;
+	 * This method arranges for outputting the Element infrastructure including
+	 * Namespace Declarations and Attributes.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;SAXTarget&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param nstack
+	 *        the NamespaceStack
+	 * @param element
+	 *        &lt;code&gt;Element&lt;/code&gt; to write.
+	 * @throws SAXException
+	 *         if the destination SAXTarget fails
+	 */
+	protected void printElement(final SAXTarget out, final FormatStack fstack,
+			final NamespaceStack nstack, final Element element)
+			throws SAXException {
+
+<span class="fc" id="L543">		final ContentHandler ch = out.getContentHandler();</span>
+<span class="fc" id="L544">		final Object origloc = out.getLocator().getNode();</span>
+<span class="fc" id="L545">		nstack.push(element);</span>
+		try {
+
+			// update locator
+<span class="fc" id="L549">			out.getLocator().setNode(element);</span>
+
+<span class="fc" id="L551">			AttributesImpl atts = new AttributesImpl();</span>
+
+			// contentHandler.startPrefixMapping()
+<span class="fc bfc" id="L554" title="All 2 branches covered.">			for (Namespace ns : nstack.addedForward()) {</span>
+<span class="fc" id="L555">				ch.startPrefixMapping(ns.getPrefix(), ns.getURI());</span>
+<span class="fc bfc" id="L556" title="All 2 branches covered.">				if (out.isDeclareNamespaces()) {</span>
+					// add a physical attribute if requested.
+<span class="fc" id="L558">					String prefix = ns.getPrefix();</span>
+<span class="fc bfc" id="L559" title="All 2 branches covered.">					if (prefix.equals(&quot;&quot;)) {</span>
+<span class="fc" id="L560">						atts.addAttribute(&quot;&quot;, &quot;&quot;, &quot;xmlns&quot;, &quot;CDATA&quot;, ns.getURI());</span>
+					} else {
+<span class="fc" id="L562">						atts.addAttribute(&quot;&quot;, &quot;&quot;, &quot;xmlns:&quot; + ns.getPrefix(),</span>
+								&quot;CDATA&quot;, ns.getURI());
+					}
+				}
+<span class="fc" id="L566">			}</span>
+
+			// Allocate attribute list.
+<span class="fc bfc" id="L569" title="All 2 branches covered.">			if (element.hasAttributes()) {</span>
+<span class="fc bfc" id="L570" title="All 2 branches covered.">				for (Attribute a : element.getAttributes()) {</span>
+<span class="fc bfc" id="L571" title="All 4 branches covered.">					if (!a.isSpecified() &amp;&amp; fstack.isSpecifiedAttributesOnly()) {</span>
+<span class="fc" id="L572">						continue;</span>
+					}
+<span class="fc" id="L574">					atts.addAttribute(a.getNamespaceURI(), a.getName(),</span>
+							a.getQualifiedName(),
+							getAttributeTypeName(a.getAttributeType()),
+							a.getValue());
+<span class="fc" id="L578">				}</span>
+			}
+
+			// contentHandler.startElement()
+<span class="fc" id="L582">			ch.startElement(element.getNamespaceURI(), element.getName(),</span>
+					element.getQualifiedName(), atts);
+
+<span class="fc" id="L585">			final List&lt;Content&gt; content = element.getContent();</span>
+
+			// OK, now we print out the meat of the Element
+<span class="fc bfc" id="L588" title="All 2 branches covered.">			if (!content.isEmpty()) {</span>
+<span class="fc" id="L589">				TextMode textmode = fstack.getTextMode();</span>
+
+				// Check for xml:space and adjust format settings
+<span class="fc" id="L592">				final String space = element.getAttributeValue(&quot;space&quot;,</span>
+						Namespace.XML_NAMESPACE);
+
+<span class="fc bfc" id="L595" title="All 2 branches covered.">				if (&quot;default&quot;.equals(space)) {</span>
+<span class="fc" id="L596">					textmode = fstack.getDefaultMode();</span>
+<span class="fc bfc" id="L597" title="All 2 branches covered.">				} else if (&quot;preserve&quot;.equals(space)) {</span>
+<span class="fc" id="L598">					textmode = TextMode.PRESERVE;</span>
+				}
+
+<span class="fc" id="L601">				fstack.push();</span>
+				try {
+<span class="fc" id="L603">					fstack.setTextMode(textmode);</span>
+<span class="fc" id="L604">					Walker walker = buildWalker(fstack, content, false);</span>
+<span class="fc bfc" id="L605" title="All 2 branches covered.">					if (walker.hasNext()) {</span>
+						
+<span class="fc bfc" id="L607" title="All 4 branches covered.">						if (!walker.isAllText() </span>
+								&amp;&amp; fstack.getPadBetween() != null) {
+							// we need to newline/indent
+<span class="fc" id="L610">							final String indent = fstack.getPadBetween();</span>
+<span class="fc" id="L611">							printText(out, fstack, new Text(indent));</span>
+						}
+						
+<span class="fc" id="L614">						printContent(out, fstack, nstack, walker);</span>
+						
+<span class="fc bfc" id="L616" title="All 4 branches covered.">						if (!walker.isAllText() &amp;&amp; </span>
+								fstack.getPadLast() != null) {
+							// we need to newline/indent
+<span class="fc" id="L619">							final String indent = </span>
+									fstack.getPadLast();
+<span class="fc" id="L621">							printText(out, fstack, new Text(indent));</span>
+						}
+						
+					}
+
+				} finally {
+<span class="pc" id="L627">					fstack.pop();</span>
+<span class="fc" id="L628">				}</span>
+			}
+
+			// contentHandler.endElement()
+<span class="fc" id="L632">			out.getContentHandler().endElement(element.getNamespaceURI(),</span>
+					element.getName(), element.getQualifiedName());
+
+			// contentHandler.endPrefixMapping()
+			// de-map in reverse order to the mapping.
+<span class="fc bfc" id="L637" title="All 2 branches covered.">			for (Namespace ns : nstack.addedReverse()) {</span>
+<span class="fc" id="L638">				ch.endPrefixMapping(ns.getPrefix());</span>
+<span class="fc" id="L639">			}</span>
+
+		} finally {
+<span class="pc" id="L642">			nstack.pop();</span>
+<span class="pc" id="L643">			out.getLocator().setNode(origloc);</span>
+<span class="fc" id="L644">		}</span>
+<span class="fc" id="L645">	}</span>
+
+	/**
+	 * This will handle printing of a List of {@link Content}.
+	 * &lt;p&gt;
+	 * It relies on the appropriate Walker to get the formatting right.
+	 * 
+	 * @param out
+	 *        &lt;code&gt;SAXTarget&lt;/code&gt; to use.
+	 * @param fstack
+	 *        the FormatStack
+	 * @param nstack
+	 *        the NamespaceStack
+	 * @param walker
+	 *        &lt;code&gt;Waker&lt;/code&gt; of &lt;code&gt;Content&lt;/code&gt; to write.
+	 * @throws SAXException
+	 *         if the destination SAXTarget fails
+	 */
+	protected void printContent(final SAXTarget out, final FormatStack fstack,
+			final NamespaceStack nstack, final Walker walker)
+			throws SAXException {
+
+<span class="fc bfc" id="L667" title="All 2 branches covered.">		while (walker.hasNext()) {</span>
+<span class="fc" id="L668">			final Content c = walker.next();</span>
+<span class="fc bfc" id="L669" title="All 2 branches covered.">			if (c == null) {</span>
+				// Formatted Text or CDATA
+<span class="fc" id="L671">				final String text = walker.text();</span>
+<span class="fc bfc" id="L672" title="All 2 branches covered.">				if (walker.isCDATA()) {</span>
+<span class="fc" id="L673">					printCDATA(out, fstack, new CDATA(text));</span>
+				} else {
+<span class="fc" id="L675">					printText(out, fstack, new Text(text));</span>
+				}
+<span class="fc" id="L677">			} else {</span>
+<span class="pc bpc" id="L678" title="1 of 8 branches missed.">				switch (c.getCType()) {</span>
+					case CDATA:
+<span class="fc" id="L680">						printCDATA(out, fstack, (CDATA)c);</span>
+<span class="fc" id="L681">						break;</span>
+					case Comment:
+<span class="fc" id="L683">						printComment(out, fstack, (Comment)c);</span>
+<span class="fc" id="L684">						break;</span>
+					case DocType:
+						// do nothing.
+<span class="fc" id="L687">						break;</span>
+					case Element :
+<span class="fc" id="L689">						printElement(out, fstack, nstack, (Element)c);</span>
+<span class="fc" id="L690">						break;</span>
+					case EntityRef:
+<span class="fc" id="L692">						printEntityRef(out, fstack, (EntityRef)c);</span>
+<span class="fc" id="L693">						break;</span>
+					case ProcessingInstruction:
+<span class="fc" id="L695">						printProcessingInstruction(out, fstack, </span>
+								(ProcessingInstruction)c);
+<span class="fc" id="L697">						break;</span>
+					case Text:
+<span class="fc" id="L699">						printText(out, fstack, (Text)c);</span>
+						break;
+				}
+			}
+<span class="fc" id="L703">		}</span>
+<span class="fc" id="L704">	}</span>
+
+	/**
+	 * &lt;p&gt;
+	 * Returns the SAX 2.0 attribute type string from the type of a JDOM
+	 * Attribute.
+	 * &lt;/p&gt;
+	 * 
+	 * @param type
+	 *        &lt;code&gt;int&lt;/code&gt; the type of the JDOM attribute.
+	 * @return &lt;code&gt;String&lt;/code&gt; the SAX 2.0 attribute type string.
+	 * @see org.jdom2.Attribute#getAttributeType
+	 * @see org.xml.sax.Attributes#getType
+	 */
+	private static String getAttributeTypeName(AttributeType type) {
+<span class="pc bfc" id="L719" title="All 2 branches covered.">		switch (type) {</span>
+			case UNDECLARED:
+<span class="fc" id="L721">				return &quot;CDATA&quot;;</span>
+			default:
+<span class="fc" id="L723">				return type.name();</span>
+		}
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * Creates a SAX XMLReader.
+	 * &lt;/p&gt;
+	 * 
+	 * @return &lt;code&gt;XMLReader&lt;/code&gt; a SAX2 parser.
+	 * @throws Exception
+	 *         if no parser can be created.
+	 */
+	protected XMLReader createParser() throws Exception {
+<span class="fc" id="L737">		XMLReader parser = null;</span>
+
+		// Try using JAXP...
+		// Note we need JAXP 1.1, and if JAXP 1.0 is all that's
+		// available then the getXMLReader call fails and we skip
+		// to the hard coded default parser
+		try {
+<span class="fc" id="L744">			Class&lt;?&gt; factoryClass = Class</span>
+					.forName(&quot;javax.xml.parsers.SAXParserFactory&quot;);
+
+			// factory = SAXParserFactory.newInstance();
+<span class="fc" id="L748">			Method newParserInstance = factoryClass.getMethod(&quot;newInstance&quot;);</span>
+<span class="fc" id="L749">			Object factory = newParserInstance.invoke(null);</span>
+
+			// jaxpParser = factory.newSAXParser();
+<span class="fc" id="L752">			Method newSAXParser = factoryClass.getMethod(&quot;newSAXParser&quot;);</span>
+<span class="fc" id="L753">			Object jaxpParser = newSAXParser.invoke(factory);</span>
+
+			// parser = jaxpParser.getXMLReader();
+<span class="fc" id="L756">			Class&lt;? extends Object&gt; parserClass = jaxpParser.getClass();</span>
+<span class="fc" id="L757">			Method getXMLReader = parserClass.getMethod(&quot;getXMLReader&quot;);</span>
+<span class="fc" id="L758">			parser = (XMLReader) getXMLReader.invoke(jaxpParser);</span>
+<span class="nc" id="L759">		} catch (ClassNotFoundException e) {</span>
+			// e.printStackTrace();
+<span class="nc" id="L761">		} catch (InvocationTargetException e) {</span>
+			// e.printStackTrace();
+<span class="nc" id="L763">		} catch (NoSuchMethodException e) {</span>
+			// e.printStackTrace();
+<span class="nc" id="L765">		} catch (IllegalAccessException e) {</span>
+			// e.printStackTrace();
+<span class="pc" id="L767">		}</span>
+
+		// Check to see if we got a parser yet, if not, try to use a
+		// hard coded default
+<span class="pc bpc" id="L771" title="1 of 2 branches missed.">		if (parser == null) {</span>
+<span class="nc" id="L772">			parser = XMLReaderFactory</span>
+					.createXMLReader(&quot;org.apache.xerces.parsers.SAXParser&quot;);
+		}
+<span class="fc" id="L775">		return parser;</span>
+	}
+
+	/**
+	 * &lt;p&gt;
+	 * This will create a SAX XMLReader capable of parsing a DTD and configure
+	 * it so that the DTD parsing events are routed to the handlers registered
+	 * onto this SAXOutputter.
+	 * &lt;/p&gt;
+	 * 
+	 * @return &lt;code&gt;XMLReader&lt;/code&gt; a SAX2 parser.
+	 * @throws JDOMException
+	 *         if no parser can be created.
+	 */
+	private XMLReader createDTDParser(SAXTarget out) throws SAXException {
+<span class="fc" id="L790">		XMLReader parser = null;</span>
+
+		// Get a parser instance
+		try {
+<span class="fc" id="L794">			parser = createParser();</span>
+<span class="nc" id="L795">		} catch (Exception ex1) {</span>
+<span class="nc" id="L796">			throw new SAXException(&quot;Error in SAX parser allocation&quot;, ex1);</span>
+<span class="fc" id="L797">		}</span>
+
+		// Register handlers
+<span class="pc bpc" id="L800" title="1 of 2 branches missed.">		if (out.getDTDHandler() != null) {</span>
+<span class="fc" id="L801">			parser.setDTDHandler(out.getDTDHandler());</span>
+		}
+<span class="pc bpc" id="L803" title="1 of 2 branches missed.">		if (out.getEntityResolver() != null) {</span>
+<span class="fc" id="L804">			parser.setEntityResolver(out.getEntityResolver());</span>
+		}
+<span class="pc bpc" id="L806" title="1 of 2 branches missed.">		if (out.getLexicalHandler() != null) {</span>
+			try {
+<span class="fc" id="L808">				parser.setProperty(SAX_PROPERTY_LEXICAL_HANDLER,</span>
+						out.getLexicalHandler());
+<span class="nc" id="L810">			} catch (SAXException ex1) {</span>
+				try {
+<span class="nc" id="L812">					parser.setProperty(SAX_PROPERTY_LEXICAL_HANDLER_ALT,</span>
+							out.getLexicalHandler());
+<span class="nc" id="L814">				} catch (SAXException ex2) {</span>
+					// Forget it!
+<span class="nc" id="L816">				}</span>
+<span class="fc" id="L817">			}</span>
+		}
+<span class="pc bpc" id="L819" title="1 of 2 branches missed.">		if (out.getDeclHandler() != null) {</span>
+			try {
+<span class="nc" id="L821">				parser.setProperty(SAX_PROPERTY_DECLARATION_HANDLER,</span>
+						out.getDeclHandler());
+<span class="nc" id="L823">			} catch (SAXException ex1) {</span>
+				try {
+<span class="nc" id="L825">					parser.setProperty(SAX_PROPERTY_DECLARATION_HANDLER_ALT,</span>
+							out.getDeclHandler());
+<span class="nc" id="L827">				} catch (SAXException ex2) {</span>
+					// Forget it!
+<span class="nc" id="L829">				}</span>
+<span class="nc" id="L830">			}</span>
+		}
+
+		// Absorb errors as much as possible, per Laurent
+<span class="fc" id="L834">		parser.setErrorHandler(new DefaultHandler());</span>
+
+<span class="fc" id="L836">		return parser;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

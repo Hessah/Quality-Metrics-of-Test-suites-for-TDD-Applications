@@ -1,0 +1,378 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Configuration.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.configuration</a> &gt; <span class="el_source">Configuration.java</span></div><h1>Configuration.java</h1><pre class="source lang-java linenums">package org.jbehave.core.configuration;
+
+import org.jbehave.core.Embeddable;
+import org.jbehave.core.embedder.Embedder;
+import org.jbehave.core.embedder.StoryControls;
+import org.jbehave.core.failures.FailingUponPendingStep;
+import org.jbehave.core.failures.FailureStrategy;
+import org.jbehave.core.failures.PassingUponPendingStep;
+import org.jbehave.core.failures.PendingStepStrategy;
+import org.jbehave.core.failures.RethrowingFailure;
+import org.jbehave.core.failures.SilentlyAbsorbingFailure;
+import org.jbehave.core.i18n.LocalizedKeywords;
+import org.jbehave.core.io.AbsolutePathCalculator;
+import org.jbehave.core.io.LoadFromClasspath;
+import org.jbehave.core.io.PathCalculator;
+import org.jbehave.core.io.StoryLoader;
+import org.jbehave.core.io.StoryPathResolver;
+import org.jbehave.core.io.UnderscoredCamelCaseResolver;
+import org.jbehave.core.parsers.RegexPrefixCapturingPatternParser;
+import org.jbehave.core.parsers.RegexStoryParser;
+import org.jbehave.core.parsers.StepPatternParser;
+import org.jbehave.core.parsers.StoryParser;
+import org.jbehave.core.reporters.ConsoleOutput;
+import org.jbehave.core.reporters.FreemarkerViewGenerator;
+import org.jbehave.core.reporters.PrintStreamStepdocReporter;
+import org.jbehave.core.reporters.StepdocReporter;
+import org.jbehave.core.reporters.StoryReporter;
+import org.jbehave.core.reporters.StoryReporterBuilder;
+import org.jbehave.core.reporters.ViewGenerator;
+import org.jbehave.core.steps.MarkUnmatchedStepsAsPending;
+import org.jbehave.core.steps.ParameterControls;
+import org.jbehave.core.steps.ParameterConverters;
+import org.jbehave.core.steps.PrintStreamStepMonitor;
+import org.jbehave.core.steps.SilentStepMonitor;
+import org.jbehave.core.steps.StepCollector;
+import org.jbehave.core.steps.StepFinder;
+import org.jbehave.core.steps.StepMonitor;
+
+import com.thoughtworks.paranamer.NullParanamer;
+import com.thoughtworks.paranamer.Paranamer;
+
+/**
+ * &lt;p&gt;
+ * Provides the configuration used by the {@link Embedder} and the in the
+ * {@link Embeddable} implementations to customise its runtime properties.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Configuration implements a &lt;a
+ * href=&quot;http://en.wikipedia.org/wiki/Builder_pattern&quot;&gt;Builder&lt;/a&gt; pattern so
+ * that each element of the configuration can be specified individually, and
+ * read well. All elements have default values, which can be overridden by the
+ * &quot;use&quot; methods. The &quot;use&quot; methods allow to override the dependencies one by
+ * one and play nicer with a Java hierarchical structure, in that does allow the
+ * use of non-static member variables.
+ * &lt;/p&gt;
+ */
+public abstract class Configuration {
+
+    /**
+     * Use default story controls
+     */
+    private StoryControls storyControls;
+
+    /**
+     * Use English language for keywords
+     */
+    private Keywords keywords;
+
+    /**
+     * Provides pending steps where unmatched steps exist.
+     */
+    private StepCollector stepCollector;
+
+    /**
+     * Parses the textual representation via pattern matching of keywords
+     */
+    private StoryParser storyParser;
+
+    /**
+     * Loads story content from classpath
+     */
+    private StoryLoader storyLoader;
+
+    /**
+     * Resolves story paths from class names using underscored camel case with
+     * &quot;.story&quot; extension
+     */
+    private StoryPathResolver storyPathResolver;
+
+    /**
+     * Handles errors by re-throwing them.
+     * &lt;p/&gt;
+     * If there are multiple scenarios in a single story, this could cause the
+     * story to stop after the first failing scenario.
+     * &lt;p/&gt;
+     * Users wanting a different behaviour may use
+     * {@link SilentlyAbsorbingFailure}.
+     */
+    private FailureStrategy failureStrategy;
+
+    /**
+     * Allows pending steps to pass, so that steps that to do not match any
+     * method will not cause failure.
+     * &lt;p/&gt;
+     * Uses wanting a stricter behaviour for pending steps may use
+     * {@link FailingUponPendingStep}.
+     */
+    private PendingStepStrategy pendingStepStrategy;
+
+    /**
+     * Reports stories to console output
+     */
+    private StoryReporter defaultStoryReporter;
+
+    /**
+     * The story reporter builder
+     */
+    private StoryReporterBuilder storyReporterBuilder;
+
+    /**
+     * Finder of matching candidate steps
+     */
+    private StepFinder stepFinder;
+
+    /**
+     * Report candidate steps found to a PrintStream
+     */
+    private StepdocReporter stepdocReporter;
+
+    /**
+     * Pattern build that uses prefix for identifying parameters
+     */
+    private StepPatternParser stepPatternParser;
+
+    /**
+     * Controls of step parameterization
+     */
+    private ParameterControls parameterControls;
+
+    /**
+     * Silent monitoring that does not produce any noise of the step matching.
+     * &lt;/p&gt; If needed, users can switch on verbose monitoring using
+     * {@link PrintStreamStepMonitor}
+     */
+    private StepMonitor stepMonitor;
+
+    /**
+     * Paranamer is switched off by default
+     */
+    private Paranamer paranamer;
+
+    /**
+     * Use default built-in parameter converters
+     */
+    private ParameterConverters parameterConverters;
+
+    /**
+     * Use Freemarker-based view generator
+     */
+    private ViewGenerator viewGenerator;
+
+    /**
+     * Use an absolute path calculator
+     */
+    private PathCalculator pathCalculator;
+
+<span class="fc" id="L167">    public Configuration() {</span>
+<span class="fc" id="L168">    	storyControls = new StoryControls();</span>
+<span class="fc" id="L169">    	keywords = new LocalizedKeywords();</span>
+    	
+<span class="fc" id="L171">    	stepCollector = new MarkUnmatchedStepsAsPending();</span>
+<span class="fc" id="L172">    	storyParser = new RegexStoryParser(keywords);</span>
+<span class="fc" id="L173">    	storyLoader = new LoadFromClasspath();</span>
+<span class="fc" id="L174">    	storyPathResolver = new UnderscoredCamelCaseResolver();</span>
+<span class="fc" id="L175">    	failureStrategy = new RethrowingFailure();</span>
+<span class="fc" id="L176">    	pendingStepStrategy = new PassingUponPendingStep();</span>
+<span class="fc" id="L177">    	defaultStoryReporter = new ConsoleOutput();</span>
+<span class="fc" id="L178">    	storyReporterBuilder = new StoryReporterBuilder();</span>
+<span class="fc" id="L179">    	stepFinder = new StepFinder();</span>
+<span class="fc" id="L180">    	stepdocReporter = new PrintStreamStepdocReporter();</span>
+<span class="fc" id="L181">    	stepPatternParser = new RegexPrefixCapturingPatternParser();</span>
+<span class="fc" id="L182">    	parameterControls = new ParameterControls();</span>
+<span class="fc" id="L183">    	stepMonitor = new SilentStepMonitor();</span>
+<span class="fc" id="L184">    	paranamer = new NullParanamer();</span>
+<span class="fc" id="L185">    	parameterConverters = new ParameterConverters();</span>
+<span class="fc" id="L186">    	viewGenerator = new FreemarkerViewGenerator();</span>
+<span class="fc" id="L187">    	pathCalculator = new AbsolutePathCalculator();</span>
+<span class="fc" id="L188">	}</span>
+    
+    public Keywords keywords() {
+<span class="fc" id="L191">        return keywords;</span>
+    }
+
+    public boolean dryRun() {
+<span class="fc" id="L195">        return storyControls.dryRun();</span>
+    }
+    
+    public StoryControls storyControls() {
+<span class="fc" id="L199">        return storyControls;</span>
+    }
+
+    public StoryParser storyParser() {
+<span class="fc" id="L203">        return storyParser;</span>
+    }
+
+    public StoryLoader storyLoader() {
+<span class="fc" id="L207">        return storyLoader;</span>
+    }
+
+    public StoryPathResolver storyPathResolver() {
+<span class="fc" id="L211">        return storyPathResolver;</span>
+    }
+
+    public FailureStrategy failureStrategy() {
+<span class="fc" id="L215">        return failureStrategy;</span>
+    }
+
+    public PendingStepStrategy pendingStepStrategy() {
+<span class="fc" id="L219">        return pendingStepStrategy;</span>
+    }
+
+    /**
+     * @deprecated Use {@link StoryReporterBuilder}
+     */
+    public StoryReporter defaultStoryReporter() {
+<span class="fc" id="L226">        return defaultStoryReporter;</span>
+    }
+
+    public StoryReporter storyReporter(String storyPath) {
+<span class="fc" id="L230">        return storyReporterBuilder.build(storyPath);</span>
+    }
+
+    public StoryReporterBuilder storyReporterBuilder() {
+<span class="fc" id="L234">        return storyReporterBuilder;</span>
+    }
+
+    public StepCollector stepCollector() {
+<span class="fc" id="L238">        return stepCollector;</span>
+    }
+
+    public StepFinder stepFinder() {
+<span class="fc" id="L242">        return stepFinder;</span>
+    }
+
+    public StepdocReporter stepdocReporter() {
+<span class="fc" id="L246">        return stepdocReporter;</span>
+    }
+
+    public StepPatternParser stepPatternParser() {
+<span class="fc" id="L250">        return stepPatternParser;</span>
+    }
+
+    public ParameterControls parameterControls() {
+<span class="fc" id="L254">        return parameterControls;</span>
+    }
+
+    public StepMonitor stepMonitor() {
+<span class="fc" id="L258">        return stepMonitor;</span>
+    }
+
+    public Paranamer paranamer() {
+<span class="fc" id="L262">        return paranamer;</span>
+    }
+
+    public ParameterConverters parameterConverters() {
+<span class="fc" id="L266">        return parameterConverters;</span>
+    }
+    
+    public ViewGenerator viewGenerator() {
+<span class="fc" id="L270">        return viewGenerator;</span>
+    }
+
+    public PathCalculator pathCalculator() {
+<span class="fc" id="L274">        return pathCalculator;</span>
+    }
+
+    public Configuration useKeywords(Keywords keywords) {
+<span class="fc" id="L278">        this.keywords = keywords;</span>
+<span class="fc" id="L279">        return this;</span>
+    }
+
+    public Configuration doDryRun(Boolean dryRun) {
+<span class="fc" id="L283">        this.storyControls.doDryRun(dryRun);</span>
+<span class="fc" id="L284">        return this;</span>
+    }
+    
+    public Configuration useStoryControls(StoryControls storyControls){
+<span class="fc" id="L288">        this.storyControls = storyControls;</span>
+<span class="fc" id="L289">        return this;</span>
+    }
+    
+    public Configuration usePendingStepStrategy(PendingStepStrategy pendingStepStrategy) {
+<span class="fc" id="L293">        this.pendingStepStrategy = pendingStepStrategy;</span>
+<span class="fc" id="L294">        return this;</span>
+    }
+
+    public Configuration useFailureStrategy(FailureStrategy failureStrategy) {
+<span class="fc" id="L298">        this.failureStrategy = failureStrategy;</span>
+<span class="fc" id="L299">        return this;</span>
+    }
+
+    public Configuration useStoryParser(StoryParser storyParser) {
+<span class="fc" id="L303">        this.storyParser = storyParser;</span>
+<span class="fc" id="L304">        return this;</span>
+    }
+
+    public Configuration useStoryLoader(StoryLoader storyLoader) {
+<span class="fc" id="L308">        this.storyLoader = storyLoader;</span>
+<span class="fc" id="L309">        return this;</span>
+    }
+
+    public Configuration useStoryPathResolver(StoryPathResolver storyPathResolver) {
+<span class="fc" id="L313">        this.storyPathResolver = storyPathResolver;</span>
+<span class="fc" id="L314">        return this;</span>
+    }
+
+    public Configuration useDefaultStoryReporter(StoryReporter storyReporter) {
+<span class="fc" id="L318">        this.defaultStoryReporter = storyReporter;</span>
+<span class="fc" id="L319">        return this;</span>
+    }
+
+    public Configuration useStoryReporterBuilder(StoryReporterBuilder storyReporterBuilder) {
+<span class="fc" id="L323">        this.storyReporterBuilder = storyReporterBuilder;</span>
+<span class="fc" id="L324">        return this;</span>
+    }
+
+    public Configuration useStepCollector(StepCollector stepCollector) {
+<span class="fc" id="L328">        this.stepCollector = stepCollector;</span>
+<span class="fc" id="L329">        return this;</span>
+    }
+    
+    public Configuration useStepFinder(StepFinder stepFinder) {
+<span class="fc" id="L333">        this.stepFinder = stepFinder;</span>
+<span class="fc" id="L334">        return this;</span>
+    }
+
+    public Configuration useStepdocReporter(StepdocReporter stepdocReporter) {
+<span class="fc" id="L338">        this.stepdocReporter = stepdocReporter;</span>
+<span class="fc" id="L339">        return this;</span>
+    }
+
+    public Configuration useStepPatternParser(StepPatternParser stepPatternParser) {
+<span class="fc" id="L343">        this.stepPatternParser = stepPatternParser;</span>
+<span class="fc" id="L344">        return this;</span>
+    }
+
+    public Configuration useParameterControls(ParameterControls parameterControls) {
+<span class="fc" id="L348">        this.parameterControls = parameterControls;</span>
+<span class="fc" id="L349">        return this;</span>
+    }
+
+    public Configuration useStepMonitor(StepMonitor stepMonitor) {
+<span class="fc" id="L353">        this.stepMonitor = stepMonitor;</span>
+<span class="fc" id="L354">        return this;</span>
+    }
+
+    public Configuration useParanamer(Paranamer paranamer) {
+<span class="fc" id="L358">        this.paranamer = paranamer;</span>
+<span class="fc" id="L359">        return this;</span>
+    }
+
+    public Configuration useParameterConverters(ParameterConverters parameterConverters) {
+<span class="fc" id="L363">        this.parameterConverters = parameterConverters;</span>
+<span class="fc" id="L364">        return this;</span>
+    }
+
+    public Configuration useViewGenerator(ViewGenerator viewGenerator) {
+<span class="fc" id="L368">        this.viewGenerator = viewGenerator;</span>
+<span class="fc" id="L369">        return this;</span>
+    }
+
+    public Configuration usePathCalculator(PathCalculator pathCalculator) {
+<span class="fc" id="L373">        this.pathCalculator = pathCalculator;</span>
+<span class="fc" id="L374">        return this;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

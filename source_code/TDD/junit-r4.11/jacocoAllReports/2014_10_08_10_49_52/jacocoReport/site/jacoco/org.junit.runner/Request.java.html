@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Request.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Junit-r4.11</a> &gt; <a href="index.source.html" class="el_package">org.junit.runner</a> &gt; <span class="el_source">Request.java</span></div><h1>Request.java</h1><pre class="source lang-java linenums">package org.junit.runner;
+
+import java.util.Comparator;
+
+import org.junit.internal.builders.AllDefaultPossibilitiesBuilder;
+import org.junit.internal.requests.ClassRequest;
+import org.junit.internal.requests.FilterRequest;
+import org.junit.internal.requests.SortingRequest;
+import org.junit.internal.runners.ErrorReportingRunner;
+import org.junit.runner.manipulation.Filter;
+import org.junit.runners.model.InitializationError;
+
+/**
+ * &lt;p&gt;A &lt;code&gt;Request&lt;/code&gt; is an abstract description of tests to be run. Older versions of
+ * JUnit did not need such a concept--tests to be run were described either by classes containing
+ * tests or a tree of {@link  org.junit.Test}s. However, we want to support filtering and sorting,
+ * so we need a more abstract specification than the tests themselves and a richer
+ * specification than just the classes.&lt;/p&gt;
+ *
+ * &lt;p&gt;The flow when JUnit runs tests is that a &lt;code&gt;Request&lt;/code&gt; specifies some tests to be run -&gt;
+ * a {@link org.junit.runner.Runner} is created for each class implied by the &lt;code&gt;Request&lt;/code&gt; -&gt;
+ * the {@link org.junit.runner.Runner} returns a detailed {@link org.junit.runner.Description}
+ * which is a tree structure of the tests to be run.&lt;/p&gt;
+ *
+ * @since 4.0
+ */
+<span class="fc" id="L27">public abstract class Request {</span>
+    /**
+     * Create a &lt;code&gt;Request&lt;/code&gt; that, when processed, will run a single test.
+     * This is done by filtering out all other tests. This method is used to support rerunning
+     * single tests.
+     *
+     * @param clazz the class of the test
+     * @param methodName the name of the test
+     * @return a &lt;code&gt;Request&lt;/code&gt; that will cause a single test be run
+     */
+    public static Request method(Class&lt;?&gt; clazz, String methodName) {
+<span class="fc" id="L38">        Description method = Description.createTestDescription(clazz, methodName);</span>
+<span class="fc" id="L39">        return Request.aClass(clazz).filterWith(method);</span>
+    }
+
+    /**
+     * Create a &lt;code&gt;Request&lt;/code&gt; that, when processed, will run all the tests
+     * in a class. The odd name is necessary because &lt;code&gt;class&lt;/code&gt; is a reserved word.
+     *
+     * @param clazz the class containing the tests
+     * @return a &lt;code&gt;Request&lt;/code&gt; that will cause all tests in the class to be run
+     */
+    public static Request aClass(Class&lt;?&gt; clazz) {
+<span class="fc" id="L50">        return new ClassRequest(clazz);</span>
+    }
+
+    /**
+     * Create a &lt;code&gt;Request&lt;/code&gt; that, when processed, will run all the tests
+     * in a class. If the class has a suite() method, it will be ignored.
+     *
+     * @param clazz the class containing the tests
+     * @return a &lt;code&gt;Request&lt;/code&gt; that will cause all tests in the class to be run
+     */
+    public static Request classWithoutSuiteMethod(Class&lt;?&gt; clazz) {
+<span class="fc" id="L61">        return new ClassRequest(clazz, false);</span>
+    }
+
+    /**
+     * Create a &lt;code&gt;Request&lt;/code&gt; that, when processed, will run all the tests
+     * in a set of classes.
+     *
+     * @param computer Helps construct Runners from classes
+     * @param classes the classes containing the tests
+     * @return a &lt;code&gt;Request&lt;/code&gt; that will cause all tests in the classes to be run
+     */
+    public static Request classes(Computer computer, Class&lt;?&gt;... classes) {
+        try {
+<span class="fc" id="L74">            AllDefaultPossibilitiesBuilder builder = new AllDefaultPossibilitiesBuilder(true);</span>
+<span class="fc" id="L75">            Runner suite = computer.getSuite(builder, classes);</span>
+<span class="fc" id="L76">            return runner(suite);</span>
+<span class="nc" id="L77">        } catch (InitializationError e) {</span>
+<span class="nc" id="L78">            throw new RuntimeException(</span>
+                    &quot;Bug in saff's brain: Suite constructor, called as above, should always complete&quot;);
+        }
+    }
+
+    /**
+     * Create a &lt;code&gt;Request&lt;/code&gt; that, when processed, will run all the tests
+     * in a set of classes with the default &lt;code&gt;Computer&lt;/code&gt;.
+     *
+     * @param classes the classes containing the tests
+     * @return a &lt;code&gt;Request&lt;/code&gt; that will cause all tests in the classes to be run
+     */
+    public static Request classes(Class&lt;?&gt;... classes) {
+<span class="fc" id="L91">        return classes(JUnitCore.defaultComputer(), classes);</span>
+    }
+
+
+    /**
+     * Not used within JUnit.  Clients should simply instantiate ErrorReportingRunner themselves
+     */
+    @Deprecated
+    public static Request errorReport(Class&lt;?&gt; klass, Throwable cause) {
+<span class="nc" id="L100">        return runner(new ErrorReportingRunner(klass, cause));</span>
+    }
+
+    /**
+     * @param runner the runner to return
+     * @return a &lt;code&gt;Request&lt;/code&gt; that will run the given runner when invoked
+     */
+    public static Request runner(final Runner runner) {
+<span class="fc" id="L108">        return new Request() {</span>
+            @Override
+            public Runner getRunner() {
+<span class="fc" id="L111">                return runner;</span>
+            }
+        };
+    }
+
+    /**
+     * Returns a {@link Runner} for this Request
+     *
+     * @return corresponding {@link Runner} for this Request
+     */
+    public abstract Runner getRunner();
+
+    /**
+     * Returns a Request that only contains those tests that should run when
+     * &lt;code&gt;filter&lt;/code&gt; is applied
+     *
+     * @param filter The {@link Filter} to apply to this Request
+     * @return the filtered Request
+     */
+    public Request filterWith(Filter filter) {
+<span class="fc" id="L131">        return new FilterRequest(this, filter);</span>
+    }
+
+    /**
+     * Returns a Request that only runs contains tests whose {@link Description}
+     * equals &lt;code&gt;desiredDescription&lt;/code&gt;
+     *
+     * @param desiredDescription {@link Description} of those tests that should be run
+     * @return the filtered Request
+     */
+    public Request filterWith(final Description desiredDescription) {
+<span class="fc" id="L142">        return filterWith(Filter.matchMethodDescription(desiredDescription));</span>
+    }
+
+    /**
+     * Returns a Request whose Tests can be run in a certain order, defined by
+     * &lt;code&gt;comparator&lt;/code&gt;
+     *
+     * For example, here is code to run a test suite in alphabetical order:
+     *
+     * &lt;pre&gt;
+     * private static Comparator&lt;Description&gt; forward() {
+     * return new Comparator&lt;Description&gt;() {
+     * public int compare(Description o1, Description o2) {
+     * return o1.getDisplayName().compareTo(o2.getDisplayName());
+     * }
+     * };
+     * }
+     *
+     * public static main() {
+     * new JUnitCore().run(Request.aClass(AllTests.class).sortWith(forward()));
+     * }
+     * &lt;/pre&gt;
+     *
+     * @param comparator definition of the order of the tests in this Request
+     * @return a Request with ordered Tests
+     */
+    public Request sortWith(Comparator&lt;Description&gt; comparator) {
+<span class="fc" id="L169">        return new SortingRequest(this, comparator);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

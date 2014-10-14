@@ -1,0 +1,1488 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ContentList.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2</a> &gt; <span class="el_source">ContentList.java</span></div><h1>ContentList.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2000-2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org).
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2;
+
+import java.util.*;
+
+import org.jdom2.filter.*;
+import org.jdom2.internal.ArrayCopy;
+
+/**
+ * A non-public list implementation holding only legal JDOM content, including
+ * content for Document or Element nodes. Users see this class as a simple List
+ * implementation.
+ *
+ * @see DocType
+ * @see CDATA
+ * @see Comment
+ * @see Element
+ * @see EntityRef
+ * @see ProcessingInstruction
+ * @see Text
+ * @author Alex Rosen
+ * @author Philippe Riand
+ * @author Bradley S. Huffman
+ * @author Rolf Lear
+ */
+final class ContentList extends AbstractList&lt;Content&gt;
+		implements RandomAccess {
+
+	private static final int INITIAL_ARRAY_SIZE = 4;
+
+	/** Our backing list */
+<span class="fc" id="L85">	private Content elementData[] = null;</span>
+	
+	/** The amount of valid content in elementData */
+	private int size;
+	
+	/**
+	 * Completely remove references to AbstractList.modCount because in
+	 * ContentList it is confusing. As a consequence we also need to implement
+	 * a custom ListIterator for ContentList so that we don't use any of the
+	 * AbstractList iterators which use modCount.... so we have our own 
+	 * ConcurrentModification checking.
+	 * 
+	 */
+<span class="fc" id="L98">	private transient int sizeModCount = Integer.MIN_VALUE;</span>
+
+	/**
+	 * modCount is used for concurrent modification, but dataModCount is used
+	 * for refreshing filters.
+	 */
+<span class="fc" id="L104">	private transient int dataModiCount = Integer.MIN_VALUE;</span>
+
+	/** Document or Element this list belongs to */
+	private final Parent parent;
+
+	/**
+	 * Force either a Document or Element parent
+	 * 
+	 * @param parent
+	 *        the Element this ContentList belongs to.
+	 */
+<span class="fc" id="L115">	ContentList(final Parent parent) {</span>
+<span class="fc" id="L116">		this.parent = parent;</span>
+<span class="fc" id="L117">	}</span>
+	
+	/**
+	 * Package internal method to support building from sources that are 100%
+	 * trusted.
+	 * 
+	 * @param c
+	 *        content to add without any checks
+	 */
+	final void uncheckedAddContent(final Content c) {
+<span class="fc" id="L127">		c.parent = parent;</span>
+<span class="fc" id="L128">		ensureCapacity(size + 1);</span>
+<span class="fc" id="L129">		elementData[size++] = c;</span>
+<span class="fc" id="L130">		incModCount();</span>
+<span class="fc" id="L131">	}</span>
+
+	/**
+	 * In the FilterList and FilterList iterators it becomes confusing as to
+	 * which modCount is being used. This formalizes the process, and using
+	 * (set/get/inc)ModCount() is the only thing you should see in the remainder
+	 * of this code.
+	 * 
+	 * @param sizemod
+	 *        the value to set for the size-mod count.
+	 * @param datamod
+	 *        the value to set for the data-mod count.
+	 */
+	private final void setModCount(final int sizemod, final int datamod) {
+<span class="fc" id="L145">		sizeModCount = sizemod;</span>
+<span class="fc" id="L146">		dataModiCount = datamod;</span>
+<span class="fc" id="L147">	}</span>
+
+	/**
+	 * In the FilterList and FilterList iterators it becomes confusing as to
+	 * which modCount is being used. This formalizes the process, and using
+	 * (set/get/inc)ModCount() is the only thing you should see in the remainder
+	 * of this code.
+	 * 
+	 * @return mod the value.
+	 */
+	private final int getModCount() {
+<span class="fc" id="L158">		return sizeModCount;</span>
+	}
+
+	/**
+	 * In the FilterList and FilterList iterators it becomes confusing as to
+	 * which modCount is being used. This formalizes the process, and using
+	 * (set/get/inc)ModCount() is the only thing you should see in the remainder
+	 * of this code.
+	 */
+	private final void incModCount() {
+		// indicate there's a change to data
+<span class="fc" id="L169">		dataModiCount++;</span>
+		// indicate there's a change to the size
+<span class="fc" id="L171">		sizeModCount++;</span>
+<span class="fc" id="L172">	}</span>
+	
+	private final void incDataModOnly() {
+<span class="fc" id="L175">		dataModiCount++;</span>
+<span class="fc" id="L176">	}</span>
+
+	/**
+	 * Get the modcount of data changes.
+	 * @return the current data mode count.
+	 */
+	private final int getDataModCount() {
+<span class="fc" id="L183">		return dataModiCount;</span>
+	}
+
+	private final void checkIndex(final int index, final boolean excludes) {
+<span class="fc bfc" id="L187" title="All 2 branches covered.">		final int max = excludes ? size - 1 : size;</span>
+
+<span class="fc bfc" id="L189" title="All 4 branches covered.">		if (index &lt; 0 || index &gt; max) {</span>
+<span class="fc" id="L190">			throw new IndexOutOfBoundsException(&quot;Index: &quot; + index +</span>
+					&quot; Size: &quot; + size);
+		}
+
+<span class="fc" id="L194">	}</span>
+
+	private final void checkPreConditions(final Content child, final int index,
+			final boolean replace) {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">		if (child == null) {</span>
+<span class="fc" id="L199">			throw new NullPointerException(&quot;Cannot add null object&quot;);</span>
+		}
+
+<span class="fc" id="L202">		checkIndex(index, replace);</span>
+
+<span class="fc bfc" id="L204" title="All 2 branches covered.">		if (child.getParent() != null) {</span>
+			// the content to be added already has a parent.
+<span class="fc" id="L206">			final Parent p = child.getParent();</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">			if (p instanceof Document) {</span>
+<span class="fc" id="L208">				throw new IllegalAddException((Element) child,</span>
+						&quot;The Content already has an existing parent document&quot;);
+			}
+<span class="fc" id="L211">			throw new IllegalAddException(</span>
+					&quot;The Content already has an existing parent \&quot;&quot; +
+							((Element) p).getQualifiedName() + &quot;\&quot;&quot;);
+		}
+
+<span class="fc bfc" id="L216" title="All 2 branches covered.">		if (child == parent) {</span>
+<span class="fc" id="L217">			throw new IllegalAddException(</span>
+					&quot;The Element cannot be added to itself&quot;);
+		}
+
+		// Detect if we have &lt;a&gt;&lt;b&gt;&lt;c/&gt;&lt;/b&gt;&lt;/a&gt; and c.add(a)
+<span class="fc bfc" id="L222" title="All 6 branches covered.">		if ((parent instanceof Element &amp;&amp; child instanceof Element) &amp;&amp;</span>
+				((Element) child).isAncestor((Element) parent)) {
+<span class="fc" id="L224">			throw new IllegalAddException(</span>
+					&quot;The Element cannot be added as a descendent of itself&quot;);
+		}
+
+<span class="fc" id="L228">	}</span>
+
+	/**
+	 * Check and add the &lt;code&gt;Content&lt;/code&gt; to this list at the given index.
+	 * Inserts the specified object at the specified position in this list.
+	 * Shifts the object currently at that position (if any) and any subsequent
+	 * objects to the right (adds one to their indices).
+	 * 
+	 * @param index
+	 *        index where to add &lt;code&gt;Element&lt;/code&gt;
+	 * @param child
+	 *        &lt;code&gt;Content&lt;/code&gt; to add
+	 */
+	@Override
+	public void add(final int index, final Content child) {
+		// Confirm basic sanity of child.
+<span class="fc" id="L244">		checkPreConditions(child, index, false);</span>
+		// Check to see whether this parent believes it can contain this content
+<span class="fc" id="L246">		parent.canContainContent(child, index, false);</span>
+
+<span class="fc" id="L248">		child.setParent(parent);</span>
+
+<span class="fc" id="L250">		ensureCapacity(size + 1);</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">		if (index == size) {</span>
+<span class="fc" id="L252">			elementData[size++] = child;</span>
+		} else {
+<span class="fc" id="L254">			System.arraycopy(elementData, index, elementData, index + 1, size - index);</span>
+<span class="fc" id="L255">			elementData[index] = child;</span>
+<span class="fc" id="L256">			size++;</span>
+		}
+		// Successful add's increment the AbstractList's modCount
+<span class="fc" id="L259">		incModCount();</span>
+<span class="fc" id="L260">	}</span>
+
+	/**
+	 * Add the specified collection to the end of this list.
+	 * 
+	 * @param collection
+	 *        The collection to add to the list.
+	 * @return &lt;code&gt;true&lt;/code&gt; if the list was modified as a result of the
+	 *         add.
+	 */
+	@Override
+	public boolean addAll(final Collection&lt;? extends Content&gt; collection) {
+<span class="fc" id="L272">		return addAll(size, collection);</span>
+	}
+
+	/**
+	 * Inserts the specified collection at the specified position in this list.
+	 * Shifts the object currently at that position (if any) and any subsequent
+	 * objects to the right (adds one to their indices).
+	 * 
+	 * @param index
+	 *        The offset to start adding the data in the collection
+	 * @param collection
+	 *        The collection to insert into the list.
+	 * @return &lt;code&gt;true&lt;/code&gt; if the list was modified as a result of the
+	 *         add. throws IndexOutOfBoundsException if index &lt; 0 || index &gt;
+	 *         size()
+	 */
+	@Override
+	public boolean addAll(final int index, 
+			final Collection&lt;? extends Content&gt; collection) {
+<span class="fc bfc" id="L291" title="All 2 branches covered.">		if ((collection == null)) {</span>
+<span class="fc" id="L292">			throw new NullPointerException(</span>
+					&quot;Can not add a null collection to the ContentList&quot;);
+		}
+
+<span class="fc" id="L296">		checkIndex(index, false);</span>
+
+<span class="fc bfc" id="L298" title="All 2 branches covered.">		if (collection.isEmpty()) {</span>
+			// some collections are expensive to get the size of.
+			// use isEmpty().
+<span class="fc" id="L301">			return false;</span>
+		}
+<span class="fc" id="L303">		final int addcnt = collection.size();</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">		if (addcnt == 1) {</span>
+			// quick check for single-add.
+<span class="fc" id="L306">			add(index, collection.iterator().next());</span>
+<span class="fc" id="L307">			return true;</span>
+		}
+
+<span class="fc" id="L310">		ensureCapacity(size() + addcnt);</span>
+
+<span class="fc" id="L312">		final int tmpmodcount = getModCount();</span>
+<span class="fc" id="L313">		final int tmpdmc = getDataModCount();</span>
+<span class="fc" id="L314">		boolean ok = false;</span>
+
+<span class="fc" id="L316">		int count = 0;</span>
+
+		try {
+<span class="fc bfc" id="L319" title="All 2 branches covered.">			for (Content c : collection) {</span>
+<span class="fc" id="L320">				add(index + count, c);</span>
+<span class="fc" id="L321">				count++;</span>
+<span class="fc" id="L322">			}</span>
+<span class="fc" id="L323">			ok = true;</span>
+		} finally {
+<span class="pc bpc" id="L325" title="2 of 4 branches missed.">			if (!ok) {</span>
+				// something failed... remove all added content
+<span class="pc bpc" id="L327" title="2 of 4 branches missed.">				while (--count &gt;= 0) {</span>
+<span class="pc" id="L328">					remove(index + count);</span>
+				}
+				// restore the mod-counts.
+<span class="pc" id="L331">				setModCount(tmpmodcount, tmpdmc);</span>
+			}
+		}
+
+<span class="fc" id="L335">		return true;</span>
+	}
+
+	/**
+	 * Clear the current list.
+	 */
+	@Override
+	public void clear() {
+<span class="fc bfc" id="L343" title="All 2 branches covered.">		if (elementData != null) {</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">			for (int i = 0; i &lt; size; i++) {</span>
+<span class="fc" id="L345">				Content obj = elementData[i];</span>
+<span class="fc" id="L346">				removeParent(obj);</span>
+			}
+<span class="fc" id="L348">			elementData = null;</span>
+<span class="fc" id="L349">			size = 0;</span>
+		}
+<span class="fc" id="L351">		incModCount();</span>
+<span class="fc" id="L352">	}</span>
+
+	/**
+	 * Clear the current list and set it to the contents of the
+	 * &lt;code&gt;Collection&lt;/code&gt;. object.
+	 * 
+	 * @param collection
+	 *        The collection to use.
+	 */
+	void clearAndSet(final Collection&lt;? extends Content&gt; collection) {
+<span class="fc bfc" id="L362" title="All 4 branches covered.">		if (collection == null || collection.isEmpty()) {</span>
+<span class="fc" id="L363">			clear();</span>
+<span class="fc" id="L364">			return;</span>
+		}
+
+		// keep a backup in case we need to roll-back...
+<span class="fc" id="L368">		final Content[] old = elementData;</span>
+<span class="fc" id="L369">		final int oldSize = size;</span>
+<span class="fc" id="L370">		final int oldModCount = getModCount();</span>
+<span class="fc" id="L371">		final int oldDataModCount = getDataModCount();</span>
+
+		// clear the current system
+		// we need to detach before we add so that we don't run in to a problem
+		// where a content in the to-add list is one that we are 'clearing'
+		// first.
+<span class="fc bfc" id="L377" title="All 2 branches covered.">		while (size &gt; 0) {</span>
+<span class="fc" id="L378">			old[--size].setParent(null);</span>
+		}
+<span class="fc" id="L380">		size = 0;</span>
+<span class="fc" id="L381">		elementData = null;</span>
+
+<span class="fc" id="L383">		boolean ok = false;</span>
+		try {
+<span class="fc" id="L385">			addAll(0, collection);</span>
+<span class="fc" id="L386">			ok = true;</span>
+		} finally {
+<span class="pc bpc" id="L388" title="2 of 4 branches missed.">			if (!ok) {</span>
+				// we have an exception pending....
+				// restore the old system.
+				// we do not need to worry about the added content
+				// because the failed addAll will clear it up.
+				// re-attach the old stuff
+<span class="pc" id="L394">				elementData = old;</span>
+<span class="pc bpc" id="L395" title="2 of 4 branches missed.">				while (size &lt; oldSize) {</span>
+<span class="pc" id="L396">					elementData[size++].setParent(parent);</span>
+				}
+<span class="pc" id="L398">				setModCount(oldModCount, oldDataModCount);</span>
+			}
+		}
+
+<span class="fc" id="L402">	}</span>
+
+	/**
+	 * Increases the capacity of this &lt;code&gt;ContentList&lt;/code&gt; instance, if
+	 * necessary, to ensure that it can hold at least the number of items
+	 * specified by the minimum capacity argument.
+	 * 
+	 * @param minCapacity
+	 *        the desired minimum capacity.
+	 */
+	void ensureCapacity(final int minCapacity) {
+<span class="fc bfc" id="L413" title="All 2 branches covered.">		if (elementData == null) {</span>
+<span class="fc" id="L414">			elementData = new Content[Math.max(minCapacity, INITIAL_ARRAY_SIZE)];</span>
+<span class="fc" id="L415">			return;</span>
+<span class="fc bfc" id="L416" title="All 2 branches covered.">		} else if (minCapacity &lt; elementData.length) {</span>
+<span class="fc" id="L417">			return;</span>
+		}
+		// use algorithm Wilf suggests which is essentially the same
+		// as algorithm as ArrayList.ensureCapacity....
+		// typically the minCapacity is only slightly larger than
+		// the current capacity.... so grow from the current capacity
+		// with a double-check.
+<span class="fc" id="L424">		final int newcap = ((size * 3) / 2) + 1;</span>
+<span class="fc bfc" id="L425" title="All 2 branches covered.">		elementData = ArrayCopy.copyOf(elementData, </span>
+				(newcap &lt; minCapacity ? minCapacity : newcap));
+<span class="fc" id="L427">	}</span>
+
+	/**
+	 * Return the object at the specified offset.
+	 * 
+	 * @param index
+	 *        The offset of the object.
+	 * @return The Object which was returned.
+	 */
+	@Override
+	public Content get(final int index) {
+<span class="fc" id="L438">		checkIndex(index, true);</span>
+<span class="fc" id="L439">		return elementData[index];</span>
+	}
+
+	/**
+	 * Return a view of this list based on the given filter.
+	 * 
+	 * @param &lt;E&gt;
+	 *        The Generic type of the content as set by the Filter.
+	 * @param filter
+	 *        &lt;code&gt;Filter&lt;/code&gt; for this view.
+	 * @return a list representing the rules of the &lt;code&gt;Filter&lt;/code&gt;.
+	 */
+	&lt;E extends Content&gt; List&lt;E&gt; getView(final Filter&lt;E&gt; filter) {
+<span class="fc" id="L452">		return new FilterList&lt;E&gt;(filter);</span>
+	}
+
+	/**
+	 * Return the index of the first Element in the list. If the parent is a
+	 * &lt;code&gt;Document&lt;/code&gt; then the element is the root element. If the list
+	 * contains no Elements, it returns -1.
+	 * 
+	 * @return index of first element, or -1 if one doesn't exist
+	 */
+	int indexOfFirstElement() {
+<span class="fc bfc" id="L463" title="All 2 branches covered.">		if (elementData != null) {</span>
+<span class="fc bfc" id="L464" title="All 2 branches covered.">			for (int i = 0; i &lt; size; i++) {</span>
+<span class="fc bfc" id="L465" title="All 2 branches covered.">				if (elementData[i] instanceof Element) {</span>
+<span class="fc" id="L466">					return i;</span>
+				}
+			}
+		}
+<span class="fc" id="L470">		return -1;</span>
+	}
+
+	/**
+	 * Return the index of the DocType element in the list. If the list contains
+	 * no DocType, it returns -1.
+	 * 
+	 * @return index of the DocType, or -1 if it doesn't exist
+	 */
+	int indexOfDocType() {
+<span class="fc bfc" id="L480" title="All 2 branches covered.">		if (elementData != null) {</span>
+<span class="fc bfc" id="L481" title="All 2 branches covered.">			for (int i = 0; i &lt; size; i++) {</span>
+<span class="fc bfc" id="L482" title="All 2 branches covered.">				if (elementData[i] instanceof DocType) {</span>
+<span class="fc" id="L483">					return i;</span>
+				}
+			}
+		}
+<span class="fc" id="L487">		return -1;</span>
+	}
+
+	/**
+	 * Remove the object at the specified offset.
+	 * 
+	 * @param index
+	 *        The offset of the object.
+	 * @return The Object which was removed.
+	 */
+	@Override
+	public Content remove(final int index) {
+<span class="fc" id="L499">		checkIndex(index, true);</span>
+
+<span class="fc" id="L501">		final Content old = elementData[index];</span>
+<span class="fc" id="L502">		removeParent(old);</span>
+<span class="fc" id="L503">		System.arraycopy(elementData, index + 1, elementData, index, size - index - 1);</span>
+<span class="fc" id="L504">		elementData[--size] = null; // Let gc do its work</span>
+<span class="fc" id="L505">		incModCount();</span>
+<span class="fc" id="L506">		return old;</span>
+	}
+
+	/** Remove the parent of a Object */
+	private static void removeParent(final Content c) {
+<span class="fc" id="L511">		c.setParent(null);</span>
+<span class="fc" id="L512">	}</span>
+
+	/**
+	 * Set the object at the specified location to the supplied object.
+	 * 
+	 * @param index
+	 *        The location to set the value to.
+	 * @param child
+	 *        The location to set the value to.
+	 * @return The object which was replaced. throws IndexOutOfBoundsException
+	 *         if index &lt; 0 || index &gt;= size()
+	 */
+	@Override
+	public Content set(final int index, final Content child) {
+		// Confirm basic sanity of child.
+<span class="fc" id="L527">		checkPreConditions(child, index, true);</span>
+
+		// Ensure the detail checks out OK too.
+<span class="fc" id="L530">		parent.canContainContent(child, index, true);</span>
+
+		/*
+		 * Do a special case of set() where we don't do a remove() then add()
+		 * because that affects the modCount. We want to do a true set(). See
+		 * issue #15
+		 */
+
+<span class="fc" id="L538">		final Content old = elementData[index];</span>
+<span class="fc" id="L539">		removeParent(old);</span>
+<span class="fc" id="L540">		child.setParent(parent);</span>
+<span class="fc" id="L541">		elementData[index] = child;</span>
+		// for set method we increment dataModCount, but not modCount
+		// set does not change the structure of the List (size())
+<span class="fc" id="L544">		incDataModOnly();</span>
+<span class="fc" id="L545">		return old;</span>
+	}
+
+	/**
+	 * Return the number of items in this list
+	 * 
+	 * @return The number of items in this list.
+	 */
+	@Override
+	public int size() {
+<span class="fc" id="L555">		return size;</span>
+	}
+
+	@Override
+	public Iterator&lt;Content&gt; iterator() {
+<span class="fc" id="L560">		return new CLIterator();</span>
+	}
+	
+	@Override
+	public ListIterator&lt;Content&gt; listIterator() {
+<span class="fc" id="L565">		return new CLListIterator(0);</span>
+	}
+
+	@Override
+	public ListIterator&lt;Content&gt; listIterator(final int start) {
+<span class="fc" id="L570">		return new CLListIterator(start);</span>
+	}
+
+	/**
+	 * Return this list as a &lt;code&gt;String&lt;/code&gt;
+	 * 
+	 * @return The String representation of this list.
+	 */
+	@Override
+	public String toString() {
+<span class="fc" id="L580">		return super.toString();</span>
+	}
+	
+	private void sortInPlace(final int[] indexes) {
+		// the indexes are a discrete set of values that have no duplicates,
+		// and describe the relative order of each of them.
+		// as a result, we can do some tricks....
+<span class="fc" id="L587">		final int[] unsorted = ArrayCopy.copyOf(indexes, indexes.length);</span>
+<span class="fc" id="L588">		Arrays.sort(unsorted);</span>
+<span class="fc" id="L589">		final Content[] usc = new Content[unsorted.length];</span>
+<span class="fc bfc" id="L590" title="All 2 branches covered.">		for (int i = 0; i &lt; usc.length; i++) {</span>
+<span class="fc" id="L591">			usc[i] = elementData[indexes[i]];</span>
+		}
+		// usc contains the content in their pre-sorted order....
+<span class="fc bfc" id="L594" title="All 2 branches covered.">		for (int i = 0; i &lt; indexes.length; i ++) {</span>
+<span class="fc" id="L595">			elementData[unsorted[i]] = usc[i];</span>
+		}
+<span class="fc" id="L597">	}</span>
+
+	/**
+	 * Unlike the Arrays.binarySearch, this method never expects an
+	 * &quot;already exists&quot; condition, we only ever add, thus there will never
+	 * be a negative insertion-point.
+	 * @param indexes THe pointers to search within
+	 * @param len The number of pointers to search within
+	 * @param val The pointer we are checking for.
+	 * @param comp The Comparator to compare with
+	 * @return the insertion point.
+	 */
+	private final int binarySearch(final int[] indexes, final int len,
+			final int val, final Comparator&lt;? super Content&gt; comp) {
+<span class="fc" id="L611">		int left = 0, mid = 0, right = len - 1, cmp = 0;</span>
+<span class="fc" id="L612">		final Content base = elementData[val];</span>
+<span class="fc bfc" id="L613" title="All 2 branches covered.">		while (left &lt;= right) {</span>
+<span class="fc" id="L614">			mid = (left + right) &gt;&gt;&gt; 1;</span>
+<span class="fc" id="L615">			cmp = comp.compare(base, elementData[indexes[mid]]);</span>
+<span class="fc bfc" id="L616" title="All 2 branches covered.">			if (cmp == 0) {</span>
+<span class="pc bpc" id="L617" title="1 of 6 branches missed.">				while (cmp == 0 &amp;&amp; mid &lt; right &amp;&amp; comp.compare(</span>
+						base, elementData[indexes[mid + 1]]) == 0) {
+<span class="fc" id="L619">					mid++;</span>
+				}
+<span class="fc" id="L621">				return mid + 1;</span>
+<span class="fc bfc" id="L622" title="All 2 branches covered.">			} else if (cmp &lt; 0) {</span>
+<span class="fc" id="L623">				right = mid - 1;</span>
+			} else {
+<span class="fc" id="L625">				left = mid + 1;</span>
+			}
+		}
+<span class="fc" id="L628">		return left;</span>
+	}
+	
+    /**
+     * Sorts this list using the supplied Comparator to compare elements.
+     * 
+     * @param comp - the Comparator used to compare list elements. A null value indicates that the elements' natural ordering should be used
+     * @Since 2.0.6
+     */
+	// @Override - only in Java8
+	public final void sort(final Comparator&lt;? super Content&gt; comp) {
+
+<span class="fc bfc" id="L640" title="All 2 branches covered.">	    if (comp == null) {</span>
+            // sort by the 'natural order', which, there is none.
+            // options, throw exception, or let the current-order represent the natural order.
+            // do nothing is the better alternative.
+<span class="fc" id="L644">            return;</span>
+        }
+
+<span class="fc" id="L647">		final int sz = size;</span>
+<span class="fc" id="L648">		int[] indexes = new int[sz];</span>
+<span class="fc bfc" id="L649" title="All 2 branches covered.">		for (int i = 0 ; i &lt; sz; i++) {</span>
+<span class="fc" id="L650">			final int ip = binarySearch(indexes, i, i, comp);</span>
+<span class="fc bfc" id="L651" title="All 2 branches covered.">			if (ip &lt; i) {</span>
+<span class="fc" id="L652">				System.arraycopy(indexes, ip, indexes, ip+1, i - ip);</span>
+			}
+<span class="fc" id="L654">			indexes[ip] = i;</span>
+		}
+<span class="fc" id="L656">		sortInPlace(indexes);</span>
+<span class="fc" id="L657">	}</span>
+	
+	/* * * * * * * * * * * * * ContentListIterator * * * * * * * * * * * * * * * */
+	/* * * * * * * * * * * * * ContentListIterator * * * * * * * * * * * * * * * */
+	/**
+	 * A fast implementation of Iterator.
+	 * &lt;p&gt;
+	 * It is fast because it is tailored to the ContentList, and not the
+	 * flexible implementation used by AbstractList. It needs to be fast because
+	 * iterator() is used extensively in the for-each type loop.
+	 * 
+	 * @author Rolf Lear
+	 */
+	private final class CLIterator implements Iterator&lt;Content&gt; {
+<span class="fc" id="L671">		private int expect = -1;</span>
+<span class="fc" id="L672">		private int cursor = 0;</span>
+<span class="fc" id="L673">		private boolean canremove = false;</span>
+
+<span class="fc" id="L675">		private CLIterator() {</span>
+<span class="fc" id="L676">			expect = getModCount();</span>
+<span class="fc" id="L677">		}</span>
+
+		@Override
+		public boolean hasNext() {
+<span class="fc bfc" id="L681" title="All 2 branches covered.">			return cursor &lt; size;</span>
+		}
+
+		@Override
+		public Content next() {
+<span class="fc bfc" id="L686" title="All 2 branches covered.">			if (getModCount() != expect) {</span>
+<span class="fc" id="L687">				throw new ConcurrentModificationException(&quot;ContentList was &quot; +</span>
+						&quot;modified outside of this Iterator&quot;);
+			}
+<span class="fc bfc" id="L690" title="All 2 branches covered.">			if (cursor &gt;= size) {</span>
+<span class="fc" id="L691">				throw new NoSuchElementException(&quot;Iterated beyond the end of &quot; +</span>
+						&quot;the ContentList.&quot;);
+			}
+<span class="fc" id="L694">			canremove = true;</span>
+<span class="fc" id="L695">			return elementData[cursor++];</span>
+		}
+
+		@Override
+		public void remove() {
+<span class="fc bfc" id="L700" title="All 2 branches covered.">			if (getModCount() != expect) {</span>
+<span class="fc" id="L701">				throw new ConcurrentModificationException(&quot;ContentList was &quot; +</span>
+						&quot;modified outside of this Iterator&quot;);
+			}
+<span class="fc bfc" id="L704" title="All 2 branches covered.">			if (!canremove) {</span>
+<span class="fc" id="L705">				throw new IllegalStateException(&quot;Can only remove() content &quot; +</span>
+						&quot;after a call to next()&quot;);
+			}
+<span class="fc" id="L708">			canremove = false;</span>
+<span class="fc" id="L709">			ContentList.this.remove(--cursor);</span>
+<span class="fc" id="L710">			expect = getModCount();</span>
+<span class="fc" id="L711">		}</span>
+
+	}
+
+	/* * * * * * * * * * * * * ContentListIterator * * * * * * * * * * * * * * * */
+	/* * * * * * * * * * * * * ContentListIterator * * * * * * * * * * * * * * * */
+	/**
+	 * A fast implementation of Iterator.
+	 * &lt;p&gt;
+	 * It is fast because it is tailored to the ContentList, and not the
+	 * flexible implementation used by AbstractList. It needs to be fast because
+	 * iterator() is used extensively in the for-each type loop.
+	 * 
+	 * @author Rolf Lear
+	 */
+	private final class CLListIterator implements ListIterator&lt;Content&gt; {
+		/** Whether this iterator is in forward or reverse. */
+<span class="fc" id="L728">		private boolean forward = false;</span>
+		/** Whether a call to remove() is valid */
+<span class="fc" id="L730">		private boolean canremove = false;</span>
+		/** Whether a call to set() is valid */
+<span class="fc" id="L732">		private boolean canset = false;</span>
+
+		/** Expected modCount in our backing list */
+<span class="fc" id="L735">		private int expectedmod = -1;</span>
+
+<span class="fc" id="L737">		private int cursor = -1;</span>
+
+		/**
+		 * Default constructor
+		 * 
+		 * @param flist
+		 *        The FilterList over which we will iterate.
+		 * @param start
+		 *        where in the FilterList to start iteration.
+		 */
+<span class="fc" id="L747">		CLListIterator(final int start) {</span>
+<span class="fc" id="L748">			expectedmod = getModCount();</span>
+			// always start list iterators in backward mode ....
+			// it makes sense... really.
+<span class="fc" id="L751">			forward = false;</span>
+
+<span class="fc" id="L753">			checkIndex(start, false);</span>
+
+<span class="fc" id="L755">			cursor = start;</span>
+<span class="fc" id="L756">		}</span>
+
+		private void checkConcurrent() {
+<span class="fc bfc" id="L759" title="All 2 branches covered.">			if (expectedmod != getModCount()) {</span>
+<span class="fc" id="L760">				throw new ConcurrentModificationException(&quot;The ContentList &quot; +</span>
+						&quot;supporting this iterator has been modified by&quot; +
+						&quot;something other than this Iterator.&quot;);
+			}
+<span class="fc" id="L764">		}</span>
+
+		/**
+		 * Returns &lt;code&gt;true&lt;/code&gt; if this list iterator has a next element.
+		 */
+		@Override
+		public boolean hasNext() {
+<span class="fc bfc" id="L771" title="All 4 branches covered.">			return (forward ? cursor + 1 : cursor) &lt; size;</span>
+		}
+
+		/**
+		 * Returns &lt;code&gt;true&lt;/code&gt; if this list iterator has more elements
+		 * when traversing the list in the reverse direction.
+		 */
+		@Override
+		public boolean hasPrevious() {
+<span class="fc bfc" id="L780" title="All 4 branches covered.">			return (forward ? cursor : cursor - 1) &gt;= 0;</span>
+		}
+
+		/**
+		 * Returns the index of the element that would be returned by a
+		 * subsequent call to &lt;code&gt;next&lt;/code&gt;.
+		 */
+		@Override
+		public int nextIndex() {
+<span class="fc bfc" id="L789" title="All 2 branches covered.">			return forward ? cursor + 1 : cursor;</span>
+		}
+
+		/**
+		 * Returns the index of the element that would be returned by a
+		 * subsequent call to &lt;code&gt;previous&lt;/code&gt;. (Returns -1 if the list
+		 * iterator is at the beginning of the list.)
+		 */
+		@Override
+		public int previousIndex() {
+<span class="fc bfc" id="L799" title="All 2 branches covered.">			return forward ? cursor : cursor - 1;</span>
+		}
+
+		/**
+		 * Returns the next element in the list.
+		 */
+		@Override
+		public Content next() {
+<span class="fc" id="L807">			checkConcurrent();</span>
+<span class="fc bfc" id="L808" title="All 2 branches covered.">			final int next = forward ? cursor + 1 : cursor;</span>
+
+<span class="fc bfc" id="L810" title="All 2 branches covered.">			if (next &gt;= size) {</span>
+<span class="fc" id="L811">				throw new NoSuchElementException(&quot;next() is beyond the end of the Iterator&quot;);</span>
+			}
+
+<span class="fc" id="L814">			cursor = next;</span>
+<span class="fc" id="L815">			forward = true;</span>
+<span class="fc" id="L816">			canremove = true;</span>
+<span class="fc" id="L817">			canset = true;</span>
+<span class="fc" id="L818">			return elementData[cursor];</span>
+		}
+
+		/**
+		 * Returns the previous element in the list.
+		 */
+		@Override
+		public Content previous() {
+<span class="fc" id="L826">			checkConcurrent();</span>
+<span class="fc bfc" id="L827" title="All 2 branches covered.">			final int prev = forward ? cursor : cursor - 1;</span>
+
+<span class="fc bfc" id="L829" title="All 2 branches covered.">			if (prev &lt; 0) {</span>
+<span class="fc" id="L830">				throw new NoSuchElementException(&quot;previous() is beyond the beginning of the Iterator&quot;);</span>
+			}
+
+<span class="fc" id="L833">			cursor = prev;</span>
+<span class="fc" id="L834">			forward = false;</span>
+<span class="fc" id="L835">			canremove = true;</span>
+<span class="fc" id="L836">			canset = true;</span>
+<span class="fc" id="L837">			return elementData[cursor];</span>
+		}
+
+		/**
+		 * Inserts the specified element into the list .
+		 */
+		@Override
+		public void add(final Content obj) {
+<span class="fc" id="L845">			checkConcurrent();</span>
+			// always add before what would normally be returned by next();
+<span class="fc bfc" id="L847" title="All 2 branches covered.">			final int next = forward ? cursor + 1 : cursor;</span>
+
+<span class="fc" id="L849">			ContentList.this.add(next, obj);</span>
+
+<span class="fc" id="L851">			expectedmod = getModCount();</span>
+
+<span class="fc" id="L853">			canremove = canset = false;</span>
+
+			// a call to next() should be unaffected, so, whatever was going to
+			// be next will still be next, remember, what was going to be next
+			// has been shifted 'right' by our insert.
+			// we ensure this by setting the cursor to next(), and making it
+			// forward
+<span class="fc" id="L860">			cursor = next;</span>
+<span class="fc" id="L861">			forward = true;</span>
+<span class="fc" id="L862">		}</span>
+
+		/**
+		 * Removes from the list the last element that was returned by the last
+		 * call to &lt;code&gt;next&lt;/code&gt; or &lt;code&gt;previous&lt;/code&gt;.
+		 */
+		@Override
+		public void remove() {
+<span class="fc" id="L870">			checkConcurrent();</span>
+<span class="fc bfc" id="L871" title="All 2 branches covered.">			if (!canremove)</span>
+<span class="fc" id="L872">				throw new IllegalStateException(&quot;Can not remove an &quot;</span>
+						+ &quot;element unless either next() or previous() has been called &quot;
+						+ &quot;since the last remove()&quot;);
+			// we are removing the last entry returned by either next() or
+			// previous().
+			// the idea is to remove it, and pretend that we used to be at the
+			// entry that happened *after* the removed entry.
+			// so, get what would be the next entry (set at tmpcursor).
+			// so call nextIndex to set tmpcursor to what would come after.
+<span class="fc" id="L881">			ContentList.this.remove(cursor);</span>
+<span class="fc" id="L882">			forward = false;</span>
+<span class="fc" id="L883">			expectedmod = getModCount();</span>
+
+<span class="fc" id="L885">			canremove = false;</span>
+<span class="fc" id="L886">			canset = false;</span>
+<span class="fc" id="L887">		}</span>
+
+		/**
+		 * Replaces the last element returned by &lt;code&gt;next&lt;/code&gt; or
+		 * &lt;code&gt;previous&lt;/code&gt; with the specified element.
+		 */
+		@Override
+		public void set(final Content obj) {
+<span class="fc" id="L895">			checkConcurrent();</span>
+<span class="fc bfc" id="L896" title="All 2 branches covered.">			if (!canset) {</span>
+<span class="fc" id="L897">				throw new IllegalStateException(&quot;Can not set an element &quot;</span>
+						+ &quot;unless either next() or previous() has been called since the &quot;
+						+ &quot;last remove() or set()&quot;);
+			}
+
+<span class="fc" id="L902">			ContentList.this.set(cursor, obj);</span>
+<span class="fc" id="L903">			expectedmod = getModCount();</span>
+
+<span class="fc" id="L905">		}</span>
+
+	}
+
+	/* * * * * * * * * * * * * FilterList * * * * * * * * * * * * * * * */
+	/* * * * * * * * * * * * * FilterList * * * * * * * * * * * * * * * */
+
+	/**
+	 * &lt;code&gt;FilterList&lt;/code&gt; represents legal JDOM content, including content
+	 * for &lt;code&gt;Document&lt;/code&gt;s or &lt;code&gt;Element&lt;/code&gt;s.
+	 * &lt;p&gt;
+	 * FilterList represents a dynamic view of the backing ContentList, changes
+	 * to the backing list are reflected in the FilterList, and visa-versa.
+	 * 
+	 * @param &lt;F&gt;
+	 *        The Generic type of content accepted by the underlying Filter.
+	 */
+
+	class FilterList&lt;F extends Content&gt; extends AbstractList&lt;F&gt; {
+
+		// The filter to apply
+		final Filter&lt;F&gt; filter;
+		// correlate the position in the filtered list to the index in the
+		// backing ContentList.
+<span class="fc" id="L929">		int[] backingpos = new int[size + INITIAL_ARRAY_SIZE];</span>
+<span class="fc" id="L930">		int backingsize = 0;</span>
+		// track data modifications in the backing ContentList.
+<span class="fc" id="L932">		int xdata = -1;</span>
+
+		/**
+		 * Create a new instance of the FilterList with the specified Filter.
+		 * 
+		 * @param filter
+		 *        The underlying Filter to use for filtering the content.
+		 */
+<span class="fc" id="L940">		FilterList(final Filter&lt;F&gt; filter) {</span>
+<span class="fc" id="L941">			this.filter = filter;</span>
+<span class="fc" id="L942">		}</span>
+		
+		/**
+		 * Returns true if there is no content in this FilterList.
+		 * @return true if there is no content in this FilterList
+		 */
+		@Override
+		public boolean isEmpty() {
+			// More efficient implementation than default size() == 0
+			// we use resync() to accomplish the task. If there is an
+			// element 0 in this FilterList, then it is not empty!
+			// we may already have resync'd 0, which will be a fast return then,
+			// or, if we have not resync'd 0, then we only have to filter up to
+			// the first matching element to get a result (or the whole list
+			// if isEmpty() is true).
+<span class="fc bfc" id="L957" title="All 2 branches covered.">			return resync(0) == size;</span>
+		}
+
+		/**
+		 * Synchronise our view to the backing list. Only synchronise the first
+		 * &lt;code&gt;index&lt;/code&gt; view elements. For want of a better word, we'll
+		 * call this a 'Lazy' implementation.
+		 * 
+		 * @param index
+		 *        how much we want to sync. Set to -1 to synchronise everything.
+		 * @return the index in the backing array of the &lt;i&gt;index'th&lt;/i&gt; match.
+		 *         or the backing data size if there is no match for the index.
+		 */
+		private final int resync(final int index) {
+<span class="fc bfc" id="L971" title="All 2 branches covered.">			if (xdata != getDataModCount()) {</span>
+				// The underlying list was modified somehow...
+				// we need to invalidate our research...
+<span class="fc" id="L974">				xdata = getDataModCount();</span>
+<span class="fc" id="L975">				backingsize = 0;</span>
+<span class="fc bfc" id="L976" title="All 2 branches covered.">				if (size &gt;= backingpos.length) {</span>
+<span class="fc" id="L977">					backingpos = new int[size + 1];</span>
+				}
+			}
+
+<span class="fc bfc" id="L981" title="All 4 branches covered.">			if (index &gt;= 0 &amp;&amp; index &lt; backingsize) {</span>
+				// we have already indexed far enough...
+				// return the backing index.
+<span class="fc" id="L984">				return backingpos[index];</span>
+			}
+
+			// the index in the backing list of the next value to check.
+<span class="fc" id="L988">			int bpi = 0;</span>
+<span class="fc bfc" id="L989" title="All 2 branches covered.">			if (backingsize &gt; 0) {</span>
+<span class="fc" id="L990">				bpi = backingpos[backingsize - 1] + 1;</span>
+			}
+
+<span class="fc bfc" id="L993" title="All 2 branches covered.">			while (bpi &lt; size) {</span>
+<span class="fc" id="L994">				final F gotit = filter.filter(elementData[bpi]);</span>
+<span class="fc bfc" id="L995" title="All 2 branches covered.">				if (gotit != null) {</span>
+<span class="fc" id="L996">					backingpos[backingsize] = bpi;</span>
+<span class="fc bfc" id="L997" title="All 2 branches covered.">					if (backingsize++ == index) {</span>
+<span class="fc" id="L998">						return bpi;</span>
+					}
+				}
+<span class="fc" id="L1001">				bpi++;</span>
+<span class="fc" id="L1002">			}</span>
+<span class="fc" id="L1003">			return size;</span>
+		}
+
+		/**
+		 * Inserts the specified object at the specified position in this list.
+		 * Shifts the object currently at that position (if any) and any
+		 * subsequent objects to the right (adds one to their indices).
+		 * 
+		 * @param index
+		 *        The location to set the value to.
+		 * @param obj
+		 *        The object to insert into the list. throws
+		 *        IndexOutOfBoundsException if index &lt; 0 || index &gt; size()
+		 */
+		@Override
+		public void add(final int index, final Content obj) {
+<span class="fc bfc" id="L1019" title="All 2 branches covered.">			if (index &lt; 0) {</span>
+<span class="fc" id="L1020">				throw new IndexOutOfBoundsException(&quot;Index: &quot; + index + &quot; Size: &quot; + size());</span>
+			}
+<span class="fc" id="L1022">			int adj = resync(index);</span>
+<span class="fc bfc" id="L1023" title="All 4 branches covered.">			if (adj == size &amp;&amp; index &gt; size()) {</span>
+<span class="fc" id="L1024">				throw new IndexOutOfBoundsException(&quot;Index: &quot; + index + &quot; Size: &quot; + size());</span>
+			}
+<span class="fc bfc" id="L1026" title="All 2 branches covered.">			if (filter.matches(obj)) {</span>
+<span class="fc" id="L1027">				ContentList.this.add(adj, obj);</span>
+
+				// we can optimise the laziness now by doing a partial reset on
+				// the backing list... invalidate everything *after* the added
+				// content
+<span class="fc bfc" id="L1032" title="All 2 branches covered.">				if (backingpos.length &lt;= size) {</span>
+<span class="fc" id="L1033">					backingpos = ArrayCopy.copyOf(backingpos, backingpos.length + 1);</span>
+				}
+<span class="fc" id="L1035">				backingpos[index] = adj;</span>
+<span class="fc" id="L1036">				backingsize = index + 1;</span>
+<span class="fc" id="L1037">				xdata = getDataModCount();</span>
+
+			} else {
+<span class="fc" id="L1040">				throw new IllegalAddException(&quot;Filter won't allow the &quot; +</span>
+						obj.getClass().getName() +
+						&quot; '&quot; + obj + &quot;' to be added to the list&quot;);
+			}
+<span class="fc" id="L1044">		}</span>
+
+		@Override
+		public boolean addAll(final int index, 
+				final Collection&lt;? extends F&gt; collection) {
+<span class="fc bfc" id="L1049" title="All 2 branches covered.">			if (collection == null) {</span>
+<span class="fc" id="L1050">				throw new NullPointerException(&quot;Cannot add a null collection&quot;);</span>
+			}
+
+<span class="fc bfc" id="L1053" title="All 2 branches covered.">			if (index &lt; 0) {</span>
+<span class="fc" id="L1054">				throw new IndexOutOfBoundsException(&quot;Index: &quot; + index + &quot; Size: &quot; + size());</span>
+			}
+
+<span class="fc" id="L1057">			final int adj = resync(index);</span>
+<span class="fc bfc" id="L1058" title="All 4 branches covered.">			if (adj == size &amp;&amp; index &gt; size()) {</span>
+<span class="fc" id="L1059">				throw new IndexOutOfBoundsException(&quot;Index: &quot; + index + &quot; Size: &quot; + size());</span>
+			}
+
+<span class="fc" id="L1062">			final int addcnt = collection.size();</span>
+<span class="fc bfc" id="L1063" title="All 2 branches covered.">			if (addcnt == 0) {</span>
+<span class="fc" id="L1064">				return false;</span>
+			}
+
+<span class="fc" id="L1067">			ContentList.this.ensureCapacity(ContentList.this.size() + addcnt);</span>
+
+<span class="fc" id="L1069">			final int tmpmodcount = getModCount();</span>
+<span class="fc" id="L1070">			final int tmpdmc = getDataModCount();</span>
+<span class="fc" id="L1071">			boolean ok = false;</span>
+
+<span class="fc" id="L1073">			int count = 0;</span>
+
+			try {
+<span class="fc bfc" id="L1076" title="All 2 branches covered.">				for (Content c : collection) {</span>
+<span class="fc bfc" id="L1077" title="All 2 branches covered.">					if (c == null) {</span>
+<span class="fc" id="L1078">						throw new NullPointerException(</span>
+								&quot;Cannot add null content&quot;);
+					}
+<span class="fc bfc" id="L1081" title="All 2 branches covered.">					if (filter.matches(c)) {</span>
+<span class="fc" id="L1082">						ContentList.this.add(adj + count, c);</span>
+						// we can optimise the laziness now by doing a partial
+						// reset on
+						// the backing list... invalidate everything *after* the
+						// added
+						// content
+<span class="fc bfc" id="L1088" title="All 2 branches covered.">						if (backingpos.length &lt;= size) {</span>
+<span class="fc" id="L1089">							backingpos = ArrayCopy.copyOf(backingpos, backingpos.length + addcnt);</span>
+						}
+<span class="fc" id="L1091">						backingpos[index + count] = adj + count;</span>
+<span class="fc" id="L1092">						backingsize = index + count + 1;</span>
+<span class="fc" id="L1093">						xdata = getDataModCount();</span>
+
+<span class="fc" id="L1095">						count++;</span>
+					} else {
+<span class="fc" id="L1097">						throw new IllegalAddException(&quot;Filter won't allow the &quot; +</span>
+								c.getClass().getName() +
+								&quot; '&quot; + c + &quot;' to be added to the list&quot;);
+
+					}
+<span class="fc" id="L1102">				}</span>
+<span class="fc" id="L1103">				ok = true;</span>
+			} finally {
+<span class="pc bpc" id="L1105" title="2 of 4 branches missed.">				if (!ok) {</span>
+					// something failed... remove all added content
+<span class="pc bpc" id="L1107" title="2 of 4 branches missed.">					while (--count &gt;= 0) {</span>
+<span class="pc" id="L1108">						ContentList.this.remove(adj + count);</span>
+					}
+					// restore the mod-counts.
+<span class="pc" id="L1111">					setModCount(tmpmodcount, tmpdmc);</span>
+					// reset the cache... will need to redo some work on another
+					// call maybe....
+<span class="pc" id="L1114">					backingsize = index;</span>
+<span class="pc" id="L1115">					xdata = tmpmodcount;</span>
+				}
+			}
+
+<span class="fc" id="L1119">			return true;</span>
+		}
+
+		/**
+		 * Return the object at the specified offset.
+		 * 
+		 * @param index
+		 *        The offset of the object.
+		 * @return The Object which was returned.
+		 */
+		@Override
+		public F get(final int index) {
+<span class="fc bfc" id="L1131" title="All 2 branches covered.">			if (index &lt; 0) {</span>
+<span class="fc" id="L1132">				throw new IndexOutOfBoundsException(&quot;Index: &quot; + index + &quot; Size: &quot; + size());</span>
+			}
+<span class="fc" id="L1134">			final int adj = resync(index);</span>
+<span class="fc bfc" id="L1135" title="All 2 branches covered.">			if (adj == size) {</span>
+<span class="fc" id="L1136">				throw new IndexOutOfBoundsException(&quot;Index: &quot; + index + &quot; Size: &quot; + size());</span>
+			}
+<span class="fc" id="L1138">			return filter.filter(ContentList.this.get(adj));</span>
+		}
+
+		@Override
+		public Iterator&lt;F&gt; iterator() {
+<span class="fc" id="L1143">			return new FilterListIterator&lt;F&gt;(this, 0);</span>
+		}
+
+		@Override
+		public ListIterator&lt;F&gt; listIterator() {
+<span class="fc" id="L1148">			return new FilterListIterator&lt;F&gt;(this, 0);</span>
+		}
+
+		@Override
+		public ListIterator&lt;F&gt; listIterator(final int index) {
+<span class="fc" id="L1153">			return new FilterListIterator&lt;F&gt;(this, index);</span>
+		}
+
+		/**
+		 * Remove the object at the specified offset.
+		 * 
+		 * @param index
+		 *        The offset of the object.
+		 * @return The Object which was removed.
+		 */
+		@Override
+		public F remove(final int index) {
+<span class="fc bfc" id="L1165" title="All 2 branches covered.">			if (index &lt; 0) {</span>
+<span class="fc" id="L1166">				throw new IndexOutOfBoundsException(&quot;Index: &quot; + index + &quot; Size: &quot; + size());</span>
+			}
+<span class="fc" id="L1168">			final int adj = resync(index);</span>
+<span class="fc bfc" id="L1169" title="All 2 branches covered.">			if (adj == size) {</span>
+<span class="fc" id="L1170">				throw new IndexOutOfBoundsException(&quot;Index: &quot; + index + &quot; Size: &quot; + size());</span>
+			}
+<span class="fc" id="L1172">			final Content oldc = ContentList.this.remove(adj);</span>
+			// optimise the backing cache.
+<span class="fc" id="L1174">			backingsize = index;</span>
+<span class="fc" id="L1175">			xdata = getDataModCount();</span>
+			// use Filter to ensure the cast is right.
+<span class="fc" id="L1177">			return filter.filter(oldc);</span>
+		}
+
+		/**
+		 * Set the object at the specified location to the supplied object.
+		 * 
+		 * @param index
+		 *        The location to set the value to.
+		 * @param obj
+		 *        The location to set the value to.
+		 * @return The object which was replaced. throws
+		 *         IndexOutOfBoundsException if index &lt; 0 || index &gt;= size()
+		 */
+		@Override
+		public F set(final int index, final F obj) {
+<span class="fc bfc" id="L1192" title="All 2 branches covered.">			if (index &lt; 0) {</span>
+<span class="fc" id="L1193">				throw new IndexOutOfBoundsException(&quot;Index: &quot; + index + &quot; Size: &quot; + size());</span>
+			}
+<span class="fc" id="L1195">			final int adj = resync(index);</span>
+<span class="fc bfc" id="L1196" title="All 2 branches covered.">			if (adj == size) {</span>
+<span class="fc" id="L1197">				throw new IndexOutOfBoundsException(&quot;Index: &quot; + index + &quot; Size: &quot; + size());</span>
+			}
+<span class="fc" id="L1199">			final F ins = filter.filter(obj);</span>
+<span class="fc bfc" id="L1200" title="All 2 branches covered.">			if (ins != null) {</span>
+<span class="fc" id="L1201">				final F oldc = filter.filter(ContentList.this.set(adj, ins));</span>
+				// optimize the backing....
+<span class="fc" id="L1203">				xdata = getDataModCount();</span>
+<span class="fc" id="L1204">				return oldc;</span>
+			}
+<span class="fc" id="L1206">			throw new IllegalAddException(&quot;Filter won't allow index &quot; +</span>
+					index + &quot; to be set to &quot; +
+					(obj.getClass()).getName());
+		}
+
+		/**
+		 * Return the number of items in this list
+		 * 
+		 * @return The number of items in this list.
+		 */
+		@Override
+		public int size() {
+<span class="fc" id="L1218">			resync(-1);</span>
+<span class="fc" id="L1219">			return backingsize;</span>
+		}
+
+		/**
+		 * Unlike the Arrays.binarySearch, this method never expects an
+		 * &quot;already exists&quot; condition, we only ever add, thus there will never
+		 * be a negative insertion-point.
+		 * @param indexes THe pointers to search within
+		 * @param len The number of pointers to search within
+		 * @param val The pointer we are checking for.
+		 * @param comp The Comparator to compare with
+		 * @return the insertion point.
+		 */
+		@SuppressWarnings(&quot;unchecked&quot;)
+		private final int fbinarySearch(final int[] indexes, final int len,
+				final int val, final Comparator&lt;? super F&gt; comp) {
+<span class="fc" id="L1235">			int left = 0, mid = 0, right = len - 1, cmp = 0;</span>
+<span class="fc" id="L1236">			final F base = (F)elementData[backingpos[val]];</span>
+<span class="fc bfc" id="L1237" title="All 2 branches covered.">			while (left &lt;= right) {</span>
+<span class="fc" id="L1238">				mid = (left + right) &gt;&gt;&gt; 1;</span>
+<span class="fc" id="L1239">				cmp = comp.compare(base, (F)elementData[indexes[mid]]);</span>
+<span class="fc bfc" id="L1240" title="All 2 branches covered.">				if (cmp == 0) {</span>
+<span class="pc bpc" id="L1241" title="2 of 6 branches missed.">					while (cmp == 0 &amp;&amp; mid &lt; right &amp;&amp; comp.compare(</span>
+							base, (F)elementData[indexes[mid + 1]]) == 0) {
+<span class="fc" id="L1243">						mid++;</span>
+					}
+<span class="fc" id="L1245">					return mid + 1;</span>
+<span class="fc bfc" id="L1246" title="All 2 branches covered.">				} else if (cmp &lt; 0) {</span>
+<span class="fc" id="L1247">					right = mid - 1;</span>
+				} else {
+<span class="fc" id="L1249">					left = mid + 1;</span>
+				}
+			}
+<span class="fc" id="L1252">			return left;</span>
+		}
+		
+
+		/**
+		 * Sorts this list using the supplied Comparator to compare elements.
+		 * 
+		 * @param comp - the Comparator used to compare list elements. A null value indicates that the elements' natural ordering should be used
+         * @Since 2.0.6
+		 */
+		//Not till Java8 @Override
+		public final void sort(final Comparator&lt;? super F&gt; comp) {
+			// this size() forces a full scan/update of the list.
+<span class="pc bpc" id="L1265" title="1 of 2 branches missed.">		    if (comp == null) {</span>
+		        // sort by the 'natural order', which, there is none.
+		        // options, throw exception, or let the current-order represent the natural order.
+		        // do nothing is the better alternative.
+<span class="nc" id="L1269">		        return;</span>
+		    }
+<span class="fc" id="L1271">			final int sz = size();</span>
+<span class="fc" id="L1272">			final int[] indexes = new int[sz];</span>
+<span class="fc bfc" id="L1273" title="All 2 branches covered.">			for (int i = 0 ; i &lt; sz; i++) {</span>
+<span class="fc" id="L1274">				final int ip = fbinarySearch(indexes, i, i, comp);</span>
+<span class="fc bfc" id="L1275" title="All 2 branches covered.">				if (ip &lt; i) {</span>
+<span class="fc" id="L1276">					System.arraycopy(indexes, ip, indexes, ip+1, i - ip);</span>
+				}
+<span class="fc" id="L1278">				indexes[ip] = backingpos[i];</span>
+			}
+<span class="fc" id="L1280">			sortInPlace(indexes);</span>
+<span class="fc" id="L1281">		}</span>
+		
+	}
+
+	/* * * * * * * * * * * * * FilterListIterator * * * * * * * * * * * */
+	/* * * * * * * * * * * * * FilterListIterator * * * * * * * * * * * */
+
+	final class FilterListIterator&lt;F extends Content&gt; implements ListIterator&lt;F&gt; {
+
+		/** The Filter that applies */
+		private final FilterList&lt;F&gt; filterlist;
+
+		/** Whether this iterator is in forward or reverse. */
+<span class="fc" id="L1294">		private boolean forward = false;</span>
+		/** Whether a call to remove() is valid */
+<span class="fc" id="L1296">		private boolean canremove = false;</span>
+		/** Whether a call to set() is valid */
+<span class="fc" id="L1298">		private boolean canset = false;</span>
+
+		/** Expected modCount in our backing list */
+<span class="fc" id="L1301">		private int expectedmod = -1;</span>
+
+<span class="fc" id="L1303">		private int cursor = -1;</span>
+
+		/**
+		 * Default constructor
+		 * 
+		 * @param flist
+		 *        The FilterList over which we will iterate.
+		 * @param start
+		 *        where in the FilterList to start iteration.
+		 */
+<span class="fc" id="L1313">		FilterListIterator(final FilterList&lt;F&gt; flist, final int start) {</span>
+<span class="fc" id="L1314">			filterlist = flist;</span>
+<span class="fc" id="L1315">			expectedmod = getModCount();</span>
+			// always start list iterators in backward mode ....
+			// it makes sense... really.
+<span class="fc" id="L1318">			forward = false;</span>
+
+<span class="fc bfc" id="L1320" title="All 2 branches covered.">			if (start &lt; 0) {</span>
+<span class="fc" id="L1321">				throw new IndexOutOfBoundsException(&quot;Index: &quot; + start + &quot; Size: &quot; + filterlist.size());</span>
+			}
+
+<span class="fc" id="L1324">			final int adj = filterlist.resync(start);</span>
+
+<span class="fc bfc" id="L1326" title="All 4 branches covered.">			if (adj == size &amp;&amp; start &gt; filterlist.size()) {</span>
+				// the start point is after the end of the list.
+				// it is only allowed to be the same as size(), no larger.
+<span class="fc" id="L1329">				throw new IndexOutOfBoundsException(&quot;Index: &quot; + start + &quot; Size: &quot; + filterlist.size());</span>
+			}
+
+<span class="fc" id="L1332">			cursor = start;</span>
+<span class="fc" id="L1333">		}</span>
+
+		private void checkConcurrent() {
+<span class="fc bfc" id="L1336" title="All 2 branches covered.">			if (expectedmod != getModCount()) {</span>
+<span class="fc" id="L1337">				throw new ConcurrentModificationException(&quot;The ContentList &quot; +</span>
+						&quot;supporting the FilterList this iterator is &quot; +
+						&quot;processing has been modified by something other &quot; +
+						&quot;than this Iterator.&quot;);
+			}
+<span class="fc" id="L1342">		}</span>
+
+		/**
+		 * Returns &lt;code&gt;true&lt;/code&gt; if this list iterator has a next element.
+		 */
+		@Override
+		public boolean hasNext() {
+<span class="fc bfc" id="L1349" title="All 4 branches covered.">			return filterlist.resync(forward ? cursor + 1 : cursor) &lt; size;</span>
+		}
+
+		/**
+		 * Returns &lt;code&gt;true&lt;/code&gt; if this list iterator has more elements
+		 * when traversing the list in the reverse direction.
+		 */
+		@Override
+		public boolean hasPrevious() {
+<span class="fc bfc" id="L1358" title="All 4 branches covered.">			return (forward ? cursor : cursor - 1) &gt;= 0;</span>
+		}
+
+		/**
+		 * Returns the index of the element that would be returned by a
+		 * subsequent call to &lt;code&gt;next&lt;/code&gt;.
+		 */
+		@Override
+		public int nextIndex() {
+<span class="fc bfc" id="L1367" title="All 2 branches covered.">			return forward ? cursor + 1 : cursor;</span>
+		}
+
+		/**
+		 * Returns the index of the element that would be returned by a
+		 * subsequent call to &lt;code&gt;previous&lt;/code&gt;. (Returns -1 if the list
+		 * iterator is at the beginning of the list.)
+		 */
+		@Override
+		public int previousIndex() {
+<span class="fc bfc" id="L1377" title="All 2 branches covered.">			return forward ? cursor : cursor - 1;</span>
+		}
+
+		/**
+		 * Returns the next element in the list.
+		 */
+		@Override
+		public F next() {
+<span class="fc" id="L1385">			checkConcurrent();</span>
+<span class="fc bfc" id="L1386" title="All 2 branches covered.">			final int next = forward ? cursor + 1 : cursor;</span>
+
+<span class="fc bfc" id="L1388" title="All 2 branches covered.">			if (filterlist.resync(next) &gt;= size) {</span>
+<span class="fc" id="L1389">				throw new NoSuchElementException(&quot;next() is beyond the end of the Iterator&quot;);</span>
+			}
+
+<span class="fc" id="L1392">			cursor = next;</span>
+<span class="fc" id="L1393">			forward = true;</span>
+<span class="fc" id="L1394">			canremove = true;</span>
+<span class="fc" id="L1395">			canset = true;</span>
+<span class="fc" id="L1396">			return filterlist.get(cursor);</span>
+		}
+
+		/**
+		 * Returns the previous element in the list.
+		 */
+		@Override
+		public F previous() {
+<span class="fc" id="L1404">			checkConcurrent();</span>
+<span class="fc bfc" id="L1405" title="All 2 branches covered.">			final int prev = forward ? cursor : cursor - 1;</span>
+
+<span class="fc bfc" id="L1407" title="All 2 branches covered.">			if (prev &lt; 0) {</span>
+<span class="fc" id="L1408">				throw new NoSuchElementException(&quot;previous() is beyond the beginning of the Iterator&quot;);</span>
+			}
+
+<span class="fc" id="L1411">			cursor = prev;</span>
+<span class="fc" id="L1412">			forward = false;</span>
+<span class="fc" id="L1413">			canremove = true;</span>
+<span class="fc" id="L1414">			canset = true;</span>
+<span class="fc" id="L1415">			return filterlist.get(cursor);</span>
+		}
+
+		/**
+		 * Inserts the specified element into the list .
+		 */
+		@Override
+		public void add(final Content obj) {
+<span class="fc" id="L1423">			checkConcurrent();</span>
+			// always add before what would normally be returned by next();
+<span class="fc bfc" id="L1425" title="All 2 branches covered.">			final int next = forward ? cursor + 1 : cursor;</span>
+
+<span class="fc" id="L1427">			filterlist.add(next, obj);</span>
+
+<span class="fc" id="L1429">			expectedmod = getModCount();</span>
+
+<span class="fc" id="L1431">			canremove = canset = false;</span>
+
+			// a call to next() should be unaffected, so, whatever was going to
+			// be next will still be next, remember, what was going to be next
+			// has been shifted 'right' by our insert.
+			// we ensure this by setting the cursor to next(), and making it
+			// forward
+<span class="fc" id="L1438">			cursor = next;</span>
+<span class="fc" id="L1439">			forward = true;</span>
+<span class="fc" id="L1440">		}</span>
+
+		/**
+		 * Removes from the list the last element that was returned by the last
+		 * call to &lt;code&gt;next&lt;/code&gt; or &lt;code&gt;previous&lt;/code&gt;.
+		 */
+		@Override
+		public void remove() {
+<span class="fc" id="L1448">			checkConcurrent();</span>
+<span class="fc bfc" id="L1449" title="All 2 branches covered.">			if (!canremove)</span>
+<span class="fc" id="L1450">				throw new IllegalStateException(&quot;Can not remove an &quot;</span>
+						+ &quot;element unless either next() or previous() has been called &quot;
+						+ &quot;since the last remove()&quot;);
+			// we are removing the last entry returned by either next() or
+			// previous().
+			// the idea is to remove it, and pretend that we used to be at the
+			// entry that happened *after* the removed entry.
+			// so, get what would be the next entry (set at tmpcursor).
+			// so call nextIndex to set tmpcursor to what would come after.
+<span class="fc" id="L1459">			filterlist.remove(cursor);</span>
+<span class="fc" id="L1460">			forward = false;</span>
+<span class="fc" id="L1461">			expectedmod = getModCount();</span>
+
+<span class="fc" id="L1463">			canremove = false;</span>
+<span class="fc" id="L1464">			canset = false;</span>
+<span class="fc" id="L1465">		}</span>
+
+		/**
+		 * Replaces the last element returned by &lt;code&gt;next&lt;/code&gt; or
+		 * &lt;code&gt;previous&lt;/code&gt; with the specified element.
+		 */
+		@Override
+		public void set(final F obj) {
+<span class="fc" id="L1473">			checkConcurrent();</span>
+<span class="fc bfc" id="L1474" title="All 2 branches covered.">			if (!canset) {</span>
+<span class="fc" id="L1475">				throw new IllegalStateException(&quot;Can not set an element &quot;</span>
+						+ &quot;unless either next() or previous() has been called since the &quot;
+						+ &quot;last remove() or set()&quot;);
+			}
+
+<span class="fc" id="L1480">			filterlist.set(cursor, obj);</span>
+<span class="fc" id="L1481">			expectedmod = getModCount();</span>
+
+<span class="fc" id="L1483">		}</span>
+
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

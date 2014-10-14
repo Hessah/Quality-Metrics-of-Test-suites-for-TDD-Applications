@@ -1,0 +1,607 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>NamespaceStack.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.util</a> &gt; <span class="el_source">NamespaceStack.java</span></div><h1>NamespaceStack.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2011 - 2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.util;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+
+import org.jdom2.Attribute;
+import org.jdom2.Element;
+import org.jdom2.Namespace;
+import org.jdom2.internal.ArrayCopy;
+
+
+/**
+ * A high-performance stack for processing those Namespaces that are introduced
+ * or are in-scope at a point in an Element hierarchy.
+ * &lt;p&gt;
+ * This stack implements the 'Namespace Rules' which XML uses, where a Namespace
+ * 'redefines' an existing Namespace if they share the same prefix. This class
+ * is intended to provide a high-performance mechanism for calculating the
+ * Namespace scope for an Element, and identifying what Namespaces an Element
+ * introduces in to the scope. This is not a validation tool.
+ * &lt;p&gt;
+ * This class implements Iterable which means it can be used in the context
+ * of a for-each type loop:
+ * &lt;br&gt;
+ * &lt;code&gt;&lt;pre&gt;
+ *   NamespaceStack namespacestack = new NamespaceStack();
+ *   for (Namespace ns : namespacestack) {
+ *      ...
+ *   }
+ * &lt;/pre&gt;&lt;/code&gt;
+ * The Iteration in the above example will return those Namespaces which are
+ * in-scope for the current level of the stack. The Namespace order will follow
+ * the JDOM 'standard'. The first namespace will be the Element's Namespace. The
+ * subsequent Namespaces will be the other in-scope namespaces in alphabetical
+ * order by the Namespace prefix.
+ * &lt;p&gt;
+ * NamespaceStack does not validate the push()/pop() cycles. It does not ensure
+ * that the pop() is for the same element that was previously pushed. Further,
+ * it does not check to make sure that the pushed() Element is the natural child
+ * of the previously pushed() Element.
+ * 
+ * @author Rolf Lear
+ *
+ */
+public final class NamespaceStack implements Iterable&lt;Namespace&gt; {
+
+	/**
+	 * Simple read-only iterator that walks an array of Namespace.
+	 * 
+	 * @author rolf
+	 *
+	 */
+	private static final class ForwardWalker implements Iterator&lt;Namespace&gt; {
+		private final Namespace[] namespaces;
+<span class="fc" id="L113">		int cursor = 0;</span>
+
+<span class="fc" id="L115">		public ForwardWalker(Namespace[] namespaces) {</span>
+<span class="fc" id="L116">			this.namespaces = namespaces;</span>
+<span class="fc" id="L117">		}</span>
+
+		@Override
+		public boolean hasNext() {
+<span class="fc bfc" id="L121" title="All 2 branches covered.">			return cursor &lt; namespaces.length;</span>
+		}
+
+		@Override
+		public Namespace next() {
+<span class="fc bfc" id="L126" title="All 2 branches covered.">			if (cursor &gt;= namespaces.length) {</span>
+<span class="fc" id="L127">				throw new NoSuchElementException(&quot;Cannot over-iterate...&quot;);</span>
+			}
+<span class="fc" id="L129">			return namespaces[cursor++];</span>
+		}
+
+		@Override
+		public void remove() {
+<span class="fc" id="L134">			throw new UnsupportedOperationException(</span>
+					&quot;Cannot remove Namespaces from iterator&quot;);
+
+		}
+
+	}
+
+	/**
+	 * Simple read-only iterator that walks an array of Namespace in reverse.
+	 * 
+	 * @author rolf
+	 *
+	 */
+	private static final class BackwardWalker implements Iterator&lt;Namespace&gt; {
+		private final Namespace[] namespaces;
+<span class="fc" id="L149">		int cursor = -1;</span>
+
+<span class="fc" id="L151">		public BackwardWalker(Namespace[] namespaces) {</span>
+<span class="fc" id="L152">			this.namespaces = namespaces;</span>
+<span class="fc" id="L153">			cursor = namespaces.length - 1;</span>
+<span class="fc" id="L154">		}</span>
+
+		@Override
+		public boolean hasNext() {
+<span class="fc bfc" id="L158" title="All 2 branches covered.">			return cursor &gt;= 0;</span>
+		}
+
+		@Override
+		public Namespace next() {
+<span class="fc bfc" id="L163" title="All 2 branches covered.">			if (cursor &lt; 0) {</span>
+<span class="fc" id="L164">				throw new NoSuchElementException(&quot;Cannot over-iterate...&quot;);</span>
+			}
+<span class="fc" id="L166">			return namespaces[cursor--];</span>
+		}
+
+		@Override
+		public void remove() {
+<span class="fc" id="L171">			throw new UnsupportedOperationException(</span>
+					&quot;Cannot remove Namespaces from iterator&quot;);
+		}
+
+	}
+
+	/**
+	 * Simple Iterable instance that produces either Forward or Backward
+	 * read-only iterators of the Namespaces
+	 * 
+	 * @author rolf
+	 *
+	 */
+	private static final class NamespaceIterable implements Iterable&lt;Namespace&gt; {
+		private final boolean forward;
+		private final Namespace[] namespaces;
+<span class="fc" id="L187">		public NamespaceIterable(Namespace[] data, boolean forward) {</span>
+<span class="fc" id="L188">			this.forward = forward;</span>
+<span class="fc" id="L189">			this.namespaces = data;</span>
+<span class="fc" id="L190">		}</span>
+		@Override
+		public Iterator&lt;Namespace&gt; iterator() {
+<span class="fc bfc" id="L193" title="All 2 branches covered.">			return forward ? new ForwardWalker(namespaces)</span>
+					: new BackwardWalker(namespaces);
+		}
+	}
+
+	/**
+	 * Convenience class that makes very fast work for an empty Namespace array.
+	 * It doubles up as both Iterator and Interable.
+	 * @author rolf
+	 */
+<span class="fc" id="L203">	private static final class EmptyIterable</span>
+			implements Iterable&lt;Namespace&gt;, Iterator&lt;Namespace&gt; {
+		@Override
+		public Iterator&lt;Namespace&gt; iterator() {
+<span class="fc" id="L207">			return this;</span>
+		}
+
+		@Override
+		public boolean hasNext() {
+<span class="fc" id="L212">			return false;</span>
+		}
+
+		@Override
+		public Namespace next() {
+<span class="fc" id="L217">			throw new NoSuchElementException(</span>
+					&quot;Can not call next() on an empty Iterator.&quot;);
+		}
+
+		@Override
+		public void remove() {
+<span class="fc" id="L223">			throw new UnsupportedOperationException(</span>
+					&quot;Cannot remove Namespaces from iterator&quot;);
+		}
+	}
+
+	/** A simple empty Namespace Array to avoid redundant empty instances */
+<span class="fc" id="L229">	private static final Namespace[] EMPTY = new Namespace[0];</span>
+	/** A simple Iterable instance that is always empty. Saves some memory */
+<span class="fc" id="L231">	private static final Iterable&lt;Namespace&gt; EMPTYITER = new EmptyIterable();</span>
+
+	/** A comparator that sorts Namespaces by their prefix. */
+<span class="fc" id="L234">	private static final Comparator&lt;Namespace&gt; NSCOMP = new Comparator&lt;Namespace&gt;() {</span>
+		@Override
+		public int compare(Namespace ns1, Namespace ns2) {
+<span class="fc" id="L237">			return ns1.getPrefix().compareTo(ns2.getPrefix());</span>
+		}
+	};
+<span class="fc" id="L240">	private static final Namespace[] DEFAULTSEED = new Namespace[] {</span>
+				Namespace.NO_NAMESPACE, Namespace.XML_NAMESPACE};
+
+	/**
+	 * Lots of reasons for having our own binarySearch.
+	 * &lt;ul&gt;
+	 * &lt;li&gt; We can make it specific for Namespaces (using == search).
+	 * &lt;li&gt; There is a bug in IBM's AIX JVM in all Java's prior to (including):
+	 *      IBM J9 VM (build 2.4, J2RE 1.6.0 IBM J9 2.4 AIX ppc-32
+	 *              jvmap3260-20081105_25433 (JIT enabled, AOT enabled))
+	 *      where it returns '-1' for all instances where 'from == to' instead
+	 *      of returning '-from -1'. See
+	 *      &lt;a href=&quot;http://www.ibm.com/developerworks/forums/thread.jspa?threadID=351575&amp;tstart=0&quot;&gt;
+	 *      this description&lt;/a&gt; for how it is broken, and pre-checking to make
+	 *      sure that &lt;code&gt;left &amp;lt; right&lt;/code&gt; for each test is a pain.
+	 * &lt;li&gt; Ahh, actually, we will never encounter the bug, because we always
+	 *      have a larger-than-1 scope array.... see comment inside code...
+	 * &lt;li&gt; It's not that complicated, really.
+	 * &lt;/ul&gt;
+	 * @param data The Namespaces to search.
+	 * @param left The left side of the range to search &lt;b&gt;INCLUSIVE&lt;/b&gt;
+	 * @param right The right side of the range to search &lt;b&gt;EXCLUSIVE&lt;/b&gt;
+	 * @param key The Namespace to search for.
+	 * @return the 'insertion point' - the following is copied from the Java
+	 * 			Javadoc for Arrays.binarySearch()
+	 * 		&lt;br&gt;&lt;i&gt;
+	 *      index of the search key, if it is contained in the array; otherwise,
+	 *      &lt;code&gt; (-(insertion point) - 1) &lt;/code&gt;. The insertion point is
+	 *      defined as the point at which the key would be inserted into the
+	 *      array: the index of the first element greater than the key, or
+	 *      a.length if all elements in the array are less than the specified
+	 *      key. Note that this guarantees that the return value will be &gt;= 0
+	 *      if and only if the key is found.
+	 *      &lt;/i&gt;
+	 */
+	private static final int binarySearch(final Namespace[] data,
+			int left, int right, final Namespace key) {
+		// assume all input is valid. No need to waste time checking.
+
+		//		Because we are always searching inside of the scope array, and
+		//		because there's always at least two scope members, we will always have
+		//		a minimum value of 2 for 'right', and a maximum value of 1 for 'left'
+		//		thus the following check is never needed.
+		//
+		//		if (left &gt;= right) {
+		//			// we are searching in nothing, return the correct value
+		//			// ... this is where IBM's JDK is broken - it just returns -1
+		//			return -left - 1;
+		//		}
+		// make the right-side 'inclusive' instead of 'exclusive'
+<span class="fc" id="L290">		right--;</span>
+
+<span class="fc bfc" id="L292" title="All 2 branches covered.">		while (left &lt;= right) {</span>
+			// get the mid-point. See the notes on the binary-search bug...
+			// ... not that we'll ever have that many Namspaces.... ;-)
+			// http://googleresearch.blogspot.com/2006/06/extra-extra-read-all-about-it-nearly.html
+<span class="fc" id="L296">			final int mid = (left + right) &gt;&gt;&gt; 1;</span>
+<span class="fc bfc" id="L297" title="All 2 branches covered.">			if (data[mid] == key) {</span>
+				// exact namespace match.
+<span class="fc" id="L299">				return mid;</span>
+			}
+<span class="fc" id="L301">			final int cmp = NSCOMP.compare(data[mid], key);</span>
+
+<span class="fc bfc" id="L303" title="All 2 branches covered.">			if (cmp &lt; 0) {</span>
+<span class="fc" id="L304">				left = mid + 1;</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">			} else if (cmp &gt; 0) {</span>
+<span class="fc" id="L306">				right = mid - 1;</span>
+			} else {
+				// Namespace prefix match.
+<span class="fc" id="L309">				return mid;</span>
+			}
+<span class="fc" id="L311">		}</span>
+<span class="fc" id="L312">		return -left - 1;</span>
+	}
+
+	/** The namespaces added to the scope at each depth */
+<span class="fc" id="L316">	private Namespace[][] added = new Namespace[10][];</span>
+	/** The entire scope at each depth */
+<span class="fc" id="L318">	private Namespace[][] scope = new Namespace[10][];</span>
+	/** The current depth */
+<span class="fc" id="L320">	private int depth = -1;</span>
+
+	/**
+	 * Create a NamespaceWalker ready to use as a stack.
+	 * &lt;br&gt;
+	 * @see #push(Element) for comprehensive notes.
+	 */
+	public NamespaceStack() {
+<span class="fc" id="L328">		this(DEFAULTSEED);</span>
+<span class="fc" id="L329">	}</span>
+
+	/**
+	 * Create a NamespaceWalker ready to use as a stack.
+	 * &lt;br&gt;
+	 * @see #push(Element) for comprehensive notes.
+	 * @param seed The namespaces to set as the top level of the stack.
+	 */
+<span class="fc" id="L337">	public NamespaceStack(Namespace[] seed) {</span>
+<span class="fc" id="L338">		depth++;</span>
+<span class="fc" id="L339">		added[depth] = seed;</span>
+
+<span class="fc" id="L341">		scope[depth] = added[depth];</span>
+<span class="fc" id="L342">	}</span>
+
+	/**
+	 * Inspect the &lt;i&gt;scope&lt;/i&gt; array to see whether the &lt;i&gt;namespace&lt;/i&gt;
+	 * Namespace is 'new' or not. If it is 'new' then it is added to the
+	 * &lt;i&gt;store&lt;/i&gt; List.
+	 * @param store Where to add the &lt;i&gt;namespace&lt;/i&gt; if it is 'new'
+	 * @param namespace The Namespace to check
+	 * @param scope The array of Namespaces that are currently in-scope.
+	 * @return The revised version of 'in-scope' if the scope has changed. If
+	 *         there is no modification then the same input scope will be returned.
+	 */
+	private static final Namespace[] checkNamespace(List&lt;Namespace&gt; store,
+			Namespace namespace, Namespace[] scope) {
+		// Scope is always sorted as the primary namespace first, then the
+		// rest are in prefix order.
+		// We can guarantee that the prefixes are all unique too.
+		// There is always going to be at least two namespaces in scope with
+		// the prefixes : &quot;&quot; and &quot;xml&quot;
+		// As a result we can use the 0th index with impunity.
+<span class="fc bfc" id="L362" title="All 2 branches covered.">		if (namespace == scope[0]) {</span>
+			// we are already in scope.
+<span class="fc" id="L364">			return scope;</span>
+		}
+<span class="fc bfc" id="L366" title="All 2 branches covered.">		if (namespace.getPrefix().equals(scope[0].getPrefix())) {</span>
+			// the prefix is the previous scope's primary prefix. This means
+			// that we know for sure that the input namespace is new-to-scope.
+<span class="fc" id="L369">			store.add(namespace);</span>
+<span class="fc" id="L370">			final Namespace[] nscope = ArrayCopy.copyOf(scope, scope.length);</span>
+<span class="fc" id="L371">			nscope[0] = namespace;</span>
+<span class="fc" id="L372">			return nscope;</span>
+		}
+		// will return +ve number if the prefix matches too.
+<span class="fc" id="L375">		int ip = binarySearch(scope, 1, scope.length, namespace);</span>
+<span class="fc bfc" id="L376" title="All 4 branches covered.">		if (ip &gt;= 0 &amp;&amp; namespace == scope[ip]) {</span>
+			// the namespace is already in scope.
+<span class="fc" id="L378">			return scope;</span>
+		}
+<span class="fc" id="L380">		store.add(namespace);</span>
+<span class="fc bfc" id="L381" title="All 2 branches covered.">		if (ip &gt;= 0) {</span>
+			// a different namespace with the same prefix as us is in-scope.
+			// replace it....
+<span class="fc" id="L384">			final Namespace[] nscope = ArrayCopy.copyOf(scope, scope.length);</span>
+<span class="fc" id="L385">			nscope[ip] = namespace;</span>
+<span class="fc" id="L386">			return nscope;</span>
+		}
+		// We are a new prefix in-scope.
+<span class="fc" id="L389">		final Namespace[] nscope = ArrayCopy.copyOf(scope, scope.length + 1);</span>
+<span class="fc" id="L390">		ip = - ip - 1;</span>
+<span class="fc" id="L391">		System.arraycopy(nscope, ip, nscope, ip + 1, nscope.length - ip - 1);</span>
+<span class="fc" id="L392">		nscope[ip] = namespace;</span>
+<span class="fc" id="L393">		return nscope;</span>
+	}
+
+	/**
+	 * Create a new in-scope level for the Stack based on an Element.
+	 * &lt;br&gt;
+	 * The Namespaces associated with the input Element are used to modify the
+	 * 'in-scope' Namespaces in this NamespaceStack.
+	 * &lt;br&gt;
+	 * The following 'rules' will be applied:
+	 * &lt;ul&gt;
+	 * &lt;li&gt;Namespaces used in the input Element that were not part of the previous
+	 *     scope will be added to the new scope level in the stack.
+	 * &lt;li&gt;If a new Namespace is added to the scope, but the previous scope
+	 *     already had a namespace with the same prefix, then that previous
+	 *     namespace is removed from the new scope (the new Namespace replaces
+	 *     the previous namespace with the same prefix).
+	 * &lt;li&gt;The order of the in-scope Namespaces will always be: first the
+	 *     Namespace of the input Element followed by all other in-scope
+	 *     Namespaces sorted alphabetically by prefix.
+	 * &lt;li&gt;The new in-scope Namespace values will be available in this class's
+	 *     iterator() method (which is available as part of this class's
+	 *     &lt;i&gt;Iterable&lt;/i&gt; implementation.
+	 * &lt;li&gt;The namespaces added to the scope by the input Element will be
+	 *     available in the {@link #addedForward()} Iterable. The order of
+	 *     the added Namespaces follows the same rules as above: first the
+	 *     Element Namespace (only if that Namespace is actually added) followed
+	 *     by the other added namespaces in alphabetical-by-prefix order.
+	 * &lt;li&gt;The same added namespaces are also available in reverse order in
+	 *     the {@link #addedReverse()} Iterable.
+	 * &lt;/ul&gt;
+	 * @param element The element at the new level of the stack.
+	 */
+	public void push(Element element) {
+
+		// how many times do you add more than 8 namespaces in one go...
+		// we can add more if we need to...
+<span class="fc" id="L430">		final List&lt;Namespace&gt; toadd = new ArrayList&lt;Namespace&gt;(8);</span>
+<span class="fc" id="L431">		final Namespace mns = element.getNamespace();</span>
+		// check to see whether the Namespace is new-to-scope.
+<span class="fc" id="L433">		Namespace[] newscope = checkNamespace(toadd, mns, scope[depth]);</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">		if (element.hasAdditionalNamespaces()) {</span>
+<span class="fc bfc" id="L435" title="All 2 branches covered.">			for (final Namespace ns : element.getAdditionalNamespaces()) {</span>
+<span class="fc bfc" id="L436" title="All 2 branches covered.">				if (ns == mns) {</span>
+<span class="fc" id="L437">					continue;</span>
+				}
+				// check to see whether the Namespace is new-to-scope.
+<span class="fc" id="L440">				newscope = checkNamespace(toadd, ns, newscope);</span>
+<span class="fc" id="L441">			}</span>
+		}
+<span class="fc bfc" id="L443" title="All 2 branches covered.">		if (element.hasAttributes()) {</span>
+<span class="fc bfc" id="L444" title="All 2 branches covered.">			for (final Attribute a : element.getAttributes()) {</span>
+<span class="fc" id="L445">				final Namespace ns = a.getNamespace();</span>
+<span class="fc bfc" id="L446" title="All 2 branches covered.">				if (ns == Namespace.NO_NAMESPACE) {</span>
+					// Attributes are allowed to be in the NO_NAMESPACE without
+					// changing the in-scope set of the Element.... special-case
+<span class="fc" id="L449">					continue;</span>
+				}
+<span class="fc bfc" id="L451" title="All 2 branches covered.">				if (ns == mns) {</span>
+<span class="fc" id="L452">					continue;</span>
+				}
+				// check to see whether the Namespace is new-to-scope.
+<span class="fc" id="L455">				newscope = checkNamespace(toadd, ns, newscope);</span>
+<span class="fc" id="L456">			}</span>
+		}
+		
+<span class="fc" id="L459">		pushStack(mns, newscope, toadd);</span>
+
+<span class="fc" id="L461">	}</span>
+	
+	/**
+	 * Create a new in-scope level for the Stack based on an Attribute.
+	 * 
+	 * @param att The attribute to contribute to the namespace scope.
+	 */
+	public void push(Attribute att) {
+<span class="fc" id="L469">		final List&lt;Namespace&gt; toadd = new ArrayList&lt;Namespace&gt;(1);</span>
+<span class="fc" id="L470">		final Namespace mns = att.getNamespace();</span>
+		// check to see whether the Namespace is new-to-scope.
+<span class="fc" id="L472">		Namespace[] newscope = checkNamespace(toadd, mns, scope[depth]);</span>
+		
+<span class="fc" id="L474">		pushStack(mns, newscope, toadd);</span>
+<span class="fc" id="L475">	}</span>
+
+	private final void pushStack(final Namespace mns, Namespace[] newscope, 
+			final List&lt;Namespace&gt; toadd) {
+		// OK, we've checked the namespaces in the Element, and 'toadd' contains
+		// all namespaces that are not already in scope.
+<span class="fc" id="L481">		depth++;</span>
+
+<span class="fc bfc" id="L483" title="All 2 branches covered.">		if (depth &gt;= scope.length) {</span>
+			// we need more space on the stack.
+<span class="fc" id="L485">			scope = ArrayCopy.copyOf(scope, scope.length * 2);</span>
+<span class="fc" id="L486">			added = ArrayCopy.copyOf(added, scope.length);</span>
+		}
+
+		// Sort out the added namespaces.
+<span class="fc bfc" id="L490" title="All 2 branches covered.">		if (toadd.isEmpty()) {</span>
+			// nothing changed in the scope.
+<span class="fc" id="L492">			added[depth] = EMPTY;</span>
+		} else {
+<span class="fc" id="L494">			added[depth] = toadd.toArray(new Namespace[toadd.size()]);</span>
+<span class="fc bfc" id="L495" title="All 2 branches covered.">			if (added[depth][0] == mns) {</span>
+<span class="fc" id="L496">				Arrays.sort(added[depth], 1, added[depth].length, NSCOMP);</span>
+			} else {
+<span class="fc" id="L498">				Arrays.sort(added[depth], NSCOMP);</span>
+			}
+		}
+
+<span class="fc bfc" id="L502" title="All 2 branches covered.">		if (mns != newscope[0]) {</span>
+<span class="fc bfc" id="L503" title="All 2 branches covered.">			if (toadd.isEmpty()) {</span>
+				// we need to make newscope a copy of the previous level's
+				// scope, because it is not yet a copy.
+<span class="fc" id="L506">				newscope = ArrayCopy.copyOf(newscope, newscope.length);</span>
+			}
+			// we need to take the Namespace at position 0, and insert it
+			// in it's place later in the array.
+			// we need to take the mns from later in the array, and move it
+			// to the front.
+<span class="fc" id="L512">			final Namespace tmp = newscope[0];</span>
+<span class="fc" id="L513">			int ip = - binarySearch(newscope, 1, newscope.length, tmp) - 1;</span>
+			// we can be sure that (- ip - 1 ) is &gt;= 1
+			// we also know that we want to move the data before the ip
+			// backwards one spot, so the math is slightly different....
+<span class="fc" id="L517">			ip--;</span>
+<span class="fc" id="L518">			System.arraycopy(newscope, 1, newscope, 0, ip);</span>
+<span class="fc" id="L519">			newscope[ip] = tmp;</span>
+
+<span class="fc" id="L521">			ip = binarySearch(newscope, 0, newscope.length, mns);</span>
+			// we can be sure that ip is &gt;= 0
+<span class="fc" id="L523">			System.arraycopy(newscope, 0, newscope, 1, ip);</span>
+<span class="fc" id="L524">			newscope[0] = mns;</span>
+		}
+
+<span class="fc" id="L527">		scope[depth] = newscope;</span>
+<span class="fc" id="L528">	}</span>
+
+	/**
+	 * Restore stack to the level prior to the current one. The various Iterator
+	 * methods will thus return the data at the previous level.
+	 */
+	public void pop() {
+<span class="fc bfc" id="L535" title="All 2 branches covered.">		if (depth &lt;= 0) {</span>
+<span class="fc" id="L536">			throw new IllegalStateException(&quot;Cannot over-pop the stack.&quot;);</span>
+		}
+<span class="fc" id="L538">		scope[depth] = null;</span>
+<span class="fc" id="L539">		added[depth] = null;</span>
+<span class="fc" id="L540">		depth--;</span>
+<span class="fc" id="L541">	}</span>
+
+	/**
+	 * Return an Iterable containing all the Namespaces introduced to the
+	 * current-level's scope.
+	 * @see #push(Element) for the details on the data order.
+	 * @return A read-only Iterable containing added Namespaces (may be empty);
+	 */
+	public Iterable&lt;Namespace&gt; addedForward() {
+<span class="fc bfc" id="L550" title="All 2 branches covered.">		if (added[depth].length == 0) {</span>
+<span class="fc" id="L551">			return EMPTYITER;</span>
+		}
+<span class="fc" id="L553">		return new NamespaceIterable(added[depth], true);</span>
+	}
+
+	/**
+	 * Return an Iterable containing all the Namespaces introduced to the
+	 * current-level's scope but in reverse order to {@link #addedForward()}.
+	 * @see #push(Element) for the details on the data order.
+	 * @return A read-only Iterable containing added Namespaces (may be empty);
+	 */
+	public Iterable&lt;Namespace&gt; addedReverse() {
+<span class="fc bfc" id="L563" title="All 2 branches covered.">		if (added[depth].length == 0) {</span>
+<span class="fc" id="L564">			return EMPTYITER;</span>
+		}
+<span class="fc" id="L566">		return new NamespaceIterable(added[depth], false);</span>
+	}
+
+	/**
+	 * Get all the Namespaces in-scope at the current level of the stack.
+	 * @see #push(Element) for the details on the data order.
+	 * @return A read-only Iterator containing added Namespaces (may be empty);
+	 */
+	@Override
+	public Iterator&lt;Namespace&gt; iterator() {
+<span class="fc" id="L576">		return new ForwardWalker(scope[depth]);</span>
+	}
+	
+	/**
+	 * Return a new array instance representing the current scope.
+	 * Modifying the returned array will not affect this scope.
+	 * @return a copy of the current scope.
+	 */
+	public Namespace[] getScope() {
+<span class="fc" id="L585">		return ArrayCopy.copyOf(scope[depth], scope[depth].length);</span>
+	}
+
+	/**
+	 * Inspect the current scope and return true if the specified namespace is
+	 * in scope.
+	 * @param ns The Namespace to check
+	 * @return true if the current scope contains that Namespace.
+	 */
+	public boolean isInScope(Namespace ns) {
+<span class="fc bfc" id="L595" title="All 2 branches covered.">		if (ns == scope[depth][0]) {</span>
+<span class="fc" id="L596">			return true;</span>
+		}
+<span class="fc" id="L598">		final int ip = binarySearch(scope[depth], 1, scope[depth].length, ns);</span>
+<span class="fc bfc" id="L599" title="All 2 branches covered.">		if (ip &gt;= 0) {</span>
+			// we have the same prefix.
+<span class="fc bfc" id="L601" title="All 2 branches covered.">			return ns == scope[depth][ip];</span>
+		}
+<span class="fc" id="L603">		return false;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

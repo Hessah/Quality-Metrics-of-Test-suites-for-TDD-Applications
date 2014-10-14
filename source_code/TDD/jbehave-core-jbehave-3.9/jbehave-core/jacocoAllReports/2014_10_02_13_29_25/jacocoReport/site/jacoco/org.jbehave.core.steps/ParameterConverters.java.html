@@ -1,0 +1,743 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ParameterConverters.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.steps</a> &gt; <span class="el_source">ParameterConverters.java</span></div><h1>ParameterConverters.java</h1><pre class="source lang-java linenums">package org.jbehave.core.steps;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.text.DateFormat;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.text.NumberFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.apache.commons.lang.BooleanUtils;
+import org.jbehave.core.annotations.AsParameters;
+import org.jbehave.core.configuration.MostUsefulConfiguration;
+import org.jbehave.core.model.ExamplesTable;
+import org.jbehave.core.model.ExamplesTableFactory;
+
+import static java.util.Arrays.asList;
+
+/**
+ * &lt;p&gt;
+ * Facade responsible for converting parameter values to Java objects. It allows
+ * the registration of several {@link ParameterConverter} instances, and the
+ * first one that is found to matches the appropriate parameter type is used.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Converters for several Java types are provided out-of-the-box:
+ * &lt;ul&gt;
+ * &lt;li&gt;{@link ParameterConverters.NumberConverter NumberConverter}&lt;/li&gt;
+ * &lt;li&gt;{@link ParameterConverters.NumberListConverter NumberListConverter}&lt;/li&gt;
+ * &lt;li&gt;{@link ParameterConverters.StringListConverter StringListConverter}&lt;/li&gt;
+ * &lt;li&gt;{@link ParameterConverters.DateConverter DateConverter}&lt;/li&gt;
+ * &lt;li&gt;{@link ParameterConverters.ExamplesTableConverter ExamplesTableConverter}
+ * &lt;/li&gt;
+ * &lt;li&gt;{@link ParameterConverters.ExamplesTableParametersConverter
+ * ExamplesTableParametersConverter}&lt;/li&gt;
+ * &lt;li&gt;{@link ParameterConverters.MethodReturningConverter
+ * MethodReturningConverter}&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;/p&gt;
+ */
+public class ParameterConverters {
+
+<span class="fc" id="L54">    public static final StepMonitor DEFAULT_STEP_MONITOR = new SilentStepMonitor();</span>
+<span class="fc" id="L55">    public static final Locale DEFAULT_NUMBER_FORMAT_LOCAL = Locale.ENGLISH;</span>
+    public static final String DEFAULT_LIST_SEPARATOR = &quot;,&quot;;
+    public static final boolean DEFAULT_THREAD_SAFETY = true;
+
+    private static final String NEWLINES_PATTERN = &quot;(\n)|(\r\n)&quot;;
+<span class="fc" id="L60">    private static final String SYSTEM_NEWLINE = System.getProperty(&quot;line.separator&quot;);</span>
+    private static final String DEFAULT_TRUE_VALUE = &quot;true&quot;;
+    private static final String DEFAULT_FALSE_VALUE = &quot;false&quot;;
+
+    private final StepMonitor monitor;
+    private final List&lt;ParameterConverter&gt; converters;
+    private final boolean threadSafe;
+
+    /**
+     * Creates a non-thread-safe instance of ParameterConverters using default
+     * dependencies, a SilentStepMonitor, English as Locale and &quot;,&quot; as list
+     * separator.
+     */
+    public ParameterConverters() {
+<span class="fc" id="L74">        this(DEFAULT_STEP_MONITOR);</span>
+<span class="fc" id="L75">    }</span>
+
+    /**
+     * Creates a ParameterConverters using given StepMonitor
+     * 
+     * @param monitor the StepMonitor to use
+     */
+    public ParameterConverters(StepMonitor monitor) {
+<span class="fc" id="L83">        this(monitor, DEFAULT_NUMBER_FORMAT_LOCAL, DEFAULT_LIST_SEPARATOR, DEFAULT_THREAD_SAFETY);</span>
+<span class="fc" id="L84">    }</span>
+
+    /**
+     * Create a ParameterConverters with given thread-safety
+     * 
+     * @param threadSafe the boolean flag to determine if access to
+     *            {@link ParameterConverter} should be thread-safe
+     */
+    public ParameterConverters(boolean threadSafe) {
+<span class="fc" id="L93">        this(DEFAULT_STEP_MONITOR, DEFAULT_NUMBER_FORMAT_LOCAL, DEFAULT_LIST_SEPARATOR, threadSafe);</span>
+<span class="fc" id="L94">    }</span>
+
+    /**
+     * Creates a ParameterConverters for the given StepMonitor, Locale, list
+     * separator and thread-safety. When selecting a listSeparator, please make
+     * sure that this character doesn't have a special meaning in your Locale
+     * (for instance &quot;,&quot; is used as decimal separator in some Locale)
+     * 
+     * @param monitor the StepMonitor reporting the conversions
+     * @param locale the Locale to use when reading numbers
+     * @param listSeparator the String to use as list separator
+     * @param threadSafe the boolean flag to determine if modification of
+     *            {@link ParameterConverter} should be thread-safe
+     */
+    public ParameterConverters(StepMonitor monitor, Locale locale, String listSeparator, boolean threadSafe) {
+<span class="fc" id="L109">        this(monitor, new ArrayList&lt;ParameterConverter&gt;(), threadSafe);</span>
+<span class="fc" id="L110">        this.addConverters(defaultConverters(locale, listSeparator));</span>
+<span class="fc" id="L111">    }</span>
+
+<span class="fc" id="L113">    private ParameterConverters(StepMonitor monitor, List&lt;ParameterConverter&gt; converters, boolean threadSafe) {</span>
+<span class="fc" id="L114">        this.monitor = monitor;</span>
+<span class="fc" id="L115">        this.threadSafe = threadSafe;</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        this.converters = (threadSafe ? new CopyOnWriteArrayList&lt;ParameterConverter&gt;(converters)</span>
+                : new ArrayList&lt;ParameterConverter&gt;(converters));
+<span class="fc" id="L118">    }</span>
+
+    protected ParameterConverter[] defaultConverters(Locale locale, String listSeparator) {
+<span class="fc" id="L121">        String escapedListSeparator = escapeRegexPunctuation(listSeparator);</span>
+<span class="fc" id="L122">        ExamplesTableFactory tableFactory = new ExamplesTableFactory(this);</span>
+<span class="fc" id="L123">        ParameterConverter[] defaultConverters = { new BooleanConverter(),</span>
+                new NumberConverter(NumberFormat.getInstance(locale)),
+                new NumberListConverter(NumberFormat.getInstance(locale), escapedListSeparator),
+                new StringListConverter(escapedListSeparator), new DateConverter(),
+                new EnumConverter(), new EnumListConverter(),
+                new ExamplesTableConverter(tableFactory), new ExamplesTableParametersConverter(tableFactory) };
+<span class="fc" id="L129">        return defaultConverters;</span>
+    }
+
+    // TODO : This is a duplicate from RegExpPrefixCapturing
+    private String escapeRegexPunctuation(String matchThis) {
+<span class="fc" id="L134">        return matchThis.replaceAll(&quot;([\\[\\]\\{\\}\\?\\^\\.\\*\\(\\)\\+\\\\])&quot;, &quot;\\\\$1&quot;);</span>
+    }
+
+    public ParameterConverters addConverters(ParameterConverter... converters) {
+<span class="fc" id="L138">        return addConverters(asList(converters));</span>
+    }
+
+    public ParameterConverters addConverters(List&lt;ParameterConverter&gt; converters) {
+<span class="fc" id="L142">        this.converters.addAll(0, converters);</span>
+<span class="fc" id="L143">        return this;</span>
+    }
+
+    public Object convert(String value, Type type) {
+
+        // check if any converters accepts type
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        for (ParameterConverter converter : converters) {</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            if (converter.accept(type)) {</span>
+<span class="fc" id="L151">                Object converted = converter.convertValue(value, type);</span>
+<span class="fc" id="L152">                monitor.convertedValueOfType(value, type, converted, converter.getClass());</span>
+<span class="fc" id="L153">                return converted;</span>
+            }
+<span class="fc" id="L155">        }</span>
+
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (type == String.class) {</span>
+<span class="fc" id="L158">            return replaceNewlinesWithSystemNewlines(value);</span>
+        }
+
+<span class="fc" id="L161">        throw new ParameterConvertionFailed(&quot;No parameter converter for &quot; + type);</span>
+    }
+
+    private Object replaceNewlinesWithSystemNewlines(String value) {
+<span class="fc" id="L165">        return value.replaceAll(NEWLINES_PATTERN, SYSTEM_NEWLINE);</span>
+    }
+
+    public ParameterConverters newInstanceAdding(ParameterConverter converter) {
+<span class="fc" id="L169">        List&lt;ParameterConverter&gt; convertersForNewInstance = new ArrayList&lt;ParameterConverter&gt;(converters);</span>
+<span class="fc" id="L170">        convertersForNewInstance.add(converter);</span>
+<span class="fc" id="L171">        return new ParameterConverters(monitor, convertersForNewInstance, threadSafe);</span>
+    }
+
+    public static interface ParameterConverter {
+
+        boolean accept(Type type);
+
+        Object convertValue(String value, Type type);
+
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class ParameterConvertionFailed extends RuntimeException {
+
+        public ParameterConvertionFailed(String message) {
+<span class="fc" id="L186">            super(message);</span>
+<span class="fc" id="L187">        }</span>
+
+        public ParameterConvertionFailed(String message, Throwable cause) {
+<span class="fc" id="L190">            super(message, cause);</span>
+<span class="fc" id="L191">        }</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Converts values to numbers, supporting any subclass of {@link Number}
+     * (including generic Number type), and it unboxed counterpart, using a
+     * {@link NumberFormat} to parse to a {@link Number} and to convert it to a
+     * specific number type:
+     * &lt;ul&gt;
+     * &lt;li&gt;Byte, byte: {@link Number#byteValue()}&lt;/li&gt;
+     * &lt;li&gt;Short, short: {@link Number#shortValue()}&lt;/li&gt;
+     * &lt;li&gt;Integer, int: {@link Number#intValue()}&lt;/li&gt;
+     * &lt;li&gt;Float, float: {@link Number#floatValue()}&lt;/li&gt;
+     * &lt;li&gt;Long, long: {@link Number#longValue()}&lt;/li&gt;
+     * &lt;li&gt;Double, double: {@link Number#doubleValue()}&lt;/li&gt;
+     * &lt;li&gt;BigInteger: {@link BigInteger#valueOf(Long)}&lt;/li&gt;
+     * &lt;li&gt;BigDecimal: {@link BigDecimal#valueOf(Double)}&lt;/li&gt;&lt;/li&gt;
+     * &lt;/ul&gt;
+     * If no number format is provided, it defaults to
+     * {@link NumberFormat#getInstance(Locale.ENGLISH)}.
+     * &lt;p&gt;
+     * The localized instance {@link NumberFormat#getInstance(Locale)} can be
+     * used to convert numbers in specific locales.
+     * &lt;/p&gt;
+     */
+    public static class NumberConverter implements ParameterConverter {
+<span class="fc" id="L218">        private static List&lt;Class&lt;?&gt;&gt; primitiveTypes = asList(new Class&lt;?&gt;[] { byte.class, short.class, int.class,</span>
+                float.class, long.class, double.class });
+
+        private final NumberFormat numberFormat;
+<span class="fc" id="L222">        private ThreadLocal&lt;NumberFormat&gt; threadLocalNumberFormat = new ThreadLocal&lt;NumberFormat&gt;();</span>
+
+        public NumberConverter() {
+<span class="fc" id="L225">            this(NumberFormat.getInstance(DEFAULT_NUMBER_FORMAT_LOCAL));</span>
+<span class="fc" id="L226">        }</span>
+
+<span class="fc" id="L228">        public NumberConverter(NumberFormat numberFormat) {</span>
+<span class="fc" id="L229">            synchronized (this) {</span>
+<span class="fc" id="L230">                this.numberFormat = numberFormat;</span>
+<span class="fc" id="L231">                this.threadLocalNumberFormat.set((NumberFormat) this.numberFormat.clone());</span>
+<span class="pc" id="L232">            }</span>
+<span class="fc" id="L233">        }</span>
+
+        public boolean accept(Type type) {
+<span class="fc bfc" id="L236" title="All 2 branches covered.">            if (type instanceof Class&lt;?&gt;) {</span>
+<span class="fc bfc" id="L237" title="All 4 branches covered.">                return Number.class.isAssignableFrom((Class&lt;?&gt;) type) || primitiveTypes.contains(type);</span>
+            }
+<span class="fc" id="L239">            return false;</span>
+        }
+
+        public Object convertValue(String value, Type type) {
+            try {
+<span class="fc" id="L244">                Number n = numberFormat().parse(value);</span>
+<span class="fc bfc" id="L245" title="All 4 branches covered.">                if (type == Byte.class || type == byte.class) {</span>
+<span class="fc" id="L246">                    return n.byteValue();</span>
+<span class="fc bfc" id="L247" title="All 4 branches covered.">                } else if (type == Short.class || type == short.class) {</span>
+<span class="fc" id="L248">                    return n.shortValue();</span>
+<span class="fc bfc" id="L249" title="All 4 branches covered.">                } else if (type == Integer.class || type == int.class) {</span>
+<span class="fc" id="L250">                    return n.intValue();</span>
+<span class="fc bfc" id="L251" title="All 4 branches covered.">                } else if (type == Float.class || type == float.class) {</span>
+<span class="fc" id="L252">                    return n.floatValue();</span>
+<span class="fc bfc" id="L253" title="All 4 branches covered.">                } else if (type == Long.class || type == long.class) {</span>
+<span class="fc" id="L254">                    return n.longValue();</span>
+<span class="fc bfc" id="L255" title="All 4 branches covered.">                } else if (type == Double.class || type == double.class) {</span>
+<span class="fc" id="L256">                    return n.doubleValue();</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">                } else if (type == BigInteger.class) {</span>
+<span class="fc" id="L258">                    return BigInteger.valueOf(n.longValue());</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">                } else if (type == BigDecimal.class) {</span>
+<span class="fc" id="L260">                    return new BigDecimal(canonicalize(value));</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">                } else if (type == AtomicInteger.class) {</span>
+<span class="fc" id="L262">                    return new AtomicInteger(Integer.parseInt(value));</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">                } else if (type == AtomicLong.class) {</span>
+<span class="fc" id="L264">                    return new AtomicLong(Long.parseLong(value));</span>
+                } else {
+<span class="fc" id="L266">                    return n;</span>
+                }
+<span class="nc" id="L268">            } catch (NumberFormatException e) {</span>
+<span class="nc" id="L269">                throw new ParameterConvertionFailed(value, e);</span>
+<span class="fc" id="L270">            } catch (ParseException e) {</span>
+<span class="fc" id="L271">                throw new ParameterConvertionFailed(value, e);</span>
+            }
+        }
+
+        /**
+         * Return NumberFormat instance with preferred locale threadsafe
+         * 
+         * @return A threadlocal version of original NumberFormat instance
+         */
+        private NumberFormat numberFormat() {
+<span class="fc bfc" id="L281" title="All 2 branches covered.">            if (threadLocalNumberFormat.get() == null) {</span>
+<span class="fc" id="L282">                synchronized (this) {</span>
+<span class="fc" id="L283">                    threadLocalNumberFormat.set((NumberFormat) numberFormat.clone());</span>
+<span class="pc" id="L284">                }</span>
+            }
+<span class="fc" id="L286">            return threadLocalNumberFormat.get();</span>
+        }
+
+        /**
+         * Canonicalize a number representation to a format suitable for the
+         * {@link BigDecimal(String)} constructor, taking into account the
+         * settings of the currently configured DecimalFormat.
+         * 
+         * @param value a localized number value
+         * @return A canonicalized string value suitable for consumption by
+         *         BigDecimal
+         */
+        private String canonicalize(String value) {
+<span class="fc" id="L299">            char decimalPointSeparator = '.'; // default</span>
+<span class="fc" id="L300">            char minusSign = '-'; // default</span>
+<span class="fc" id="L301">            String rxNotDigits = &quot;[^0-9]&quot;;</span>
+<span class="fc" id="L302">            StringBuilder builder = new StringBuilder(value.length());</span>
+
+            // override defaults according to numberFormat's settings
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">            if (numberFormat() instanceof DecimalFormat) {</span>
+<span class="fc" id="L306">                DecimalFormatSymbols decimalFormatSymbols = ((DecimalFormat) numberFormat()).getDecimalFormatSymbols();</span>
+<span class="fc" id="L307">                minusSign = decimalFormatSymbols.getMinusSign();</span>
+<span class="fc" id="L308">                decimalPointSeparator = decimalFormatSymbols.getDecimalSeparator();</span>
+            }
+
+<span class="fc" id="L311">            value = value.trim();</span>
+<span class="fc" id="L312">            int decimalPointPosition = value.lastIndexOf(decimalPointSeparator);</span>
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">            boolean isNegative = value.charAt(0) == minusSign;</span>
+
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">            if (isNegative) {</span>
+<span class="nc" id="L316">                builder.append('-'); // fixed &quot;-&quot; for BigDecimal constructur</span>
+            }
+
+<span class="fc bfc" id="L319" title="All 2 branches covered.">            if (decimalPointPosition != -1) {</span>
+<span class="fc" id="L320">                String sf = value.substring(0, decimalPointPosition).replaceAll(rxNotDigits, &quot;&quot;);</span>
+<span class="fc" id="L321">                String dp = value.substring(decimalPointPosition + 1).replaceAll(rxNotDigits, &quot;&quot;);</span>
+
+<span class="fc" id="L323">                builder.append(sf);</span>
+<span class="fc" id="L324">                builder.append('.'); // fixed &quot;.&quot; for BigDecimal constructor</span>
+<span class="fc" id="L325">                builder.append(dp);</span>
+
+<span class="fc" id="L327">            } else {</span>
+<span class="fc" id="L328">                builder.append(value.replaceAll(rxNotDigits, &quot;&quot;));</span>
+            }
+<span class="fc" id="L330">            return builder.toString();</span>
+        }
+    }
+
+    /**
+     * Converts value to list of numbers. Splits value to a list, using an
+     * injectable value separator (defaulting to &quot;,&quot;) and converts each element
+     * of list via the {@link NumberConverter}, using the {@link NumberFormat}
+     * provided (defaulting to {@link NumberFormat#getInstance(Locale.ENGLISH)}
+     * ).
+     */
+    public static class NumberListConverter implements ParameterConverter {
+
+        private final NumberConverter numberConverter;
+        private final String valueSeparator;
+
+        public NumberListConverter() {
+<span class="fc" id="L347">            this(NumberFormat.getInstance(DEFAULT_NUMBER_FORMAT_LOCAL), DEFAULT_LIST_SEPARATOR);</span>
+<span class="fc" id="L348">        }</span>
+
+        /**
+         * @param numberFormat Specific NumberFormat to use.
+         * @param valueSeparator A regexp to use as list separate
+         */
+<span class="fc" id="L354">        public NumberListConverter(NumberFormat numberFormat, String valueSeparator) {</span>
+<span class="fc" id="L355">            this.numberConverter = new NumberConverter(numberFormat);</span>
+<span class="fc" id="L356">            this.valueSeparator = valueSeparator;</span>
+<span class="fc" id="L357">        }</span>
+
+        public boolean accept(Type type) {
+<span class="fc bfc" id="L360" title="All 2 branches covered.">            if (type instanceof ParameterizedType) {</span>
+<span class="fc" id="L361">                Type rawType = rawType(type);</span>
+<span class="fc" id="L362">                Type argumentType = argumentType(type);</span>
+<span class="fc bfc" id="L363" title="All 4 branches covered.">                return List.class.isAssignableFrom((Class&lt;?&gt;) rawType)</span>
+                        &amp;&amp; Number.class.isAssignableFrom((Class&lt;?&gt;) argumentType);
+            }
+<span class="fc" id="L366">            return false;</span>
+        }
+
+        private Type rawType(Type type) {
+<span class="fc" id="L370">            return ((ParameterizedType) type).getRawType();</span>
+        }
+
+        private Type argumentType(Type type) {
+<span class="fc" id="L374">            return ((ParameterizedType) type).getActualTypeArguments()[0];</span>
+        }
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        public Object convertValue(String value, Type type) {
+<span class="fc" id="L379">            Class&lt;? extends Number&gt; argumentType = (Class&lt;? extends Number&gt;) argumentType(type);</span>
+<span class="fc" id="L380">            List&lt;String&gt; values = trim(asList(value.split(valueSeparator)));</span>
+<span class="fc" id="L381">            List&lt;Number&gt; numbers = new ArrayList&lt;Number&gt;();</span>
+<span class="fc bfc" id="L382" title="All 2 branches covered.">            for (String numberValue : values) {</span>
+<span class="fc" id="L383">                numbers.add((Number) numberConverter.convertValue(numberValue, argumentType));</span>
+<span class="fc" id="L384">            }</span>
+<span class="fc" id="L385">            return numbers;</span>
+        }
+
+    }
+
+    /**
+     * Converts value to list of String. Splits value to a list, using an
+     * injectable value separator (defaults to &quot;,&quot;) and trimming each element of
+     * the list.
+     */
+    public static class StringListConverter implements ParameterConverter {
+
+        private String valueSeparator;
+
+        public StringListConverter() {
+<span class="fc" id="L400">            this(DEFAULT_LIST_SEPARATOR);</span>
+<span class="fc" id="L401">        }</span>
+
+        /**
+         * @param numberFormat Specific NumberFormat to use.
+         * @param valueSeparator A regexp to use as list separate
+         */
+<span class="fc" id="L407">        public StringListConverter(String valueSeparator) {</span>
+<span class="fc" id="L408">            this.valueSeparator = valueSeparator;</span>
+<span class="fc" id="L409">        }</span>
+
+        public boolean accept(Type type) {
+<span class="fc bfc" id="L412" title="All 2 branches covered.">            if (type instanceof ParameterizedType) {</span>
+<span class="fc" id="L413">                ParameterizedType parameterizedType = (ParameterizedType) type;</span>
+<span class="fc" id="L414">                Type rawType = parameterizedType.getRawType();</span>
+<span class="fc" id="L415">                Type argumentType = parameterizedType.getActualTypeArguments()[0];</span>
+<span class="fc bfc" id="L416" title="All 4 branches covered.">                return List.class.isAssignableFrom((Class&lt;?&gt;) rawType)</span>
+                        &amp;&amp; String.class.isAssignableFrom((Class&lt;?&gt;) argumentType);
+            }
+<span class="fc" id="L419">            return false;</span>
+        }
+
+        public Object convertValue(String value, Type type) {
+<span class="fc bfc" id="L423" title="All 2 branches covered.">            if (value.trim().length() == 0)</span>
+<span class="fc" id="L424">                return asList();</span>
+<span class="fc" id="L425">            return trim(asList(value.split(valueSeparator)));</span>
+        }
+
+    }
+
+    public static List&lt;String&gt; trim(List&lt;String&gt; values) {
+<span class="fc" id="L431">        List&lt;String&gt; trimmed = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L432" title="All 2 branches covered.">        for (String value : values) {</span>
+<span class="fc" id="L433">            trimmed.add(value.trim());</span>
+<span class="fc" id="L434">        }</span>
+<span class="fc" id="L435">        return trimmed;</span>
+    }
+
+    /**
+     * Parses value to a {@link Date} using an injectable {@link DateFormat}
+     * (defaults to &lt;b&gt;new SimpleDateFormat(&quot;dd/MM/yyyy&quot;)&lt;/b&gt;)
+     */
+    public static class DateConverter implements ParameterConverter {
+
+<span class="fc" id="L444">        public static final DateFormat DEFAULT_FORMAT = new SimpleDateFormat(&quot;dd/MM/yyyy&quot;);</span>
+
+        private final DateFormat dateFormat;
+
+        public DateConverter() {
+<span class="fc" id="L449">            this(DEFAULT_FORMAT);</span>
+<span class="fc" id="L450">        }</span>
+
+<span class="fc" id="L452">        public DateConverter(DateFormat dateFormat) {</span>
+<span class="fc" id="L453">            this.dateFormat = dateFormat;</span>
+<span class="fc" id="L454">        }</span>
+
+        public boolean accept(Type type) {
+<span class="fc bfc" id="L457" title="All 2 branches covered.">            if (type instanceof Class&lt;?&gt;) {</span>
+<span class="fc" id="L458">                return Date.class.isAssignableFrom((Class&lt;?&gt;) type);</span>
+            }
+<span class="fc" id="L460">            return false;</span>
+        }
+
+        public Object convertValue(String value, Type type) {
+            try {
+<span class="fc" id="L465">                return dateFormat.parse(value);</span>
+<span class="fc" id="L466">            } catch (ParseException e) {</span>
+<span class="pc bpc" id="L467" title="1 of 2 branches missed.">                throw new ParameterConvertionFailed(&quot;Failed to convert value &quot;</span>
+                        + value
+                        + &quot; with date format &quot;
+                        + (dateFormat instanceof SimpleDateFormat ? ((SimpleDateFormat) dateFormat).toPattern()
+                                : dateFormat), e);
+            }
+        }
+
+    }
+
+    public static class BooleanConverter implements ParameterConverter {
+        private String trueValue;
+        private String falseValue;
+
+        public BooleanConverter() {
+<span class="fc" id="L482">            this(DEFAULT_TRUE_VALUE, DEFAULT_FALSE_VALUE);</span>
+<span class="fc" id="L483">        }</span>
+
+<span class="fc" id="L485">        public BooleanConverter(String trueValue, String falseValue) {</span>
+<span class="fc" id="L486">            this.trueValue = trueValue;</span>
+<span class="fc" id="L487">            this.falseValue = falseValue;</span>
+<span class="fc" id="L488">        }</span>
+
+        public boolean accept(Type type) {
+<span class="fc bfc" id="L491" title="All 2 branches covered.">            if (type instanceof Class&lt;?&gt;) {</span>
+<span class="fc" id="L492">                return Boolean.class.isAssignableFrom((Class&lt;?&gt;) type);</span>
+            }
+<span class="fc" id="L494">            return false;</span>
+        }
+
+        public Object convertValue(String value, Type type) {
+<span class="fc" id="L498">            return BooleanUtils.toBoolean(value, trueValue, falseValue);</span>
+        }
+    }
+
+    public static class BooleanListConverter implements ParameterConverter {
+        private final BooleanConverter booleanConverter;
+        private String valueSeparator;
+
+        public BooleanListConverter() {
+<span class="fc" id="L507">            this(DEFAULT_LIST_SEPARATOR, DEFAULT_TRUE_VALUE, DEFAULT_FALSE_VALUE);</span>
+<span class="fc" id="L508">        }</span>
+
+        public BooleanListConverter(String valueSeparator) {
+<span class="nc" id="L511">            this(valueSeparator, DEFAULT_TRUE_VALUE, DEFAULT_FALSE_VALUE);</span>
+<span class="nc" id="L512">        }</span>
+
+<span class="fc" id="L514">        public BooleanListConverter(String valueSeparator, String trueValue, String falseValue) {</span>
+<span class="fc" id="L515">            this.valueSeparator = valueSeparator;</span>
+<span class="fc" id="L516">            booleanConverter = new BooleanConverter(trueValue, falseValue);</span>
+<span class="fc" id="L517">        }</span>
+
+        public boolean accept(Type type) {
+<span class="pc bpc" id="L520" title="1 of 2 branches missed.">            if (type instanceof ParameterizedType) {</span>
+<span class="fc" id="L521">                Type rawType = rawType(type);</span>
+<span class="fc" id="L522">                Type argumentType = argumentType(type);</span>
+<span class="pc bpc" id="L523" title="2 of 4 branches missed.">                return List.class.isAssignableFrom((Class&lt;?&gt;) rawType)</span>
+                        &amp;&amp; Boolean.class.isAssignableFrom((Class&lt;?&gt;) argumentType);
+            }
+<span class="nc" id="L526">            return false;</span>
+        }
+
+        public Object convertValue(String value, Type type) {
+<span class="fc" id="L530">            List&lt;String&gt; values = trim(asList(value.split(valueSeparator)));</span>
+<span class="fc" id="L531">            List&lt;Boolean&gt; booleans = new ArrayList&lt;Boolean&gt;();</span>
+
+<span class="fc bfc" id="L533" title="All 2 branches covered.">            for (String booleanValue : values) {</span>
+<span class="fc" id="L534">                booleans.add((Boolean) booleanConverter.convertValue(booleanValue, type));</span>
+<span class="fc" id="L535">            }</span>
+<span class="fc" id="L536">            return booleans;</span>
+        }
+
+        private Type rawType(Type type) {
+<span class="fc" id="L540">            return ((ParameterizedType) type).getRawType();</span>
+        }
+
+        private Type argumentType(Type type) {
+<span class="fc" id="L544">            return ((ParameterizedType) type).getActualTypeArguments()[0];</span>
+        }
+    }
+
+    /**
+     * Parses value to any {@link Enum}
+     */
+<span class="fc" id="L551">    public static class EnumConverter implements ParameterConverter {</span>
+
+        public boolean accept(Type type) {
+<span class="fc bfc" id="L554" title="All 2 branches covered.">            if (type instanceof Class&lt;?&gt;) {</span>
+<span class="fc" id="L555">                return ((Class&lt;?&gt;) type).isEnum();</span>
+            }
+<span class="fc" id="L557">            return false;</span>
+        }
+
+        public Object convertValue(String value, Type type) {
+<span class="fc" id="L561">            String typeClass = ((Class&lt;?&gt;) type).getName();</span>
+<span class="fc" id="L562">            Class&lt;?&gt; enumClass = (Class&lt;?&gt;) type;</span>
+<span class="fc" id="L563">            Method valueOfMethod = null;</span>
+            try {
+<span class="fc" id="L565">                valueOfMethod = enumClass.getMethod(&quot;valueOf&quot;, new Class[] { String.class });</span>
+<span class="fc" id="L566">                valueOfMethod.setAccessible(true);</span>
+<span class="fc" id="L567">                return valueOfMethod.invoke(enumClass, new Object[] { value });</span>
+<span class="fc" id="L568">            } catch (Exception e) {</span>
+<span class="fc" id="L569">                throw new ParameterConvertionFailed(&quot;Failed to convert &quot; + value + &quot; for Enum &quot; + typeClass, e);</span>
+            }
+        }
+    }
+
+    /**
+     * Parses value to list of the same {@link Enum}, using an injectable value
+     * separator (defaults to &quot;,&quot;) and trimming each element of the list.
+     */
+    public static class EnumListConverter implements ParameterConverter {
+        private final EnumConverter enumConverter;
+        private String valueSeparator;
+
+        public EnumListConverter() {
+<span class="fc" id="L583">            this(DEFAULT_LIST_SEPARATOR);</span>
+<span class="fc" id="L584">        }</span>
+
+<span class="fc" id="L586">        public EnumListConverter(String valueSeparator) {</span>
+<span class="fc" id="L587">            this.enumConverter = new EnumConverter();</span>
+<span class="fc" id="L588">            this.valueSeparator = valueSeparator;</span>
+<span class="fc" id="L589">        }</span>
+
+        public boolean accept(Type type) {
+<span class="fc bfc" id="L592" title="All 2 branches covered.">            if (type instanceof ParameterizedType) {</span>
+<span class="fc" id="L593">                Type rawType = rawType(type);</span>
+<span class="fc" id="L594">                Type argumentType = argumentType(type);</span>
+<span class="pc bpc" id="L595" title="2 of 4 branches missed.">                return List.class.isAssignableFrom((Class&lt;?&gt;) rawType) &amp;&amp; enumConverter.accept(argumentType);</span>
+            }
+<span class="fc" id="L597">            return false;</span>
+        }
+
+        public Object convertValue(String value, Type type) {
+<span class="fc" id="L601">            Type argumentType = argumentType(type);</span>
+<span class="fc" id="L602">            List&lt;String&gt; values = trim(asList(value.split(valueSeparator)));</span>
+<span class="fc" id="L603">            List&lt;Enum&lt;?&gt;&gt; enums = new ArrayList&lt;Enum&lt;?&gt;&gt;();</span>
+<span class="fc bfc" id="L604" title="All 2 branches covered.">            for (String string : values) {</span>
+<span class="fc" id="L605">                enums.add((Enum&lt;?&gt;) enumConverter.convertValue(string, argumentType));</span>
+<span class="fc" id="L606">            }</span>
+<span class="fc" id="L607">            return enums;</span>
+        }
+
+        private Type rawType(Type type) {
+<span class="fc" id="L611">            return ((ParameterizedType) type).getRawType();</span>
+        }
+
+        private Type argumentType(Type type) {
+<span class="fc" id="L615">            return ((ParameterizedType) type).getActualTypeArguments()[0];</span>
+        }
+    }
+
+    /**
+     * Converts value to {@link ExamplesTable} using a
+     * {@link ExamplesTableFactory}.
+     */
+    public static class ExamplesTableConverter implements ParameterConverter {
+
+        private final ExamplesTableFactory factory;
+
+        public ExamplesTableConverter() {
+<span class="fc" id="L628">            this(new ExamplesTableFactory());</span>
+<span class="fc" id="L629">        }</span>
+
+<span class="fc" id="L631">        public ExamplesTableConverter(ExamplesTableFactory factory) {</span>
+<span class="fc" id="L632">            this.factory = factory;</span>
+<span class="fc" id="L633">        }</span>
+
+        public boolean accept(Type type) {
+<span class="fc bfc" id="L636" title="All 2 branches covered.">            if (type instanceof Class&lt;?&gt;) {</span>
+<span class="fc" id="L637">                return ExamplesTable.class.isAssignableFrom((Class&lt;?&gt;) type);</span>
+            }
+<span class="fc" id="L639">            return false;</span>
+        }
+
+        public Object convertValue(String value, Type type) {
+<span class="fc" id="L643">            return factory.createExamplesTable(value);</span>
+        }
+
+    }
+
+    /**
+     * Converts ExamplesTable to list of parameters, mapped to annotated custom
+     * types.
+     */
+    public static class ExamplesTableParametersConverter implements ParameterConverter {
+
+        private final ExamplesTableFactory factory;
+
+        public ExamplesTableParametersConverter() {
+<span class="fc" id="L657">            this(new ExamplesTableFactory());</span>
+<span class="fc" id="L658">        }</span>
+
+<span class="fc" id="L660">        public ExamplesTableParametersConverter(ExamplesTableFactory factory) {</span>
+<span class="fc" id="L661">            this.factory = factory;</span>
+<span class="fc" id="L662">        }</span>
+
+        public boolean accept(Type type) {
+<span class="fc bfc" id="L665" title="All 2 branches covered.">            if (type instanceof ParameterizedType) {</span>
+<span class="fc" id="L666">                Class&lt;?&gt; rawClass = rawClass(type);</span>
+<span class="fc" id="L667">                Class&lt;?&gt; argumentClass = argumentClass(type);</span>
+<span class="pc bpc" id="L668" title="2 of 4 branches missed.">                if (rawClass.isAnnotationPresent(AsParameters.class)</span>
+                        || argumentClass.isAnnotationPresent(AsParameters.class)) {
+<span class="fc" id="L670">                    return true;</span>
+                }
+<span class="pc bfc" id="L672" title="All 2 branches covered.">            } else if (type instanceof Class) {</span>
+<span class="fc" id="L673">                return ((Class&lt;?&gt;) type).isAnnotationPresent(AsParameters.class);</span>
+            }
+<span class="fc" id="L675">            return false;</span>
+        }
+
+        private Class&lt;?&gt; rawClass(Type type) {
+<span class="fc" id="L679">            return (Class&lt;?&gt;) ((ParameterizedType) type).getRawType();</span>
+        }
+
+        private Class&lt;?&gt; argumentClass(Type type) {
+<span class="fc bfc" id="L683" title="All 2 branches covered.">            if (type instanceof ParameterizedType) {</span>
+<span class="fc" id="L684">                return (Class&lt;?&gt;) ((ParameterizedType) type).getActualTypeArguments()[0];</span>
+            } else {
+<span class="fc" id="L686">                return (Class&lt;?&gt;) type;</span>
+            }
+        }
+
+        public Object convertValue(String value, Type type) {
+<span class="fc" id="L691">            List&lt;?&gt; rows = factory.createExamplesTable(value).getRowsAs(argumentClass(type));</span>
+<span class="fc bfc" id="L692" title="All 2 branches covered.">            if (type instanceof ParameterizedType) {</span>
+<span class="fc" id="L693">                return rows;</span>
+            }
+<span class="fc" id="L695">            return rows.iterator().next();</span>
+        }
+
+    }
+
+    /**
+     * Invokes method on instance to return value.
+     */
+    public static class MethodReturningConverter implements ParameterConverter {
+        private Method method;
+        private Class&lt;?&gt; stepsType;
+        private InjectableStepsFactory stepsFactory;
+
+<span class="fc" id="L708">        public MethodReturningConverter(Method method, Object instance) {</span>
+<span class="fc" id="L709">            this.method = method;</span>
+<span class="fc" id="L710">            this.stepsType = instance.getClass();</span>
+<span class="fc" id="L711">            this.stepsFactory = new InstanceStepsFactory(new MostUsefulConfiguration(), instance);</span>
+<span class="fc" id="L712">        }</span>
+
+<span class="fc" id="L714">        public MethodReturningConverter(Method method, Class&lt;?&gt; stepsType, InjectableStepsFactory stepsFactory) {</span>
+<span class="fc" id="L715">            this.method = method;</span>
+<span class="fc" id="L716">            this.stepsType = stepsType;</span>
+<span class="fc" id="L717">            this.stepsFactory = stepsFactory;</span>
+<span class="fc" id="L718">        }</span>
+
+        public boolean accept(Type type) {
+<span class="fc bfc" id="L721" title="All 2 branches covered.">            if (type instanceof Class&lt;?&gt;) {</span>
+<span class="fc" id="L722">                return method.getReturnType().isAssignableFrom((Class&lt;?&gt;) type);</span>
+            }
+<span class="fc" id="L724">            return false;</span>
+        }
+
+        public Object convertValue(String value, Type type) {
+            try {
+<span class="fc" id="L729">                Object instance = instance();</span>
+<span class="fc" id="L730">                return method.invoke(instance, value);</span>
+<span class="fc" id="L731">            } catch (Exception e) {</span>
+<span class="fc" id="L732">                throw new ParameterConvertionFailed(&quot;Failed to invoke method &quot; + method + &quot; with value &quot; + value</span>
+                        + &quot; in &quot; + type, e);
+            }
+        }
+
+        private Object instance() {
+<span class="fc" id="L738">            return stepsFactory.createInstanceOfType(stepsType);</span>
+        }
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

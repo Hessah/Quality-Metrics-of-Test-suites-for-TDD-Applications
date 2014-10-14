@@ -1,0 +1,487 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ExamplesTable.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.model</a> &gt; <span class="el_source">ExamplesTable.java</span></div><h1>ExamplesTable.java</h1><pre class="source lang-java linenums">package org.jbehave.core.model;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.lang.builder.ToStringBuilder;
+import org.apache.commons.lang.builder.ToStringStyle;
+import org.jbehave.core.annotations.Parameter;
+import org.jbehave.core.model.TableTransformers.TableTransformer;
+import org.jbehave.core.steps.ChainedRow;
+import org.jbehave.core.steps.ConvertedParameters;
+import org.jbehave.core.steps.ParameterConverters;
+import org.jbehave.core.steps.Parameters;
+import org.jbehave.core.steps.Row;
+
+import static java.lang.Boolean.parseBoolean;
+import static java.util.regex.Pattern.DOTALL;
+import static java.util.regex.Pattern.compile;
+
+/**
+ * &lt;p&gt;
+ * Represents a tabular structure that holds rows of example data for parameters
+ * named via the column headers:
+ * &lt;p/&gt;
+ * 
+ * &lt;pre&gt;
+ * |header 1|header 2| .... |header n|
+ * |value 11|value 12| .... |value 1n|
+ * ...
+ * |value m1|value m2| .... |value mn|
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * Different header and value column separators can be specified to replace the
+ * default separator &quot;|&quot;:
+ * &lt;/p&gt;
+ * 
+ * &lt;pre&gt;
+ * !!header 1!!header 2!! .... !!header n!!
+ * !value 11!value 12! .... !value 1n!
+ * ...
+ * !value m1!value m2| .... !value mn!
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * Rows starting with an ignorable separator are allowed and ignored:
+ * &lt;/p&gt;
+ * 
+ * &lt;pre&gt;
+ * |header 1|header 2| .... |header n|
+ * |-- A commented row --|
+ * |value 11|value 12| .... |value 1n|
+ * ...
+ * |-- Another commented row --|
+ * |value m1|value m2| .... |value mn|
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * Ignorable separator is configurable and defaults to &quot;|--&quot;.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The separators are also configurable via inlined properties:
+ * 
+ * &lt;pre&gt;
+ * {ignorableSeparator=!--,headerSeparator=!,valueSeparator=!}
+ * !header 1!header 2! .... !header n!
+ * !-- A commented row --!
+ * !value 11!value 12! .... !value 1n!
+ * ...
+ * !-- Another commented row --!
+ * !value m1!value m2! .... !value mn!
+ * &lt;/pre&gt;
+ * 
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * By default all column values are trimmed. To avoid trimming the values, use
+ * the &quot;trim&quot; inlined property:
+ * 
+ * &lt;pre&gt;
+ * {trim=false}
+ * | header 1 | header 2 | .... | header n |
+ * | value 11 | value 12 | .... | value 1n |
+ * &lt;/pre&gt;
+ * 
+ * &lt;p&gt;
+ * Comments is column values are supported via the &quot;commentSeparator&quot; inlined property:
+ * 
+ * &lt;pre&gt;
+ * {commentSeparator=#}
+ * | header 1#comment | header 2 | .... | header n |
+ * | value 11#comment | value 12 | .... | value 1n |
+ * &lt;/pre&gt;
+ * 
+ * Comments including the separator are stripped. 
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * The table allows the retrieval of row values as converted parameters. Use
+ * {@link #getRowAsParameters(int)} and invoke
+ * {@link Parameters#valueAs(String, Class)} specifying the header and the class
+ * type of the parameter.
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * The table allows the transformation of its string representation via the
+ * &quot;transformer&quot; inlined property:
+ * 
+ * &lt;pre&gt;
+ * {transformer=myTransformerName}
+ * |header 1|header 2| .... |header n|
+ * |value 11|value 12| .... |value 1n|
+ * ...
+ * |value m1|value m2| .... |value mn|
+ * &lt;/pre&gt;
+ * 
+ * The transformer needs to be registered by name via the
+ * {@link TableTransformers#useTransformer(String, TableTransformer)}. A few
+ * transformers are already registered by default in {@link TableTransformers}.
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * Once created, the table row can be modified, via the
+ * {@link #withRowValues(int, Map)} method, by specifying the map of row values
+ * to be changed.
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * A table can also be created by providing the entire data content, via the
+ * {@link #withRows(List&lt;Map&lt;String,String&gt;&gt;)} method.
+ * 
+ * &lt;/p&gt;
+ * The parsing code assumes that the number of columns for data rows is the same
+ * as in the header, if a row has less fields, the remaining are filled with
+ * empty values, if it has more, the fields are ignored.
+ * &lt;p&gt;
+ */
+public class ExamplesTable {
+<span class="fc" id="L146">    private static final Map&lt;String, String&gt; EMPTY_MAP = Collections.emptyMap();</span>
+    private static final String EMPTY_VALUE = &quot;&quot;;
+
+<span class="fc" id="L149">    public static final ExamplesTable EMPTY = new ExamplesTable(&quot;&quot;);</span>
+
+    private static final String ROW_SEPARATOR = &quot;\r?\n&quot;;
+    private static final String NEW_LINE = &quot;\n&quot;;
+    private static final String HEADER_SEPARATOR = &quot;|&quot;;
+    private static final String VALUE_SEPARATOR = &quot;|&quot;;
+    private static final String IGNORABLE_SEPARATOR = &quot;|--&quot;;
+
+    private final String tableAsString;
+    private final String headerSeparator;
+    private final String valueSeparator;
+    private final String ignorableSeparator;
+    private final ParameterConverters parameterConverters;
+    private final TableTransformers tableTransformers;
+<span class="fc" id="L163">    private final List&lt;String&gt; headers = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L164">    private final List&lt;Map&lt;String, String&gt;&gt; data = new ArrayList&lt;Map&lt;String, String&gt;&gt;();</span>
+<span class="fc" id="L165">    private final Properties properties = new Properties();</span>
+<span class="fc" id="L166">    private String propertiesAsString = &quot;&quot;;</span>
+<span class="fc" id="L167">    private Map&lt;String, String&gt; namedParameters = new HashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L168">    private boolean trim = true;</span>
+
+    private final Row defaults;
+
+    public ExamplesTable(String tableAsString) {
+<span class="fc" id="L173">        this(tableAsString, HEADER_SEPARATOR, VALUE_SEPARATOR);</span>
+<span class="fc" id="L174">    }</span>
+
+    public ExamplesTable(String tableAsString, String headerSeparator, String valueSeparator) {
+<span class="fc" id="L177">        this(tableAsString, headerSeparator, valueSeparator, IGNORABLE_SEPARATOR, new ParameterConverters());</span>
+<span class="fc" id="L178">    }</span>
+
+    public ExamplesTable(String tableAsString, String headerSeparator, String valueSeparator,
+            String ignorableSeparator, ParameterConverters parameterConverters) {
+<span class="fc" id="L182">        this(tableAsString, headerSeparator, valueSeparator, ignorableSeparator, parameterConverters,</span>
+                new TableTransformers());
+<span class="fc" id="L184">    }</span>
+
+    public ExamplesTable(String tableAsString, String headerSeparator, String valueSeparator,
+<span class="fc" id="L187">            String ignorableSeparator, ParameterConverters parameterConverters, TableTransformers tableTransformers) {</span>
+<span class="fc" id="L188">        this.tableAsString = tableAsString;</span>
+<span class="fc" id="L189">        this.headerSeparator = headerSeparator;</span>
+<span class="fc" id="L190">        this.valueSeparator = valueSeparator;</span>
+<span class="fc" id="L191">        this.ignorableSeparator = ignorableSeparator;</span>
+<span class="fc" id="L192">        this.parameterConverters = parameterConverters;</span>
+<span class="fc" id="L193">        this.tableTransformers = tableTransformers;</span>
+<span class="fc" id="L194">        this.defaults = new ConvertedParameters(EMPTY_MAP, parameterConverters);</span>
+<span class="fc" id="L195">        parse();</span>
+<span class="fc" id="L196">    }</span>
+
+    private void parse() {
+<span class="fc" id="L199">        String tableWithoutProperties = stripProperties(tableAsString.trim());</span>
+<span class="fc" id="L200">        parseProperties(propertiesAsString);</span>
+<span class="fc" id="L201">        trim = parseBoolean(properties.getProperty(&quot;trim&quot;, &quot;true&quot;));</span>
+<span class="fc" id="L202">        parseTable(tableWithoutProperties);</span>
+<span class="fc" id="L203">    }</span>
+
+<span class="fc" id="L205">    private ExamplesTable(ExamplesTable other, Row defaults) {</span>
+<span class="fc" id="L206">        this.data.addAll(other.data);</span>
+<span class="fc" id="L207">        this.tableAsString = other.tableAsString;</span>
+<span class="fc" id="L208">        this.headerSeparator = other.headerSeparator;</span>
+<span class="fc" id="L209">        this.valueSeparator = other.valueSeparator;</span>
+<span class="fc" id="L210">        this.ignorableSeparator = other.ignorableSeparator;</span>
+<span class="fc" id="L211">        this.parameterConverters = other.parameterConverters;</span>
+<span class="fc" id="L212">        this.tableTransformers = other.tableTransformers;</span>
+<span class="fc" id="L213">        this.headers.addAll(other.headers);</span>
+<span class="fc" id="L214">        this.properties.putAll(other.properties);</span>
+<span class="fc" id="L215">        this.defaults = defaults;</span>
+<span class="fc" id="L216">    }</span>
+
+    private String stripProperties(String tableAsString) {
+<span class="fc" id="L219">        Pattern pattern = compile(&quot;\\{(.*?)\\}\\s*(.*)&quot;, DOTALL);</span>
+<span class="fc" id="L220">        Matcher matcher = pattern.matcher(tableAsString);</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        if (matcher.matches()) {</span>
+<span class="fc" id="L222">            propertiesAsString = matcher.group(1);</span>
+<span class="fc" id="L223">            return matcher.group(2);</span>
+        }
+<span class="fc" id="L225">        return tableAsString;</span>
+    }
+
+    private void parseProperties(String propertiesAsString) {
+<span class="fc" id="L229">        properties.clear();</span>
+<span class="fc" id="L230">        properties.setProperty(&quot;ignorableSeparator&quot;, ignorableSeparator);</span>
+<span class="fc" id="L231">        properties.setProperty(&quot;headerSeparator&quot;, headerSeparator);</span>
+<span class="fc" id="L232">        properties.setProperty(&quot;valueSeparator&quot;, valueSeparator);</span>
+        try {
+<span class="fc" id="L234">            properties.load(new ByteArrayInputStream(propertiesAsString.replace(&quot;,&quot;, NEW_LINE).getBytes()));</span>
+<span class="nc" id="L235">        } catch (IOException e) {</span>
+            // carry on
+<span class="fc" id="L237">        }</span>
+<span class="fc" id="L238">    }</span>
+
+    private void parseTable(String tableAsString) {
+<span class="fc" id="L241">        headers.clear();</span>
+<span class="fc" id="L242">        data.clear();</span>
+<span class="fc" id="L243">        String transformer = properties.getProperty(&quot;transformer&quot;);</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (transformer != null) {</span>
+<span class="fc" id="L245">            tableAsString = tableTransformers.transform(transformer, tableAsString, properties);</span>
+        }
+<span class="fc" id="L247">        parseByRows(headers, data, tableAsString);</span>
+<span class="fc" id="L248">    }</span>
+
+    private void parseByRows(List&lt;String&gt; headers, List&lt;Map&lt;String, String&gt;&gt; data, String tableAsString) {
+<span class="fc" id="L251">        String[] rows = tableAsString.split(ROW_SEPARATOR);</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        for (int row = 0; row &lt; rows.length; row++) {</span>
+<span class="fc" id="L253">            String rowAsString = rows[row].trim();</span>
+<span class="fc bfc" id="L254" title="All 4 branches covered.">            if (rowAsString.startsWith(properties.getProperty(&quot;ignorableSeparator&quot;)) || rowAsString.length() == 0) {</span>
+                // skip ignorable or empty lines
+<span class="fc" id="L256">                continue;</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">            } else if (headers.isEmpty()) {</span>
+<span class="fc" id="L258">                headers.addAll(TableUtils.parseRow(rowAsString, properties.getProperty(&quot;headerSeparator&quot;),</span>
+                        properties.getProperty(&quot;commentSeparator&quot;), trim));
+            } else {
+<span class="fc" id="L261">                List&lt;String&gt; columns = TableUtils.parseRow(rowAsString, properties.getProperty(&quot;valueSeparator&quot;),</span>
+                        properties.getProperty(&quot;commentSeparator&quot;), trim);
+<span class="fc" id="L263">                Map&lt;String, String&gt; map = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">                for (int column = 0; column &lt; columns.size(); column++) {</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">                    if (column &lt; headers.size()) {</span>
+<span class="fc" id="L266">                        map.put(headers.get(column), columns.get(column));</span>
+                    }
+                }
+<span class="fc" id="L269">                data.add(map);</span>
+            }
+        }
+<span class="fc" id="L272">    }</span>
+
+    public ExamplesTable withDefaults(Parameters defaults) {
+<span class="fc" id="L275">        return new ExamplesTable(this, new ChainedRow(defaults, this.defaults));</span>
+    }
+
+    public ExamplesTable withNamedParameters(Map&lt;String, String&gt; namedParameters) {
+<span class="fc" id="L279">        this.namedParameters = namedParameters;</span>
+<span class="fc" id="L280">        return this;</span>
+    }
+
+    public ExamplesTable withRowValues(int row, Map&lt;String, String&gt; values) {
+<span class="fc" id="L284">        getRow(row).putAll(values);</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">        for (String header : values.keySet()) {</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">            if (!headers.contains(header)) {</span>
+<span class="fc" id="L287">                headers.add(header);</span>
+            }
+<span class="fc" id="L289">        }</span>
+<span class="fc" id="L290">        return this;</span>
+    }
+
+    public ExamplesTable withRows(List&lt;Map&lt;String, String&gt;&gt; values) {
+<span class="fc" id="L294">        this.data.clear();</span>
+<span class="fc" id="L295">        this.data.addAll(values);</span>
+<span class="fc" id="L296">        this.headers.clear();</span>
+<span class="fc" id="L297">        this.headers.addAll(values.get(0).keySet());</span>
+<span class="fc" id="L298">        return this;</span>
+    }
+
+    public Properties getProperties() {
+<span class="fc" id="L302">        return properties;</span>
+    }
+
+    public List&lt;String&gt; getHeaders() {
+<span class="fc" id="L306">        return headers;</span>
+    }
+
+    public Map&lt;String, String&gt; getRow(int row) {
+<span class="fc bfc" id="L310" title="All 2 branches covered.">        if (row &gt; data.size() - 1) {</span>
+<span class="fc" id="L311">            throw new RowNotFound(row);</span>
+        }
+<span class="fc" id="L313">        Map&lt;String, String&gt; values = data.get(row);</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        if (headers.size() != values.keySet().size()) {</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">            for (String header : headers) {</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">                if (!values.containsKey(header)) {</span>
+<span class="fc" id="L317">                    values.put(header, EMPTY_VALUE);</span>
+                }
+<span class="fc" id="L319">            }</span>
+        }
+<span class="fc" id="L321">        return values;</span>
+    }
+
+    public Parameters getRowAsParameters(int row) {
+<span class="fc" id="L325">        return getRowAsParameters(row, false);</span>
+    }
+
+    public Parameters getRowAsParameters(int row, boolean replaceNamedParameters) {
+<span class="fc" id="L329">        Map&lt;String, String&gt; rowValues = getRow(row);</span>
+<span class="fc bfc" id="L330" title="All 2 branches covered.">        return createParameters((replaceNamedParameters ? replaceNamedParameters(rowValues) : rowValues));</span>
+    }
+
+    private Map&lt;String, String&gt; replaceNamedParameters(Map&lt;String, String&gt; row) {
+<span class="fc" id="L334">        Map&lt;String, String&gt; replaced = new HashMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">        for (String key : row.keySet()) {</span>
+<span class="fc" id="L336">            String replacedValue = row.get(key);</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">            for (String namedKey : namedParameters.keySet()) {</span>
+<span class="fc" id="L338">                String namedValue = namedParameters.get(namedKey);</span>
+<span class="fc" id="L339">                replacedValue = replacedValue.replaceAll(namedKey, namedValue);</span>
+<span class="fc" id="L340">            }</span>
+<span class="fc" id="L341">            replaced.put(key, replacedValue);</span>
+<span class="fc" id="L342">        }</span>
+<span class="fc" id="L343">        return replaced;</span>
+    }
+
+    public int getRowCount() {
+<span class="fc" id="L347">        return data.size();</span>
+    }
+
+    public List&lt;Map&lt;String, String&gt;&gt; getRows() {
+<span class="fc" id="L351">        List&lt;Map&lt;String, String&gt;&gt; rows = new ArrayList&lt;Map&lt;String, String&gt;&gt;();</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">        for (int row = 0; row &lt; getRowCount(); row++) {</span>
+<span class="fc" id="L353">            rows.add(getRow(row));</span>
+        }
+<span class="fc" id="L355">        return rows;</span>
+    }
+
+    public List&lt;Parameters&gt; getRowsAsParameters() {
+<span class="fc" id="L359">        return getRowsAsParameters(false);</span>
+    }
+
+    public List&lt;Parameters&gt; getRowsAsParameters(boolean replaceNamedParameters) {
+<span class="fc" id="L363">        List&lt;Parameters&gt; rows = new ArrayList&lt;Parameters&gt;();</span>
+
+<span class="fc bfc" id="L365" title="All 2 branches covered.">        for (int row = 0; row &lt; getRowCount(); row++) {</span>
+<span class="fc" id="L366">            rows.add(getRowAsParameters(row, replaceNamedParameters));</span>
+        }
+
+<span class="fc" id="L369">        return rows;</span>
+    }
+
+    public &lt;T&gt; List&lt;T&gt; getRowsAs(Class&lt;T&gt; type) {
+<span class="fc" id="L373">        return getRowsAs(type, new HashMap&lt;String, String&gt;());</span>
+    }
+
+    public &lt;T&gt; List&lt;T&gt; getRowsAs(Class&lt;T&gt; type, Map&lt;String, String&gt; fieldNameMapping) {
+<span class="fc" id="L377">        List&lt;T&gt; rows = new ArrayList&lt;T&gt;();</span>
+
+<span class="fc bfc" id="L379" title="All 2 branches covered.">        for (Parameters parameters : getRowsAsParameters()) {</span>
+<span class="fc" id="L380">            rows.add(mapToType(parameters, type, fieldNameMapping));</span>
+<span class="fc" id="L381">        }</span>
+
+<span class="fc" id="L383">        return rows;</span>
+    }
+
+    private &lt;T&gt; T mapToType(Parameters parameters, Class&lt;T&gt; type, Map&lt;String, String&gt; fieldNameMapping) {
+        try {
+<span class="fc" id="L388">            T instance = type.newInstance();</span>
+<span class="fc" id="L389">            Map&lt;String, String&gt; values = parameters.values();</span>
+<span class="fc bfc" id="L390" title="All 2 branches covered.">            for (String name : values.keySet()) {</span>
+<span class="fc" id="L391">                Field field = findField(type, name, fieldNameMapping);</span>
+<span class="fc" id="L392">                Class&lt;?&gt; fieldType = (Class&lt;?&gt;) field.getGenericType();</span>
+<span class="fc" id="L393">                Object value = parameters.valueAs(name, fieldType);</span>
+<span class="fc" id="L394">                field.setAccessible(true);</span>
+<span class="fc" id="L395">                field.set(instance, value);</span>
+<span class="fc" id="L396">            }</span>
+<span class="fc" id="L397">            return instance;</span>
+<span class="nc" id="L398">        } catch (Exception e) {</span>
+<span class="nc" id="L399">            throw new ParametersNotMappableToType(parameters, type, e);</span>
+        }
+    }
+
+    private &lt;T&gt; Field findField(Class&lt;T&gt; type, String name, Map&lt;String, String&gt; fieldNameMapping)
+            throws NoSuchFieldException {
+        // Get field name from mapping, if specified
+<span class="fc" id="L406">        String fieldName = fieldNameMapping.get(name);</span>
+<span class="fc bfc" id="L407" title="All 2 branches covered.">        if (fieldName == null) {</span>
+<span class="fc" id="L408">            fieldName = name;</span>
+        }
+        // First look for fields annotated by @Parameter specifying the name
+<span class="fc bfc" id="L411" title="All 2 branches covered.">        for (Field field : type.getDeclaredFields()) {</span>
+<span class="fc bfc" id="L412" title="All 2 branches covered.">            if (field.isAnnotationPresent(Parameter.class)) {</span>
+<span class="fc" id="L413">                Parameter parameter = field.getAnnotation(Parameter.class);</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">                if (fieldName.equals(parameter.name())) {</span>
+<span class="fc" id="L415">                    return field;</span>
+                }
+            }
+        }
+        // Default to field matching given name
+<span class="fc" id="L420">        return type.getDeclaredField(fieldName);</span>
+    }
+
+    private Parameters createParameters(Map&lt;String, String&gt; values) {
+<span class="fc" id="L424">        return new ConvertedParameters(new ChainedRow(new ConvertedParameters(values, parameterConverters), defaults),</span>
+                parameterConverters);
+    }
+
+    public String getHeaderSeparator() {
+<span class="fc" id="L429">        return headerSeparator;</span>
+    }
+
+    public String getValueSeparator() {
+<span class="fc" id="L433">        return valueSeparator;</span>
+    }
+
+    public String asString() {
+<span class="fc bfc" id="L437" title="All 2 branches covered.">        if (data.isEmpty()) {</span>
+<span class="fc" id="L438">            return EMPTY_VALUE;</span>
+        }
+<span class="fc" id="L440">        return format();</span>
+    }
+
+    public void outputTo(PrintStream output) {
+<span class="fc" id="L444">        output.print(asString());</span>
+<span class="fc" id="L445">    }</span>
+
+    private String format() {
+<span class="fc" id="L448">        StringBuffer sb = new StringBuffer();</span>
+<span class="fc bfc" id="L449" title="All 2 branches covered.">        for (String header : headers) {</span>
+<span class="fc" id="L450">            sb.append(headerSeparator).append(header);</span>
+<span class="fc" id="L451">        }</span>
+<span class="fc" id="L452">        sb.append(headerSeparator).append(NEW_LINE);</span>
+<span class="fc bfc" id="L453" title="All 2 branches covered.">        for (Map&lt;String, String&gt; row : getRows()) {</span>
+<span class="fc bfc" id="L454" title="All 2 branches covered.">            for (String header : headers) {</span>
+<span class="fc" id="L455">                sb.append(valueSeparator);</span>
+<span class="fc" id="L456">                sb.append(row.get(header));</span>
+<span class="fc" id="L457">            }</span>
+<span class="fc" id="L458">            sb.append(valueSeparator).append(NEW_LINE);</span>
+<span class="fc" id="L459">        }</span>
+<span class="fc" id="L460">        return sb.toString();</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L465">        return ToStringBuilder.reflectionToString(this, ToStringStyle.SHORT_PREFIX_STYLE);</span>
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class RowNotFound extends RuntimeException {
+
+        public RowNotFound(int row) {
+<span class="fc" id="L472">            super(Integer.toString(row));</span>
+<span class="fc" id="L473">        }</span>
+
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class ParametersNotMappableToType extends RuntimeException {
+
+        public ParametersNotMappableToType(Parameters parameters, Class&lt;?&gt; type, Exception e) {
+<span class="nc" id="L481">            super(parameters.values() + &quot; not mappable to type &quot; + type, e);</span>
+<span class="nc" id="L482">        }</span>
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

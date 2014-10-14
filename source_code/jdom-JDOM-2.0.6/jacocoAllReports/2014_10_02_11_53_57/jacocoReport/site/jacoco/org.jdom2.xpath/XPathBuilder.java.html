@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>XPathBuilder.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jdom-JDOM-2.0.6</a> &gt; <a href="index.source.html" class="el_package">org.jdom2.xpath</a> &gt; <span class="el_source">XPathBuilder.java</span></div><h1>XPathBuilder.java</h1><pre class="source lang-java linenums">/*--
+
+ Copyright (C) 2012 Jason Hunter &amp; Brett McLaughlin.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions, and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions, and the disclaimer that follows
+    these conditions in the documentation and/or other materials
+    provided with the distribution.
+
+ 3. The name &quot;JDOM&quot; must not be used to endorse or promote products
+    derived from this software without prior written permission.  For
+    written permission, please contact &lt;request_AT_jdom_DOT_org&gt;.
+
+ 4. Products derived from this software may not be called &quot;JDOM&quot;, nor
+    may &quot;JDOM&quot; appear in their name, without prior written permission
+    from the JDOM Project Management &lt;request_AT_jdom_DOT_org&gt;.
+
+ In addition, we request (but do not require) that you include in the
+ end-user documentation provided with the redistribution and/or in the
+ software itself an acknowledgement equivalent to the following:
+     &quot;This product includes software developed by the
+      JDOM Project (http://www.jdom.org/).&quot;
+ Alternatively, the acknowledgment may be graphical using the logos
+ available at http://www.jdom.org/images/logos.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE JDOM AUTHORS OR THE PROJECT
+ CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ SUCH DAMAGE.
+
+ This software consists of voluntary contributions made by many
+ individuals on behalf of the JDOM Project and was originally
+ created by Jason Hunter &lt;jhunter_AT_jdom_DOT_org&gt; and
+ Brett McLaughlin &lt;brett_AT_jdom_DOT_org&gt;.  For more information
+ on the JDOM Project, please see &lt;http://www.jdom.org/&gt;.
+
+ */
+
+package org.jdom2.xpath;
+
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.jdom2.Namespace;
+import org.jdom2.filter.Filter;
+
+/**
+ * A helper class for creating {@link XPathExpression} instances without having
+ * to manage your own Namespace and Variable contexts.
+ * 
+ * @author Rolf Lear
+ * @param &lt;T&gt;
+ *        The generic type of the returned results.
+ */
+public class XPathBuilder&lt;T&gt; {
+	private final Filter&lt;T&gt; filter;
+	private final String expression;
+	private Map&lt;String, Object&gt; variables;
+	private Map&lt;String, Namespace&gt; namespaces;
+
+	/**
+	 * Create a skeleton XPathBuilder with the given expression and result
+	 * filter.
+	 * 
+	 * @param expression
+	 *        The XPath expression.
+	 * @param filter
+	 *        The Filter to perform the coercion with.
+	 */
+<span class="fc" id="L87">	public XPathBuilder(String expression, Filter&lt;T&gt; filter) {</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">		if (expression == null) {</span>
+<span class="fc" id="L89">			throw new NullPointerException(&quot;Null expression&quot;);</span>
+		}
+<span class="fc bfc" id="L91" title="All 2 branches covered.">		if (filter == null) {</span>
+<span class="fc" id="L92">			throw new NullPointerException(&quot;Null filter&quot;);</span>
+		}
+<span class="fc" id="L94">		this.filter = filter;</span>
+<span class="fc" id="L95">		this.expression = expression;</span>
+<span class="fc" id="L96">	}</span>
+
+	/**
+	 * Define or redefine an XPath expression variable value. In XPath, variable
+	 * names can be in a namespace, and thus the variable name is in a QName
+	 * form: prefix:name
+	 * &lt;p&gt;
+	 * Variables without a prefix are in the &quot;&quot; Namespace.
+	 * &lt;p&gt;
+	 * Variables can have a null value. The {@link XPathExpression} can change
+	 * the variable value before the expression is evaluated, and, some XPath
+	 * libraries support a null variable value. See
+	 * {@link XPathExpression#setVariable(String, Namespace, Object)}.
+	 * &lt;p&gt;
+	 * In order to validate that a Variable is unique you have to know the
+	 * namespace associated with the prefix. This class is designed to make it
+	 * possible to make the namespace associations after the variables have been
+	 * added. As a result it is not possible to validate the uniqueness of a
+	 * variable name until the {@link #compileWith(XPathFactory)} method is
+	 * called.
+	 * &lt;p&gt;
+	 * As a consequence of the above, this class assumes that each unique prefix
+	 * is for a unique Namespace URI (thus calling this method with different
+	 * QNames is assumed to be setting different variables). This may lead to an
+	 * IllegalArgumentException when the {@link #compileWith(XPathFactory)}
+	 * method is called.
+	 * &lt;p&gt;
+	 * This method does not validate the format of the variable name either, it
+	 * instead postpones the validation until the expression is compiled. As a
+	 * result you may encounter IllegalArgumentExceptions at compile time if the
+	 * variable names are not valid XPath QNames (&quot;name&quot; or &quot;prefix:name&quot;).
+	 * 
+	 * @param qname
+	 *        The variable name to define.
+	 * @param value
+	 *        The variable value to set.
+	 * @return true if this variable was defined, false if it was previously
+	 *         defined and has now been redefined.
+	 * @throws NullPointerException
+	 *         if the name is null.
+	 */
+	public boolean setVariable(String qname, Object value) {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">		if (qname == null) {</span>
+<span class="fc" id="L139">			throw new NullPointerException(&quot;Null variable name&quot;);</span>
+		}
+<span class="fc bfc" id="L141" title="All 2 branches covered.">		if (variables == null) {</span>
+<span class="fc" id="L142">			variables = new HashMap&lt;String, Object&gt;();</span>
+		}
+<span class="fc bfc" id="L144" title="All 2 branches covered.">		return variables.put(qname, value) == null;</span>
+	}
+
+	/**
+	 * Define a Namespace to be available for the XPath expression. If a
+	 * Namespace with the same prefix was previously defined then the prefix
+	 * will be re-defined.
+	 * 
+	 * @param prefix
+	 *        The namespace prefix to define.
+	 * @param uri
+	 *        The namespace URI to define.
+	 * @return true if the Namespace prefix was newly defined, false if the
+	 *         prefix was previously defined and has now been redefined.
+	 */
+	public boolean setNamespace(String prefix, String uri) {
+<span class="fc bfc" id="L160" title="All 2 branches covered.">		if (prefix == null) {</span>
+<span class="fc" id="L161">			throw new NullPointerException(&quot;Null prefix&quot;);</span>
+		}
+<span class="fc bfc" id="L163" title="All 2 branches covered.">		if (uri == null) {</span>
+<span class="fc" id="L164">			throw new NullPointerException(&quot;Null URI&quot;);</span>
+		}
+<span class="fc" id="L166">		return setNamespace(Namespace.getNamespace(prefix, uri));</span>
+	}
+
+	/**
+	 * Define a Namespace to be available for the XPath expression.
+	 * 
+	 * @param namespace
+	 *        The namespace to define.
+	 * @return true if this Namespace prefix was newly defined, false if the
+	 *         prefix was previously defined and has now been redefined.
+	 * @throws NullPointerException
+	 *         if the namespace is null.
+	 */
+	public boolean setNamespace(Namespace namespace) {
+<span class="fc bfc" id="L180" title="All 2 branches covered.">		if (namespace == null) {</span>
+<span class="fc" id="L181">			throw new NullPointerException(&quot;Null Namespace&quot;);</span>
+		}
+<span class="fc bfc" id="L183" title="All 2 branches covered.">		if (&quot;&quot;.equals(namespace.getPrefix())) {</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">			if (Namespace.NO_NAMESPACE != namespace) {</span>
+<span class="fc" id="L185">				throw new IllegalArgumentException(</span>
+						&quot;Cannot set a Namespace URI in XPath for the \&quot;\&quot; prefix.&quot;);
+			}
+			// NO_NAMESPACE is always defined...
+<span class="fc" id="L189">			return false;</span>
+		}
+
+<span class="fc bfc" id="L192" title="All 2 branches covered.">		if (namespaces == null) {</span>
+<span class="fc" id="L193">			namespaces = new HashMap&lt;String, Namespace&gt;();</span>
+		}
+<span class="fc bfc" id="L195" title="All 2 branches covered.">		return namespaces.put(namespace.getPrefix(), namespace) == null;</span>
+	}
+
+	/**
+	 * Add a number of namespaces to this XPathBuilder
+	 * 
+	 * @param namespaces
+	 *        The namespaces to set.
+	 * @return true if any of the Namespace prefixes are new to the XPathBuilder
+	 * @throws NullPointerException
+	 *         if the namespace collection, or any of its members are null.
+	 */
+	public boolean setNamespaces(Collection&lt;Namespace&gt; namespaces) {
+<span class="fc bfc" id="L208" title="All 2 branches covered.">		if (namespaces == null) {</span>
+<span class="fc" id="L209">			throw new NullPointerException(&quot;Null namespaces Collection&quot;);</span>
+		}
+<span class="fc" id="L211">		boolean ret = false;</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">		for (Namespace ns : namespaces) {</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">			if (setNamespace(ns)) {</span>
+<span class="fc" id="L214">				ret = true;</span>
+			}
+<span class="fc" id="L216">		}</span>
+<span class="fc" id="L217">		return ret;</span>
+	}
+
+	/**
+	 * Get the variable value associated with the given name. See
+	 * {@link #setVariable(String, Object)} for notes on how the Namespaces need
+	 * to be established before an authoritative reference to a variable can be
+	 * made. As a result, this method uses the simple variable QName name to
+	 * reference the variable.
+	 * 
+	 * @param qname
+	 *        The variable name to get the vaiable value for.
+	 * @return the variable value, or null if the variable was not defined.
+	 * @throws NullPointerException
+	 *         if the qname is null.
+	 */
+	public Object getVariable(String qname) {
+<span class="fc bfc" id="L234" title="All 2 branches covered.">		if (qname == null) {</span>
+<span class="fc" id="L235">			throw new NullPointerException(&quot;Null qname&quot;);</span>
+		}
+<span class="fc bfc" id="L237" title="All 2 branches covered.">		if (variables == null) {</span>
+<span class="fc" id="L238">			return null;</span>
+		}
+<span class="fc" id="L240">		return variables.get(qname);</span>
+	}
+
+	/**
+	 * Get the Namespace associated with the given prefix.
+	 * 
+	 * @param prefix
+	 *        The Namespace prefix to get the Namespace for.
+	 * @return the Namespace with that prefix, or null if that prefix was never
+	 *         defined.
+	 */
+	public Namespace getNamespace(String prefix) {
+<span class="fc bfc" id="L252" title="All 2 branches covered.">		if (prefix == null) {</span>
+<span class="fc" id="L253">			throw new NullPointerException(&quot;Null prefix&quot;);</span>
+		}
+<span class="fc bfc" id="L255" title="All 2 branches covered.">		if (&quot;&quot;.equals(prefix)) {</span>
+<span class="fc" id="L256">			return Namespace.NO_NAMESPACE;</span>
+		}
+<span class="fc bfc" id="L258" title="All 2 branches covered.">		if (namespaces == null) {</span>
+<span class="fc" id="L259">			return null;</span>
+		}
+<span class="fc" id="L261">		return namespaces.get(prefix);</span>
+	}
+
+	/**
+	 * Get the Filter instance used for coercion.
+	 * 
+	 * @return the coercion Filter.
+	 */
+	public Filter&lt;T&gt; getFilter() {
+<span class="fc" id="L270">		return filter;</span>
+	}
+
+	/**
+	 * Get the XPath expression.
+	 * 
+	 * @return the XPath expression.
+	 */
+	public String getExpression() {
+<span class="fc" id="L279">		return expression;</span>
+	}
+
+	/**
+	 * Compile an XPathExpression using the details currently stored in the
+	 * XPathBuilder.
+	 * 
+	 * @param factory
+	 *        The XPath factory to use for compiling.
+	 * @return The compiled XPath expression
+	 * @throws IllegalArgumentException
+	 *         if the expression cannot be compiled.
+	 */
+	public XPathExpression&lt;T&gt; compileWith(XPathFactory factory) {
+<span class="fc bfc" id="L293" title="All 2 branches covered.">		if (namespaces == null) {</span>
+<span class="fc" id="L294">			return factory.compile(expression, filter, variables);</span>
+		}
+<span class="fc" id="L296">		return factory.compile(expression, filter, variables, namespaces</span>
+				.values().toArray(new Namespace[namespaces.size()]));
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,503 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>CrossReference.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.reporters</a> &gt; <span class="el_source">CrossReference.java</span></div><h1>CrossReference.java</h1><pre class="source lang-java linenums">package org.jbehave.core.reporters;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.Writer;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.jbehave.core.failures.FailingUponPendingStep;
+import org.jbehave.core.failures.PassingUponPendingStep;
+import org.jbehave.core.failures.PendingStepStrategy;
+import org.jbehave.core.io.StoryLocation;
+import org.jbehave.core.model.ExamplesTable;
+import org.jbehave.core.model.Meta;
+import org.jbehave.core.model.Narrative;
+import org.jbehave.core.model.Scenario;
+import org.jbehave.core.model.StepPattern;
+import org.jbehave.core.model.Story;
+import org.jbehave.core.steps.NullStepMonitor;
+import org.jbehave.core.steps.StepMonitor;
+import org.jbehave.core.steps.StepType;
+
+import com.thoughtworks.xstream.XStream;
+import com.thoughtworks.xstream.io.json.JsonHierarchicalStreamDriver;
+
+public class CrossReference extends Format {
+
+<span class="fc" id="L34">    private final XStream XSTREAM_FOR_XML = new XStream();</span>
+<span class="fc" id="L35">    private final XStream XSTREAM_FOR_JSON = new XStream(new JsonHierarchicalStreamDriver());</span>
+<span class="fc" id="L36">    private ThreadLocal&lt;Story&gt; currentStory = new ThreadLocal&lt;Story&gt;();</span>
+<span class="fc" id="L37">    private ThreadLocal&lt;Long&gt; currentStoryStart = new ThreadLocal&lt;Long&gt;();</span>
+<span class="fc" id="L38">    private ThreadLocal&lt;String&gt; currentScenarioTitle = new ThreadLocal&lt;String&gt;();</span>
+<span class="fc" id="L39">    private List&lt;StoryHolder&gt; stories = new ArrayList&lt;StoryHolder&gt;();</span>
+<span class="fc" id="L40">    private Map&lt;String, Long&gt; times = new HashMap&lt;String, Long&gt;();</span>
+<span class="fc" id="L41">    private Map&lt;String, StepMatch&gt; stepMatches = new HashMap&lt;String, StepMatch&gt;();</span>
+<span class="fc" id="L42">    private StepMonitor stepMonitor = new XRefStepMonitor();</span>
+<span class="fc" id="L43">    private Set&lt;String&gt; failingStories = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L44">    private Set&lt;String&gt; pendingStories = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L45">    private Set&lt;String&gt; stepsPerformed = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L46">    private PendingStepStrategy pendingStepStrategy = new PassingUponPendingStep();</span>
+<span class="fc" id="L47">    private String metaFilter = &quot;&quot;;</span>
+<span class="fc" id="L48">    private boolean doJson = true;</span>
+<span class="fc" id="L49">    private boolean doXml = true;</span>
+<span class="fc" id="L50">    private boolean excludeStoriesWithNoExecutedScenarios = false;</span>
+<span class="fc" id="L51">    private boolean outputAfterEachStory = false;</span>
+    private Format threadSafeDelegateFormat;
+
+    public CrossReference() {
+<span class="fc" id="L55">        this(&quot;XREF&quot;);</span>
+<span class="fc" id="L56">    }</span>
+
+    public CrossReference(String name) {
+<span class="fc" id="L59">        super(name);</span>
+<span class="fc" id="L60">        configure(XSTREAM_FOR_XML);</span>
+<span class="fc" id="L61">        configure(XSTREAM_FOR_JSON);</span>
+<span class="fc" id="L62">    }</span>
+
+    public CrossReference withJsonOnly() {
+<span class="fc" id="L65">        doJson = true;</span>
+<span class="fc" id="L66">        doXml = false;</span>
+<span class="fc" id="L67">        return this;</span>
+    }
+
+    public CrossReference withXmlOnly() {
+<span class="fc" id="L71">        doJson = false;</span>
+<span class="fc" id="L72">        doXml = true;</span>
+<span class="fc" id="L73">        return this;</span>
+    }
+
+    public CrossReference withMetaFilter(String metaFilter) {
+<span class="nc" id="L77">        this.metaFilter = metaFilter;</span>
+<span class="nc" id="L78">        return this;</span>
+    }
+
+    public CrossReference withPendingStepStrategy(PendingStepStrategy pendingStepStrategy) {
+<span class="nc" id="L82">        this.pendingStepStrategy = pendingStepStrategy;</span>
+<span class="nc" id="L83">        return this;</span>
+    }
+
+    public CrossReference withOutputAfterEachStory(boolean outputAfterEachStory) {
+<span class="nc" id="L87">        this.outputAfterEachStory = outputAfterEachStory;</span>
+<span class="nc" id="L88">        return this;</span>
+    }
+
+    public CrossReference withThreadSafeDelegateFormat(Format format) {
+<span class="nc" id="L92">        this.threadSafeDelegateFormat = format;</span>
+<span class="nc" id="L93">        return this;</span>
+    }
+
+    public CrossReference excludingStoriesWithNoExecutedScenarios(boolean exclude) {
+<span class="fc" id="L97">        this.excludeStoriesWithNoExecutedScenarios = exclude;</span>
+<span class="fc" id="L98">        return this;</span>
+    }
+
+    public String getMetaFilter() {
+<span class="fc" id="L102">        return metaFilter;</span>
+    }
+
+    public StepMonitor getStepMonitor() {
+<span class="fc" id="L106">        return stepMonitor;</span>
+    }
+
+    /**
+     * Output to JSON and/or XML files. Could be at the end of the suite, or per
+     * story In the case of the latter, synchronization is needed as two stories
+     * (on two threads) could be completing concurrently, and we need to guard
+     * against ConcurrentModificationException
+     * 
+     * @param storyReporterBuilder the reporter to use
+     */
+    public synchronized void outputToFiles(StoryReporterBuilder storyReporterBuilder) {
+<span class="fc" id="L118">        XRefRoot root = createXRefRoot(storyReporterBuilder, stories, failingStories, pendingStories);</span>
+<span class="fc" id="L119">        root.addStepMatches(stepMatches);</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (doXml) {</span>
+<span class="fc" id="L121">            outputFile(fileName(&quot;xml&quot;), XSTREAM_FOR_XML, root, storyReporterBuilder);</span>
+        }
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (doJson) {</span>
+<span class="fc" id="L124">            outputFile(fileName(&quot;json&quot;), XSTREAM_FOR_JSON, root, storyReporterBuilder);</span>
+        }
+<span class="fc" id="L126">    }</span>
+
+    protected String fileName(String extension) {
+<span class="fc" id="L129">        return name().toLowerCase() + &quot;.&quot; + extension;</span>
+    }
+
+    protected final XRefRoot createXRefRoot(StoryReporterBuilder storyReporterBuilder, List&lt;StoryHolder&gt; stories,
+            Set&lt;String&gt; failingStories, Set&lt;String&gt; pendingStories) {
+<span class="fc" id="L134">        XRefRoot xrefRoot = newXRefRoot();</span>
+<span class="fc" id="L135">        xrefRoot.metaFilter = getMetaFilter();</span>
+<span class="fc" id="L136">        xrefRoot.setExcludeStoriesWithNoExecutedScenarios(excludeStoriesWithNoExecutedScenarios);</span>
+<span class="fc" id="L137">        xrefRoot.processStories(stories, stepsPerformed, times, storyReporterBuilder, failingStories, pendingStories);</span>
+<span class="fc" id="L138">        return xrefRoot;</span>
+    }
+
+    protected XRefRoot newXRefRoot() {
+<span class="fc" id="L142">        return new XRefRoot();</span>
+    }
+
+    private void outputFile(String name, XStream xstream, XRefRoot root, StoryReporterBuilder storyReporterBuilder) {
+
+<span class="fc" id="L147">        File outputDir = new File(storyReporterBuilder.outputDirectory(), &quot;view&quot;);</span>
+<span class="fc" id="L148">        outputDir.mkdirs();</span>
+        try {
+<span class="fc" id="L150">            Writer writer = makeWriter(new File(outputDir, name));</span>
+<span class="fc" id="L151">            writer.write(xstream.toXML(root));</span>
+<span class="fc" id="L152">            writer.flush();</span>
+<span class="fc" id="L153">            writer.close();</span>
+<span class="nc" id="L154">        } catch (IOException e) {</span>
+<span class="nc" id="L155">            throw new XrefOutputFailed(name, e);</span>
+<span class="fc" id="L156">        }</span>
+
+<span class="fc" id="L158">    }</span>
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class XrefOutputFailed extends RuntimeException {
+
+        public XrefOutputFailed(String name, Throwable cause) {
+<span class="nc" id="L164">            super(name, cause);</span>
+<span class="nc" id="L165">        }</span>
+
+    }
+
+    protected Writer makeWriter(File file) throws IOException {
+<span class="fc" id="L170">        return new FileWriter(file);</span>
+    }
+
+    private void configure(XStream xstream) {
+<span class="fc" id="L174">        xstream.setMode(XStream.NO_REFERENCES);</span>
+<span class="fc" id="L175">        aliasForXRefRoot(xstream);</span>
+<span class="fc" id="L176">        aliasForXRefStory(xstream);</span>
+<span class="fc" id="L177">        xstream.alias(&quot;stepMatch&quot;, StepMatch.class);</span>
+<span class="fc" id="L178">        xstream.alias(&quot;pattern&quot;, StepPattern.class);</span>
+<span class="fc" id="L179">        xstream.alias(&quot;use&quot;, StepUsage.class);</span>
+<span class="fc" id="L180">        xstream.omitField(ExamplesTable.class, &quot;parameterConverters&quot;);</span>
+<span class="fc" id="L181">        xstream.omitField(ExamplesTable.class, &quot;defaults&quot;);</span>
+<span class="fc" id="L182">    }</span>
+
+    protected void aliasForXRefStory(XStream xstream) {
+<span class="fc" id="L185">        xstream.alias(&quot;story&quot;, XRefStory.class);</span>
+<span class="fc" id="L186">    }</span>
+
+    protected void aliasForXRefRoot(XStream xstream) {
+<span class="fc" id="L189">        xstream.alias(&quot;xref&quot;, XRefRoot.class);</span>
+<span class="fc" id="L190">    }</span>
+
+    @Override
+    public StoryReporter createStoryReporter(FilePrintStreamFactory factory,
+            final StoryReporterBuilder storyReporterBuilder) {
+        StoryReporter delegate;
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">        if (threadSafeDelegateFormat == null) {</span>
+<span class="fc" id="L197">            delegate = new NullStoryReporter();</span>
+        } else {
+<span class="nc" id="L199">            delegate = threadSafeDelegateFormat.createStoryReporter(factory, storyReporterBuilder);</span>
+        }
+<span class="fc" id="L201">        return new DelegatingStoryReporter(delegate) {</span>
+
+            @Override
+            public void beforeStory(Story story, boolean givenStory) {
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">                if (givenStory)</span>
+<span class="nc" id="L206">                    return;</span>
+<span class="fc" id="L207">                synchronized (stories) {</span>
+<span class="fc" id="L208">                    stories.add(new StoryHolder(story));</span>
+<span class="pc" id="L209">                }</span>
+<span class="fc" id="L210">                currentStory.set(story);</span>
+<span class="fc" id="L211">                currentStoryStart.set(System.currentTimeMillis());</span>
+<span class="fc" id="L212">                super.beforeStory(story, givenStory);</span>
+<span class="fc" id="L213">            }</span>
+
+            @Override
+            public void pending(String step) {
+<span class="nc" id="L217">                pendingStories.add(currentStory.get().getPath());                	</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">                if (pendingStepStrategy instanceof FailingUponPendingStep) {</span>
+<span class="nc" id="L219">                    failingStories.add(currentStory.get().getPath());</span>
+                }
+<span class="nc" id="L221">                super.pending(step);</span>
+<span class="nc" id="L222">            }</span>
+
+            @Override
+            public void failed(String step, Throwable cause) {
+<span class="fc" id="L226">                failingStories.add(currentStory.get().getPath());</span>
+<span class="fc" id="L227">                super.failed(step, cause);</span>
+<span class="fc" id="L228">            }</span>
+
+            @Override
+            public void afterStory(boolean givenStory) {
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">                if (givenStory)</span>
+<span class="nc" id="L233">                    return;</span>
+<span class="fc" id="L234">                times.put(currentStory.get().getPath(), System.currentTimeMillis() - currentStoryStart.get());</span>
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">                if (outputAfterEachStory) {</span>
+<span class="nc" id="L236">                    outputToFiles(storyReporterBuilder);</span>
+                }
+<span class="fc" id="L238">                super.afterStory(givenStory);</span>
+<span class="fc" id="L239">            }</span>
+
+            @Override
+            public void beforeScenario(String title) {
+<span class="fc" id="L243">                currentScenarioTitle.set(title);</span>
+<span class="fc" id="L244">                super.beforeScenario(title);</span>
+<span class="fc" id="L245">            }</span>
+        };
+    }
+
+<span class="fc" id="L249">    private class XRefStepMonitor extends NullStepMonitor {</span>
+        @Override
+        public void performing(String step, boolean dryRun) {
+<span class="nc" id="L252">            super.performing(step, dryRun);</span>
+<span class="nc" id="L253">            stepsPerformed.add(currentStory.get().getPath());</span>
+<span class="nc" id="L254">        }</span>
+
+        public void stepMatchesPattern(String step, boolean matches, StepPattern pattern, Method method,
+                Object stepsInstance) {
+<span class="fc" id="L258">            Story story = currentStory.get();</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">            if (story == null) {</span>
+<span class="nc" id="L260">                throw new NullPointerException(&quot;story not setup for CrossReference&quot;);</span>
+            }
+
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">            if (matches) {</span>
+<span class="fc" id="L264">                String key = pattern.type() + pattern.annotated();</span>
+<span class="fc" id="L265">                StepMatch stepMatch = stepMatches.get(key);</span>
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">                if (stepMatch == null) {</span>
+<span class="fc" id="L267">                    stepMatch = new StepMatch(pattern.type(), pattern.annotated(), pattern.resolved());</span>
+<span class="fc" id="L268">                    stepMatches.put(key, stepMatch);</span>
+                }
+                // find canonical ref for same stepMatch
+<span class="fc" id="L271">                stepMatch.usages.add(new StepUsage(story.getPath(), currentScenarioTitle.get(), step));</span>
+            }
+<span class="fc" id="L273">            super.stepMatchesPattern(step, matches, pattern, method, stepsInstance);</span>
+<span class="fc" id="L274">        }</span>
+    }
+
+    public static class XRefRoot {
+<span class="fc" id="L278">		protected long whenMade = System.currentTimeMillis();</span>
+<span class="fc" id="L279">        protected String createdBy = createdBy();</span>
+<span class="fc" id="L280">        protected String metaFilter = &quot;&quot;;</span>
+
+<span class="fc" id="L282">        private Set&lt;String&gt; meta = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L283">        private List&lt;XRefStory&gt; stories = new ArrayList&lt;XRefStory&gt;();</span>
+<span class="fc" id="L284">    	private List&lt;StepMatch&gt; stepMatches = new ArrayList&lt;StepMatch&gt;();</span>
+
+        private transient boolean excludeStoriesWithNoExecutedScenarios;
+
+<span class="fc" id="L288">        public XRefRoot() {</span>
+<span class="fc" id="L289">        }</span>
+
+        public void setExcludeStoriesWithNoExecutedScenarios(boolean exclude) {
+<span class="fc" id="L292">            this.excludeStoriesWithNoExecutedScenarios = exclude;</span>
+<span class="fc" id="L293">        }</span>
+
+        protected String createdBy() {
+<span class="fc" id="L296">            return &quot;JBehave&quot;;</span>
+        }
+
+        protected void processStories(List&lt;StoryHolder&gt; stories, Set&lt;String&gt; stepsPerformed, Map&lt;String, Long&gt; times,
+                StoryReporterBuilder builder, Set&lt;String&gt; failures, Set&lt;String&gt; pendingStories) {
+            // Prevent Concurrent Modification Exception.
+<span class="fc" id="L302">            synchronized (stories) {</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">                for (StoryHolder storyHolder : stories) {</span>
+<span class="fc" id="L304">                    Story story = storyHolder.story;</span>
+<span class="fc" id="L305">                    String path = story.getPath();</span>
+<span class="pc bpc" id="L306" title="2 of 4 branches missed.">                    if (!path.equals(&quot;BeforeStories&quot;) &amp;&amp; !path.equals(&quot;AfterStories&quot;)) {</span>
+<span class="pc bpc" id="L307" title="2 of 4 branches missed.">                        if (someScenarios(story, stepsPerformed) || !excludeStoriesWithNoExecutedScenarios) {</span>
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">                            XRefStory xRefStory = createXRefStory(builder, story, !failures.contains(path), pendingStories.contains(path), this);</span>
+<span class="fc" id="L309">                            xRefStory.started = storyHolder.when;</span>
+<span class="fc" id="L310">                            xRefStory.duration = getTime(times, story);</span>
+<span class="fc" id="L311">                            this.stories.add(xRefStory);</span>
+                        }
+                    }
+
+<span class="fc" id="L315">                }</span>
+<span class="pc" id="L316">            }</span>
+<span class="fc" id="L317">        }</span>
+
+        protected Long getTime(Map&lt;String, Long&gt; times, Story story) {
+<span class="fc" id="L320">            Long time = times.get(story.getPath());</span>
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">            if (time == null) {</span>
+<span class="nc" id="L322">                return 0L;</span>
+            }
+<span class="fc" id="L324">            return time;</span>
+        }
+
+        protected boolean someScenarios(Story story, Set&lt;String&gt; stepsPerformed) {
+<span class="fc" id="L328">            return stepsPerformed.contains(story.getPath());</span>
+        }
+
+        /**
+         * Ensure that XRefStory is instantiated completely, before secondary
+         * methods are invoked (or overridden)
+         */
+        protected final XRefStory createXRefStory(StoryReporterBuilder storyReporterBuilder, Story story,
+                boolean passed, boolean pending, XRefRoot root) {
+<span class="fc" id="L337">            XRefStory xrefStory = createXRefStory(storyReporterBuilder, story, passed, pending);</span>
+<span class="fc" id="L338">            xrefStory.processMetaTags(root);</span>
+<span class="fc" id="L339">            xrefStory.processScenarios();</span>
+<span class="fc" id="L340">            return xrefStory;</span>
+        }
+
+        /**
+         * Override this is you want to add fields to the JSON. Specifically,
+         * create a subclass of XRefStory to return.
+         * 
+         * @param storyReporterBuilder the story reporter builder
+         * @param story the story
+         * @param passed the story passed (or failed)
+         * @param pending the story is pending
+         * @return An XRefStory
+         */
+        protected XRefStory createXRefStory(StoryReporterBuilder storyReporterBuilder, Story story, boolean passed, boolean pending) {
+<span class="fc" id="L354">            return new XRefStory(story, storyReporterBuilder, passed, pending);</span>
+        }
+
+        protected void addStepMatches(Map&lt;String, StepMatch&gt; stepMatchMap) {
+<span class="fc bfc" id="L358" title="All 2 branches covered.">            for (String key : stepMatchMap.keySet()) {</span>
+<span class="fc" id="L359">                StepMatch stepMatch = stepMatchMap.get(key);</span>
+<span class="fc" id="L360">                stepMatches.add(stepMatch);</span>
+<span class="fc" id="L361">            }</span>
+<span class="fc" id="L362">        }</span>
+    }
+
+    @SuppressWarnings(&quot;unused&quot;)
+    public static class XRefStory {
+        private transient Story story; // don't turn into JSON.
+        private String description;
+<span class="fc" id="L369">        private String narrative = &quot;&quot;;</span>
+        private String name;
+        private String path;
+        private String html;
+<span class="fc" id="L373">        private String meta = &quot;&quot;;</span>
+<span class="fc" id="L374">        private String scenarios = &quot;&quot;;</span>
+        private boolean passed;
+		private boolean pending;
+        public long started;
+        public long duration;
+
+<span class="fc" id="L380">        public XRefStory(Story story, StoryReporterBuilder storyReporterBuilder, boolean passed, boolean pending) {</span>
+<span class="fc" id="L381">            this.story = story;</span>
+<span class="fc" id="L382">            Narrative narrative = story.getNarrative();</span>
+<span class="pc bpc" id="L383" title="1 of 2 branches missed.">            if (!narrative.isEmpty()) {</span>
+<span class="fc" id="L384">                this.narrative = &quot;In order to &quot; + narrative.inOrderTo() + &quot;\n&quot; + &quot;As a &quot; + narrative.asA() + &quot;\n&quot;</span>
+                        + &quot;I want to &quot; + narrative.iWantTo() + &quot;\n&quot;;
+            }
+<span class="fc" id="L387">            this.description = story.getDescription().asString();</span>
+<span class="fc" id="L388">            this.name = story.getName();</span>
+<span class="fc" id="L389">            this.path = story.getPath();</span>
+<span class="fc" id="L390">            this.passed = passed;</span>
+<span class="fc" id="L391">            this.pending = pending;</span>
+<span class="fc" id="L392">            this.html = storyReporterBuilder.pathResolver().resolveName(</span>
+                    new StoryLocation(storyReporterBuilder.codeLocation(), story.getPath()), &quot;html&quot;);
+<span class="fc" id="L394">        }</span>
+
+        protected void processScenarios() {
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">            for (Scenario scenario : story.getScenarios()) {</span>
+<span class="nc" id="L398">                String body = &quot;Scenario:&quot; + scenario.getTitle() + &quot;\n&quot;;</span>
+<span class="nc" id="L399">                processScenarioMeta(scenario.getMeta());</span>
+<span class="nc" id="L400">                List&lt;String&gt; steps = scenario.getSteps();</span>
+<span class="nc bnc" id="L401" title="All 2 branches missed.">                for (String step : steps) {</span>
+<span class="nc" id="L402">                    body = body + step + &quot;\n&quot;;</span>
+<span class="nc" id="L403">                }</span>
+<span class="nc" id="L404">                scenarios = scenarios + body + &quot;\n\n&quot;;</span>
+<span class="nc" id="L405">            }</span>
+<span class="fc" id="L406">        }</span>
+
+        private void processScenarioMeta(Meta meta) {
+<span class="nc bnc" id="L409" title="All 2 branches missed.">        	for (String name : meta.getPropertyNames()) {</span>
+<span class="nc" id="L410">                String property = name + &quot;=&quot; + meta.getProperty(name);</span>
+<span class="nc" id="L411">                String newMeta = appendMetaProperty(property, this.meta);</span>
+<span class="nc bnc" id="L412" title="All 2 branches missed.">                if (newMeta != null) {</span>
+<span class="nc" id="L413">                    this.meta = newMeta;</span>
+                }
+<span class="nc" id="L415">            }</span>
+<span class="nc" id="L416">		}</span>
+
+		protected void processMetaTags(XRefRoot root) {
+<span class="fc" id="L419">            Meta storyMeta = story.getMeta();</span>
+<span class="fc bfc" id="L420" title="All 2 branches covered.">            for (String next : storyMeta.getPropertyNames()) {</span>
+<span class="fc" id="L421">                String property = next + &quot;=&quot; + storyMeta.getProperty(next);</span>
+<span class="fc" id="L422">                addMetaProperty(property, root.meta);</span>
+<span class="fc" id="L423">                String newMeta = appendMetaProperty(property, this.meta);</span>
+<span class="fc bfc" id="L424" title="All 2 branches covered.">                if (newMeta != null) {</span>
+<span class="fc" id="L425">                    this.meta = newMeta;</span>
+                }
+<span class="fc" id="L427">            }</span>
+<span class="fc" id="L428">        }</span>
+
+        protected String appendMetaProperty(String property, String meta) {
+<span class="fc" id="L431">            return meta + property + &quot;\n&quot;;</span>
+        }
+
+        protected void addMetaProperty(String property, Set&lt;String&gt; meta) {
+<span class="fc" id="L435">            meta.add(property);</span>
+<span class="fc" id="L436">        }</span>
+    }
+
+    @SuppressWarnings(&quot;unused&quot;)
+    public static class StepUsage {
+        private final String story;
+        private final String scenario;
+        private final String step;
+
+<span class="fc" id="L445">        public StepUsage(String story, String scenario, String step) {</span>
+<span class="fc" id="L446">            this.story = story;</span>
+<span class="fc" id="L447">            this.scenario = scenario;</span>
+<span class="fc" id="L448">            this.step = step;</span>
+<span class="fc" id="L449">        }</span>
+    }
+
+    public static class StepMatch {
+        private final StepType type; // key
+        private final String annotatedPattern; // key
+        // these not in hashcode or equals()
+        @SuppressWarnings(&quot;unused&quot;)
+        private final String resolvedPattern;
+<span class="fc" id="L458">        private final Set&lt;StepUsage&gt; usages = new HashSet&lt;StepUsage&gt;();</span>
+
+<span class="fc" id="L460">        public StepMatch(StepType type, String annotatedPattern, String resolvedPattern) {</span>
+<span class="fc" id="L461">            this.type = type;</span>
+<span class="fc" id="L462">            this.annotatedPattern = annotatedPattern;</span>
+<span class="fc" id="L463">            this.resolvedPattern = resolvedPattern;</span>
+<span class="fc" id="L464">        }</span>
+
+        @Override
+        public boolean equals(Object o) {
+<span class="nc bnc" id="L468" title="All 2 branches missed.">            if (this == o)</span>
+<span class="nc" id="L469">                return true;</span>
+<span class="nc bnc" id="L470" title="All 4 branches missed.">            if (o == null || getClass() != o.getClass())</span>
+<span class="nc" id="L471">                return false;</span>
+
+<span class="nc" id="L473">            StepMatch stepMatch = (StepMatch) o;</span>
+
+<span class="nc bnc" id="L475" title="All 6 branches missed.">            if (annotatedPattern != null ? !annotatedPattern.equals(stepMatch.annotatedPattern)</span>
+                    : stepMatch.annotatedPattern != null)
+<span class="nc" id="L477">                return false;</span>
+<span class="nc bnc" id="L478" title="All 2 branches missed.">            if (type != stepMatch.type)</span>
+<span class="nc" id="L479">                return false;</span>
+
+<span class="nc" id="L481">            return true;</span>
+        }
+
+        @Override
+        public int hashCode() {
+<span class="nc bnc" id="L486" title="All 2 branches missed.">            int result = type != null ? type.hashCode() : 0;</span>
+<span class="nc bnc" id="L487" title="All 2 branches missed.">            result = 31 * result + (annotatedPattern != null ? annotatedPattern.hashCode() : 0);</span>
+<span class="nc" id="L488">            return result;</span>
+        }
+    }
+
+    private class StoryHolder {
+        Story story;
+        long when;
+
+<span class="fc" id="L496">        private StoryHolder(Story story) {</span>
+<span class="fc" id="L497">            this.story = story;</span>
+<span class="fc" id="L498">            this.when = System.currentTimeMillis();</span>
+<span class="fc" id="L499">        }</span>
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>
