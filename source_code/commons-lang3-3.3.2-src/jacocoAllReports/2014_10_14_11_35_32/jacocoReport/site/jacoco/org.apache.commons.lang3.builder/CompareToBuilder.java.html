@@ -1,0 +1,1022 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>CompareToBuilder.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-lang3-3.3.2</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.builder</a> &gt; <span class="el_source">CompareToBuilder.java</span></div><h1>CompareToBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ * 
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.builder;
+
+import java.lang.reflect.AccessibleObject;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Collection;
+import java.util.Comparator;
+
+import org.apache.commons.lang3.ArrayUtils;
+
+/** 
+ * Assists in implementing {@link java.lang.Comparable#compareTo(Object)} methods.
+ *
+ * &lt;p&gt;It is consistent with &lt;code&gt;equals(Object)&lt;/code&gt; and
+ * &lt;code&gt;hashcode()&lt;/code&gt; built with {@link EqualsBuilder} and
+ * {@link HashCodeBuilder}.&lt;/p&gt;
+ *
+ * &lt;p&gt;Two Objects that compare equal using &lt;code&gt;equals(Object)&lt;/code&gt; should normally
+ * also compare equal using &lt;code&gt;compareTo(Object)&lt;/code&gt;.&lt;/p&gt;
+ *
+ * &lt;p&gt;All relevant fields should be included in the calculation of the
+ * comparison. Derived fields may be ignored. The same fields, in the same
+ * order, should be used in both &lt;code&gt;compareTo(Object)&lt;/code&gt; and
+ * &lt;code&gt;equals(Object)&lt;/code&gt;.&lt;/p&gt;
+ *
+ * &lt;p&gt;To use this class write code as follows:&lt;/p&gt;
+ *
+ * &lt;pre&gt;
+ * public class MyClass {
+ *   String field1;
+ *   int field2;
+ *   boolean field3;
+ *
+ *   ...
+ *
+ *   public int compareTo(Object o) {
+ *     MyClass myClass = (MyClass) o;
+ *     return new CompareToBuilder()
+ *       .appendSuper(super.compareTo(o)
+ *       .append(this.field1, myClass.field1)
+ *       .append(this.field2, myClass.field2)
+ *       .append(this.field3, myClass.field3)
+ *       .toComparison();
+ *   }
+ * }
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;Alternatively, there are {@link #reflectionCompare(Object, Object) reflectionCompare} methods that use
+ * reflection to determine the fields to append. Because fields can be private,
+ * &lt;code&gt;reflectionCompare&lt;/code&gt; uses {@link java.lang.reflect.AccessibleObject#setAccessible(boolean)} to
+ * bypass normal access control checks. This will fail under a security manager,
+ * unless the appropriate permissions are set up correctly. It is also
+ * slower than appending explicitly.&lt;/p&gt;
+ *
+ * &lt;p&gt;A typical implementation of &lt;code&gt;compareTo(Object)&lt;/code&gt; using
+ * &lt;code&gt;reflectionCompare&lt;/code&gt; looks like:&lt;/p&gt;
+
+ * &lt;pre&gt;
+ * public int compareTo(Object o) {
+ *   return CompareToBuilder.reflectionCompare(this, o);
+ * }
+ * &lt;/pre&gt;
+ *
+ * @see java.lang.Comparable
+ * @see java.lang.Object#equals(Object)
+ * @see java.lang.Object#hashCode()
+ * @see EqualsBuilder
+ * @see HashCodeBuilder
+ * @since 1.0
+ * @version $Id: CompareToBuilder.java 1583482 2014-03-31 22:54:57Z niallp $
+ */
+public class CompareToBuilder implements Builder&lt;Integer&gt; {
+    
+    /**
+     * Current state of the comparison as appended fields are checked.
+     */
+    private int comparison;
+
+    /**
+     * &lt;p&gt;Constructor for CompareToBuilder.&lt;/p&gt;
+     *
+     * &lt;p&gt;Starts off assuming that the objects are equal. Multiple calls are 
+     * then made to the various append methods, followed by a call to 
+     * {@link #toComparison} to get the result.&lt;/p&gt;
+     */
+    public CompareToBuilder() {
+<span class="fc" id="L103">        super();</span>
+<span class="pc bpc" id="L104" title="5 of 8 branches missed.">        comparison = 0;</span>
+<span class="fc" id="L105">    }</span>
+
+    //-----------------------------------------------------------------------
+    /** 
+     * &lt;p&gt;Compares two &lt;code&gt;Object&lt;/code&gt;s via reflection.&lt;/p&gt;
+     *
+     * &lt;p&gt;Fields can be private, thus &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt;
+     * is used to bypass normal access control checks. This will fail under a 
+     * security manager unless the appropriate permissions are set.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     * &lt;li&gt;Static fields will not be compared&lt;/li&gt;
+     * &lt;li&gt;Transient members will be not be compared, as they are likely derived
+     *     fields&lt;/li&gt;
+     * &lt;li&gt;Superclass fields will be compared&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * &lt;p&gt;If both &lt;code&gt;lhs&lt;/code&gt; and &lt;code&gt;rhs&lt;/code&gt; are &lt;code&gt;null&lt;/code&gt;,
+     * they are considered equal.&lt;/p&gt;
+     *
+     * @param lhs  left-hand object
+     * @param rhs  right-hand object
+     * @return a negative integer, zero, or a positive integer as &lt;code&gt;lhs&lt;/code&gt;
+     *  is less than, equal to, or greater than &lt;code&gt;rhs&lt;/code&gt;
+     * @throws NullPointerException  if either (but not both) parameters are
+     *  &lt;code&gt;null&lt;/code&gt;
+     * @throws ClassCastException  if &lt;code&gt;rhs&lt;/code&gt; is not assignment-compatible
+     *  with &lt;code&gt;lhs&lt;/code&gt;
+     */
+    public static int reflectionCompare(final Object lhs, final Object rhs) {
+<span class="pc bpc" id="L135" title="4 of 6 branches missed.">        return reflectionCompare(lhs, rhs, false, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;Compares two &lt;code&gt;Object&lt;/code&gt;s via reflection.&lt;/p&gt;
+     *
+     * &lt;p&gt;Fields can be private, thus &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt;
+     * is used to bypass normal access control checks. This will fail under a 
+     * security manager unless the appropriate permissions are set.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     * &lt;li&gt;Static fields will not be compared&lt;/li&gt;
+     * &lt;li&gt;If &lt;code&gt;compareTransients&lt;/code&gt; is &lt;code&gt;true&lt;/code&gt;,
+     *     compares transient members.  Otherwise ignores them, as they
+     *     are likely derived fields.&lt;/li&gt;
+     * &lt;li&gt;Superclass fields will be compared&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * &lt;p&gt;If both &lt;code&gt;lhs&lt;/code&gt; and &lt;code&gt;rhs&lt;/code&gt; are &lt;code&gt;null&lt;/code&gt;,
+     * they are considered equal.&lt;/p&gt;
+     *
+     * @param lhs  left-hand object
+     * @param rhs  right-hand object
+     * @param compareTransients  whether to compare transient fields
+     * @return a negative integer, zero, or a positive integer as &lt;code&gt;lhs&lt;/code&gt;
+     *  is less than, equal to, or greater than &lt;code&gt;rhs&lt;/code&gt;
+     * @throws NullPointerException  if either &lt;code&gt;lhs&lt;/code&gt; or &lt;code&gt;rhs&lt;/code&gt;
+     *  (but not both) is &lt;code&gt;null&lt;/code&gt;
+     * @throws ClassCastException  if &lt;code&gt;rhs&lt;/code&gt; is not assignment-compatible
+     *  with &lt;code&gt;lhs&lt;/code&gt;
+     */
+    public static int reflectionCompare(final Object lhs, final Object rhs, final boolean compareTransients) {
+<span class="fc" id="L167">        return reflectionCompare(lhs, rhs, compareTransients, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;Compares two &lt;code&gt;Object&lt;/code&gt;s via reflection.&lt;/p&gt;
+     *
+     * &lt;p&gt;Fields can be private, thus &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt;
+     * is used to bypass normal access control checks. This will fail under a 
+     * security manager unless the appropriate permissions are set.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     * &lt;li&gt;Static fields will not be compared&lt;/li&gt;
+     * &lt;li&gt;If &lt;code&gt;compareTransients&lt;/code&gt; is &lt;code&gt;true&lt;/code&gt;,
+     *     compares transient members.  Otherwise ignores them, as they
+     *     are likely derived fields.&lt;/li&gt;
+     * &lt;li&gt;Superclass fields will be compared&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * &lt;p&gt;If both &lt;code&gt;lhs&lt;/code&gt; and &lt;code&gt;rhs&lt;/code&gt; are &lt;code&gt;null&lt;/code&gt;,
+     * they are considered equal.&lt;/p&gt;
+     *
+     * @param lhs  left-hand object
+     * @param rhs  right-hand object
+     * @param excludeFields  Collection of String fields to exclude
+     * @return a negative integer, zero, or a positive integer as &lt;code&gt;lhs&lt;/code&gt;
+     *  is less than, equal to, or greater than &lt;code&gt;rhs&lt;/code&gt;
+     * @throws NullPointerException  if either &lt;code&gt;lhs&lt;/code&gt; or &lt;code&gt;rhs&lt;/code&gt;
+     *  (but not both) is &lt;code&gt;null&lt;/code&gt;
+     * @throws ClassCastException  if &lt;code&gt;rhs&lt;/code&gt; is not assignment-compatible
+     *  with &lt;code&gt;lhs&lt;/code&gt;
+     * @since 2.2
+     */
+    public static int reflectionCompare(final Object lhs, final Object rhs, final Collection&lt;String&gt; excludeFields) {
+<span class="nc" id="L200">        return reflectionCompare(lhs, rhs, ReflectionToStringBuilder.toNoNullStringArray(excludeFields));</span>
+    }
+
+    /**
+     * &lt;p&gt;Compares two &lt;code&gt;Object&lt;/code&gt;s via reflection.&lt;/p&gt;
+     *
+     * &lt;p&gt;Fields can be private, thus &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt;
+     * is used to bypass normal access control checks. This will fail under a 
+     * security manager unless the appropriate permissions are set.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     * &lt;li&gt;Static fields will not be compared&lt;/li&gt;
+     * &lt;li&gt;If &lt;code&gt;compareTransients&lt;/code&gt; is &lt;code&gt;true&lt;/code&gt;,
+     *     compares transient members.  Otherwise ignores them, as they
+     *     are likely derived fields.&lt;/li&gt;
+     * &lt;li&gt;Superclass fields will be compared&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * &lt;p&gt;If both &lt;code&gt;lhs&lt;/code&gt; and &lt;code&gt;rhs&lt;/code&gt; are &lt;code&gt;null&lt;/code&gt;,
+     * they are considered equal.&lt;/p&gt;
+     *
+     * @param lhs  left-hand object
+     * @param rhs  right-hand object
+     * @param excludeFields  array of fields to exclude
+     * @return a negative integer, zero, or a positive integer as &lt;code&gt;lhs&lt;/code&gt;
+     *  is less than, equal to, or greater than &lt;code&gt;rhs&lt;/code&gt;
+     * @throws NullPointerException  if either &lt;code&gt;lhs&lt;/code&gt; or &lt;code&gt;rhs&lt;/code&gt;
+     *  (but not both) is &lt;code&gt;null&lt;/code&gt;
+     * @throws ClassCastException  if &lt;code&gt;rhs&lt;/code&gt; is not assignment-compatible
+     *  with &lt;code&gt;lhs&lt;/code&gt;
+     * @since 2.2
+     */
+    public static int reflectionCompare(final Object lhs, final Object rhs, final String... excludeFields) {
+<span class="nc bnc" id="L233" title="All 6 branches missed.">        return reflectionCompare(lhs, rhs, false, null, excludeFields);</span>
+    }
+
+    /**
+     * &lt;p&gt;Compares two &lt;code&gt;Object&lt;/code&gt;s via reflection.&lt;/p&gt;
+     *
+     * &lt;p&gt;Fields can be private, thus &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt;
+     * is used to bypass normal access control checks. This will fail under a 
+     * security manager unless the appropriate permissions are set.&lt;/p&gt;
+     *
+     * &lt;ul&gt;
+     * &lt;li&gt;Static fields will not be compared&lt;/li&gt;
+     * &lt;li&gt;If the &lt;code&gt;compareTransients&lt;/code&gt; is &lt;code&gt;true&lt;/code&gt;,
+     *     compares transient members.  Otherwise ignores them, as they
+     *     are likely derived fields.&lt;/li&gt;
+     * &lt;li&gt;Compares superclass fields up to and including &lt;code&gt;reflectUpToClass&lt;/code&gt;.
+     *     If &lt;code&gt;reflectUpToClass&lt;/code&gt; is &lt;code&gt;null&lt;/code&gt;, compares all superclass fields.&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * &lt;p&gt;If both &lt;code&gt;lhs&lt;/code&gt; and &lt;code&gt;rhs&lt;/code&gt; are &lt;code&gt;null&lt;/code&gt;,
+     * they are considered equal.&lt;/p&gt;
+     *
+     * @param lhs  left-hand object
+     * @param rhs  right-hand object
+     * @param compareTransients  whether to compare transient fields
+     * @param reflectUpToClass  last superclass for which fields are compared
+     * @param excludeFields  fields to exclude
+     * @return a negative integer, zero, or a positive integer as &lt;code&gt;lhs&lt;/code&gt;
+     *  is less than, equal to, or greater than &lt;code&gt;rhs&lt;/code&gt;
+     * @throws NullPointerException  if either &lt;code&gt;lhs&lt;/code&gt; or &lt;code&gt;rhs&lt;/code&gt;
+     *  (but not both) is &lt;code&gt;null&lt;/code&gt;
+     * @throws ClassCastException  if &lt;code&gt;rhs&lt;/code&gt; is not assignment-compatible
+     *  with &lt;code&gt;lhs&lt;/code&gt;
+     * @since 2.2 (2.0 as &lt;code&gt;reflectionCompare(Object, Object, boolean, Class)&lt;/code&gt;)
+     */
+    public static int reflectionCompare(
+        final Object lhs, 
+        final Object rhs, 
+        final boolean compareTransients, 
+        final Class&lt;?&gt; reflectUpToClass, 
+        final String... excludeFields) {
+
+<span class="pc bpc" id="L275" title="6 of 10 branches missed.">        if (lhs == rhs) {</span>
+<span class="pc bpc" id="L276" title="5 of 8 branches missed.">            return 0;</span>
+        }
+<span class="pc bpc" id="L278" title="34 of 46 branches missed.">        if (lhs == null || rhs == null) {</span>
+<span class="fc" id="L279">            throw new NullPointerException();</span>
+        }
+<span class="fc" id="L281">        Class&lt;?&gt; lhsClazz = lhs.getClass();</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        if (!lhsClazz.isInstance(rhs)) {</span>
+<span class="fc" id="L283">            throw new ClassCastException();</span>
+        }
+<span class="fc" id="L285">        final CompareToBuilder compareToBuilder = new CompareToBuilder();</span>
+<span class="pc bpc" id="L286" title="4 of 6 branches missed.">        reflectionAppend(lhs, rhs, lhsClazz, compareToBuilder, compareTransients, excludeFields);</span>
+<span class="pc bpc" id="L287" title="34 of 46 branches missed.">        while (lhsClazz.getSuperclass() != null &amp;&amp; lhsClazz != reflectUpToClass) {</span>
+<span class="fc" id="L288">            lhsClazz = lhsClazz.getSuperclass();</span>
+<span class="pc bpc" id="L289" title="4 of 6 branches missed.">            reflectionAppend(lhs, rhs, lhsClazz, compareToBuilder, compareTransients, excludeFields);</span>
+        }
+<span class="fc" id="L291">        return compareToBuilder.toComparison();</span>
+    }
+
+    /**
+     * &lt;p&gt;Appends to &lt;code&gt;builder&lt;/code&gt; the comparison of &lt;code&gt;lhs&lt;/code&gt;
+     * to &lt;code&gt;rhs&lt;/code&gt; using the fields defined in &lt;code&gt;clazz&lt;/code&gt;.&lt;/p&gt;
+     * 
+     * @param lhs  left-hand object
+     * @param rhs  right-hand object
+     * @param clazz  &lt;code&gt;Class&lt;/code&gt; that defines fields to be compared
+     * @param builder  &lt;code&gt;CompareToBuilder&lt;/code&gt; to append to
+     * @param useTransients  whether to compare transient fields
+     * @param excludeFields  fields to exclude
+     */
+    private static void reflectionAppend(
+        final Object lhs,
+        final Object rhs,
+        final Class&lt;?&gt; clazz,
+        final CompareToBuilder builder,
+        final boolean useTransients,
+        final String[] excludeFields) {
+        
+<span class="fc" id="L313">        final Field[] fields = clazz.getDeclaredFields();</span>
+<span class="pc bpc" id="L314" title="8 of 12 branches missed.">        AccessibleObject.setAccessible(fields, true);</span>
+<span class="pc bpc" id="L315" title="5 of 8 branches missed.">        for (int i = 0; i &lt; fields.length &amp;&amp; builder.comparison == 0; i++) {</span>
+<span class="fc" id="L316">            final Field f = fields[i];</span>
+<span class="pc bpc" id="L317" title="131 of 166 branches missed.">            if (!ArrayUtils.contains(excludeFields, f.getName())</span>
+                &amp;&amp; (f.getName().indexOf('$') == -1)
+                &amp;&amp; (useTransients || !Modifier.isTransient(f.getModifiers()))
+                &amp;&amp; (!Modifier.isStatic(f.getModifiers()))) {
+                try {
+<span class="pc bpc" id="L322" title="4 of 6 branches missed.">                    builder.append(f.get(lhs), f.get(rhs));</span>
+<span class="nc" id="L323">                } catch (final IllegalAccessException e) {</span>
+                    // This can't happen. Would get a Security exception instead.
+                    // Throw a runtime exception in case the impossible happens.
+<span class="nc" id="L326">                    throw new InternalError(&quot;Unexpected IllegalAccessException&quot;);</span>
+<span class="fc" id="L327">                }</span>
+            }
+        }
+<span class="fc" id="L330">    }</span>
+
+    //-----------------------------------------------------------------------
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the &lt;code&gt;compareTo(Object)&lt;/code&gt;
+     * result of the superclass.&lt;/p&gt;
+     *
+     * @param superCompareTo  result of calling &lt;code&gt;super.compareTo(Object)&lt;/code&gt;
+     * @return this - used to chain append calls
+     * @since 2.0
+     */
+    public CompareToBuilder appendSuper(final int superCompareTo) {
+<span class="pc bpc" id="L342" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L343">            return this;</span>
+        }
+<span class="fc" id="L345">        comparison = superCompareTo;</span>
+<span class="fc" id="L346">        return this;</span>
+    }
+    
+    //-----------------------------------------------------------------------
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the comparison of
+     * two &lt;code&gt;Object&lt;/code&gt;s.&lt;/p&gt;
+     *
+     * &lt;ol&gt;
+     * &lt;li&gt;Check if &lt;code&gt;lhs == rhs&lt;/code&gt;&lt;/li&gt;
+     * &lt;li&gt;Check if either &lt;code&gt;lhs&lt;/code&gt; or &lt;code&gt;rhs&lt;/code&gt; is &lt;code&gt;null&lt;/code&gt;,
+     *     a &lt;code&gt;null&lt;/code&gt; object is less than a non-&lt;code&gt;null&lt;/code&gt; object&lt;/li&gt;
+     * &lt;li&gt;Check the object contents&lt;/li&gt;
+     * &lt;/ol&gt;
+     * 
+     * &lt;p&gt;&lt;code&gt;lhs&lt;/code&gt; must either be an array or implement {@link Comparable}.&lt;/p&gt;
+     *
+     * @param lhs  left-hand object
+     * @param rhs  right-hand object
+     * @return this - used to chain append calls
+     * @throws ClassCastException  if &lt;code&gt;rhs&lt;/code&gt; is not assignment-compatible
+     *  with &lt;code&gt;lhs&lt;/code&gt;
+     */
+    public CompareToBuilder append(final Object lhs, final Object rhs) {
+<span class="fc" id="L370">        return append(lhs, rhs, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the comparison of
+     * two &lt;code&gt;Object&lt;/code&gt;s.&lt;/p&gt;
+     *
+     * &lt;ol&gt;
+     * &lt;li&gt;Check if &lt;code&gt;lhs == rhs&lt;/code&gt;&lt;/li&gt;
+     * &lt;li&gt;Check if either &lt;code&gt;lhs&lt;/code&gt; or &lt;code&gt;rhs&lt;/code&gt; is &lt;code&gt;null&lt;/code&gt;,
+     *     a &lt;code&gt;null&lt;/code&gt; object is less than a non-&lt;code&gt;null&lt;/code&gt; object&lt;/li&gt;
+     * &lt;li&gt;Check the object contents&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * &lt;p&gt;If &lt;code&gt;lhs&lt;/code&gt; is an array, array comparison methods will be used.
+     * Otherwise &lt;code&gt;comparator&lt;/code&gt; will be used to compare the objects.
+     * If &lt;code&gt;comparator&lt;/code&gt; is &lt;code&gt;null&lt;/code&gt;, &lt;code&gt;lhs&lt;/code&gt; must
+     * implement {@link Comparable} instead.&lt;/p&gt;
+     *
+     * @param lhs  left-hand object
+     * @param rhs  right-hand object
+     * @param comparator  &lt;code&gt;Comparator&lt;/code&gt; used to compare the objects,
+     *  &lt;code&gt;null&lt;/code&gt; means treat lhs as &lt;code&gt;Comparable&lt;/code&gt;
+     * @return this - used to chain append calls
+     * @throws ClassCastException  if &lt;code&gt;rhs&lt;/code&gt; is not assignment-compatible
+     *  with &lt;code&gt;lhs&lt;/code&gt;
+     * @since 2.0
+     */
+    public CompareToBuilder append(final Object lhs, final Object rhs, final Comparator&lt;?&gt; comparator) {
+<span class="pc bpc" id="L399" title="17 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="fc" id="L400">            return this;</span>
+        }
+<span class="pc bpc" id="L402" title="6 of 10 branches missed.">        if (lhs == rhs) {</span>
+<span class="fc" id="L403">            return this;</span>
+        }
+<span class="pc bpc" id="L405" title="6 of 10 branches missed.">        if (lhs == null) {</span>
+<span class="pc bpc" id="L406" title="5 of 8 branches missed.">            comparison = -1;</span>
+<span class="fc" id="L407">            return this;</span>
+        }
+<span class="pc bpc" id="L409" title="6 of 10 branches missed.">        if (rhs == null) {</span>
+<span class="pc bpc" id="L410" title="10 of 16 branches missed.">            comparison = +1;</span>
+<span class="fc" id="L411">            return this;</span>
+        }
+<span class="pc bpc" id="L413" title="7 of 12 branches missed.">        if (lhs.getClass().isArray()) {</span>
+            // switch on type of array, to dispatch to the correct handler
+            // handles multi dimensional arrays
+            // throws a ClassCastException if rhs is not the correct array type
+<span class="fc bfc" id="L417" title="All 2 branches covered.">            if (lhs instanceof long[]) {</span>
+<span class="pc bpc" id="L418" title="4 of 6 branches missed.">                append((long[]) lhs, (long[]) rhs);</span>
+<span class="fc bfc" id="L419" title="All 2 branches covered.">            } else if (lhs instanceof int[]) {</span>
+<span class="pc bpc" id="L420" title="4 of 6 branches missed.">                append((int[]) lhs, (int[]) rhs);</span>
+<span class="fc bfc" id="L421" title="All 2 branches covered.">            } else if (lhs instanceof short[]) {</span>
+<span class="pc bpc" id="L422" title="4 of 6 branches missed.">                append((short[]) lhs, (short[]) rhs);</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">            } else if (lhs instanceof char[]) {</span>
+<span class="pc bpc" id="L424" title="4 of 6 branches missed.">                append((char[]) lhs, (char[]) rhs);</span>
+<span class="fc bfc" id="L425" title="All 2 branches covered.">            } else if (lhs instanceof byte[]) {</span>
+<span class="pc bpc" id="L426" title="4 of 6 branches missed.">                append((byte[]) lhs, (byte[]) rhs);</span>
+<span class="fc bfc" id="L427" title="All 2 branches covered.">            } else if (lhs instanceof double[]) {</span>
+<span class="pc bpc" id="L428" title="4 of 6 branches missed.">                append((double[]) lhs, (double[]) rhs);</span>
+<span class="fc bfc" id="L429" title="All 2 branches covered.">            } else if (lhs instanceof float[]) {</span>
+<span class="pc bpc" id="L430" title="4 of 6 branches missed.">                append((float[]) lhs, (float[]) rhs);</span>
+<span class="fc bfc" id="L431" title="All 2 branches covered.">            } else if (lhs instanceof boolean[]) {</span>
+<span class="pc bpc" id="L432" title="4 of 6 branches missed.">                append((boolean[]) lhs, (boolean[]) rhs);</span>
+            } else {
+                // not an array of primitives
+                // throws a ClassCastException if rhs is not an array
+<span class="pc bpc" id="L436" title="4 of 6 branches missed.">                append((Object[]) lhs, (Object[]) rhs, comparator);</span>
+            }
+        } else {
+            // the simple case, not an array, just test the element
+<span class="pc bpc" id="L440" title="6 of 10 branches missed.">            if (comparator == null) {</span>
+                @SuppressWarnings(&quot;unchecked&quot;) // assume this can be done; if not throw CCE as per Javadoc
+<span class="fc" id="L442">                final Comparable&lt;Object&gt; comparable = (Comparable&lt;Object&gt;) lhs;</span>
+<span class="fc" id="L443">                comparison = comparable.compareTo(rhs);</span>
+<span class="fc" id="L444">            } else {</span>
+<span class="pc bpc" id="L445" title="508 of 700 branches missed.">                @SuppressWarnings(&quot;unchecked&quot;) // assume this can be done; if not throw CCE as per Javadoc</span>
+<span class="fc" id="L446">                final Comparator&lt;Object&gt; comparator2 = (Comparator&lt;Object&gt;) comparator;</span>
+<span class="fc" id="L447">                comparison = comparator2.compare(lhs, rhs);</span>
+            }
+        }
+<span class="fc" id="L450">        return this;</span>
+    }
+
+    //-------------------------------------------------------------------------
+    /**
+     * Appends to the &lt;code&gt;builder&lt;/code&gt; the comparison of
+     * two &lt;code&gt;long&lt;/code&gt;s.
+     *
+     * @param lhs  left-hand value
+     * @param rhs  right-hand value
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final long lhs, final long rhs) {
+<span class="pc bpc" id="L463" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L464">            return this;</span>
+        }
+<span class="pc bpc" id="L466" title="39 of 60 branches missed.">        comparison = ((lhs &lt; rhs) ? -1 : ((lhs &gt; rhs) ? 1 : 0));</span>
+<span class="fc" id="L467">        return this;</span>
+    }
+
+    /**
+     * Appends to the &lt;code&gt;builder&lt;/code&gt; the comparison of
+     * two &lt;code&gt;int&lt;/code&gt;s.
+     *
+     * @param lhs  left-hand value
+     * @param rhs  right-hand value
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final int lhs, final int rhs) {
+<span class="pc bpc" id="L479" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L480">            return this;</span>
+        }
+<span class="pc bpc" id="L482" title="39 of 60 branches missed.">        comparison = ((lhs &lt; rhs) ? -1 : ((lhs &gt; rhs) ? 1 : 0));</span>
+<span class="fc" id="L483">        return this;</span>
+    }
+
+    /**
+     * Appends to the &lt;code&gt;builder&lt;/code&gt; the comparison of
+     * two &lt;code&gt;short&lt;/code&gt;s.
+     * 
+     * @param lhs  left-hand value
+     * @param rhs  right-hand value
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final short lhs, final short rhs) {
+<span class="pc bpc" id="L495" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L496">            return this;</span>
+        }
+<span class="pc bpc" id="L498" title="39 of 60 branches missed.">        comparison = ((lhs &lt; rhs) ? -1 : ((lhs &gt; rhs) ? 1 : 0));</span>
+<span class="fc" id="L499">        return this;</span>
+    }
+
+    /**
+     * Appends to the &lt;code&gt;builder&lt;/code&gt; the comparison of
+     * two &lt;code&gt;char&lt;/code&gt;s.
+     *
+     * @param lhs  left-hand value
+     * @param rhs  right-hand value
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final char lhs, final char rhs) {
+<span class="pc bpc" id="L511" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L512">            return this;</span>
+        }
+<span class="pc bpc" id="L514" title="39 of 60 branches missed.">        comparison = ((lhs &lt; rhs) ? -1 : ((lhs &gt; rhs) ? 1 : 0));</span>
+<span class="fc" id="L515">        return this;</span>
+    }
+
+    /**
+     * Appends to the &lt;code&gt;builder&lt;/code&gt; the comparison of
+     * two &lt;code&gt;byte&lt;/code&gt;s.
+     * 
+     * @param lhs  left-hand value
+     * @param rhs  right-hand value
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final byte lhs, final byte rhs) {
+<span class="pc bpc" id="L527" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L528">            return this;</span>
+        }
+<span class="pc bpc" id="L530" title="39 of 60 branches missed.">        comparison = ((lhs &lt; rhs) ? -1 : ((lhs &gt; rhs) ? 1 : 0));</span>
+<span class="fc" id="L531">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the comparison of
+     * two &lt;code&gt;double&lt;/code&gt;s.&lt;/p&gt;
+     *
+     * &lt;p&gt;This handles NaNs, Infinities, and &lt;code&gt;-0.0&lt;/code&gt;.&lt;/p&gt;
+     *
+     * &lt;p&gt;It is compatible with the hash code generated by
+     * &lt;code&gt;HashCodeBuilder&lt;/code&gt;.&lt;/p&gt;
+     *
+     * @param lhs  left-hand value
+     * @param rhs  right-hand value
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final double lhs, final double rhs) {
+<span class="pc bpc" id="L548" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L549">            return this;</span>
+        }
+<span class="fc" id="L551">        comparison = Double.compare(lhs, rhs);</span>
+<span class="fc" id="L552">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the comparison of
+     * two &lt;code&gt;float&lt;/code&gt;s.&lt;/p&gt;
+     *
+     * &lt;p&gt;This handles NaNs, Infinities, and &lt;code&gt;-0.0&lt;/code&gt;.&lt;/p&gt;
+     *
+     * &lt;p&gt;It is compatible with the hash code generated by
+     * &lt;code&gt;HashCodeBuilder&lt;/code&gt;.&lt;/p&gt;
+     *
+     * @param lhs  left-hand value
+     * @param rhs  right-hand value
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final float lhs, final float rhs) {
+<span class="pc bpc" id="L569" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L570">            return this;</span>
+        }
+<span class="fc" id="L572">        comparison = Float.compare(lhs, rhs);</span>
+<span class="fc" id="L573">        return this;</span>
+    }
+
+    /**
+     * Appends to the &lt;code&gt;builder&lt;/code&gt; the comparison of
+     * two &lt;code&gt;booleans&lt;/code&gt;s.
+     *
+     * @param lhs  left-hand value
+     * @param rhs  right-hand value
+     * @return this - used to chain append calls
+      */
+    public CompareToBuilder append(final boolean lhs, final boolean rhs) {
+<span class="pc bpc" id="L585" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L586">            return this;</span>
+        }
+<span class="pc bpc" id="L588" title="12 of 18 branches missed.">        if (lhs == rhs) {</span>
+<span class="fc" id="L589">            return this;</span>
+        }
+<span class="pc bpc" id="L591" title="14 of 22 branches missed.">        if (lhs == false) {</span>
+<span class="pc bpc" id="L592" title="5 of 8 branches missed.">            comparison = -1;</span>
+        } else {
+<span class="pc bpc" id="L594" title="10 of 16 branches missed.">            comparison = +1;</span>
+        }
+<span class="fc" id="L596">        return this;</span>
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the deep comparison of
+     * two &lt;code&gt;Object&lt;/code&gt; arrays.&lt;/p&gt;
+     *
+     * &lt;ol&gt;
+     *  &lt;li&gt;Check if arrays are the same using &lt;code&gt;==&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check if for &lt;code&gt;null&lt;/code&gt;, &lt;code&gt;null&lt;/code&gt; is less than non-&lt;code&gt;null&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check array length, a short length array is less than a long length array&lt;/li&gt;
+     *  &lt;li&gt;Check array contents element by element using {@link #append(Object, Object, Comparator)}&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * &lt;p&gt;This method will also will be called for the top level of multi-dimensional,
+     * ragged, and multi-typed arrays.&lt;/p&gt;
+     *
+     * @param lhs  left-hand array
+     * @param rhs  right-hand array
+     * @return this - used to chain append calls
+     * @throws ClassCastException  if &lt;code&gt;rhs&lt;/code&gt; is not assignment-compatible
+     *  with &lt;code&gt;lhs&lt;/code&gt;
+     */
+    public CompareToBuilder append(final Object[] lhs, final Object[] rhs) {
+<span class="fc" id="L621">        return append(lhs, rhs, null);</span>
+    }
+    
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the deep comparison of
+     * two &lt;code&gt;Object&lt;/code&gt; arrays.&lt;/p&gt;
+     *
+     * &lt;ol&gt;
+     *  &lt;li&gt;Check if arrays are the same using &lt;code&gt;==&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check if for &lt;code&gt;null&lt;/code&gt;, &lt;code&gt;null&lt;/code&gt; is less than non-&lt;code&gt;null&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check array length, a short length array is less than a long length array&lt;/li&gt;
+     *  &lt;li&gt;Check array contents element by element using {@link #append(Object, Object, Comparator)}&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * &lt;p&gt;This method will also will be called for the top level of multi-dimensional,
+     * ragged, and multi-typed arrays.&lt;/p&gt;
+     *
+     * @param lhs  left-hand array
+     * @param rhs  right-hand array
+     * @param comparator  &lt;code&gt;Comparator&lt;/code&gt; to use to compare the array elements,
+     *  &lt;code&gt;null&lt;/code&gt; means to treat &lt;code&gt;lhs&lt;/code&gt; elements as &lt;code&gt;Comparable&lt;/code&gt;.
+     * @return this - used to chain append calls
+     * @throws ClassCastException  if &lt;code&gt;rhs&lt;/code&gt; is not assignment-compatible
+     *  with &lt;code&gt;lhs&lt;/code&gt;
+     * @since 2.0
+     */
+    public CompareToBuilder append(final Object[] lhs, final Object[] rhs, final Comparator&lt;?&gt; comparator) {
+<span class="pc bpc" id="L648" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L649">            return this;</span>
+        }
+<span class="pc bpc" id="L651" title="6 of 10 branches missed.">        if (lhs == rhs) {</span>
+<span class="fc" id="L652">            return this;</span>
+        }
+<span class="pc bpc" id="L654" title="6 of 10 branches missed.">        if (lhs == null) {</span>
+<span class="pc bpc" id="L655" title="5 of 8 branches missed.">            comparison = -1;</span>
+<span class="fc" id="L656">            return this;</span>
+        }
+<span class="pc bpc" id="L658" title="6 of 10 branches missed.">        if (rhs == null) {</span>
+<span class="pc bpc" id="L659" title="10 of 16 branches missed.">            comparison = +1;</span>
+<span class="fc" id="L660">            return this;</span>
+        }
+<span class="pc bpc" id="L662" title="12 of 18 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="pc bpc" id="L663" title="27 of 42 branches missed.">            comparison = (lhs.length &lt; rhs.length) ? -1 : +1;</span>
+<span class="fc" id="L664">            return this;</span>
+        }
+<span class="pc bpc" id="L666" title="5 of 8 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; comparison == 0; i++) {</span>
+<span class="pc bpc" id="L667" title="4 of 6 branches missed.">            append(lhs[i], rhs[i], comparator);</span>
+        }
+<span class="fc" id="L669">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the deep comparison of
+     * two &lt;code&gt;long&lt;/code&gt; arrays.&lt;/p&gt;
+     *
+     * &lt;ol&gt;
+     *  &lt;li&gt;Check if arrays are the same using &lt;code&gt;==&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check if for &lt;code&gt;null&lt;/code&gt;, &lt;code&gt;null&lt;/code&gt; is less than non-&lt;code&gt;null&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check array length, a shorter length array is less than a longer length array&lt;/li&gt;
+     *  &lt;li&gt;Check array contents element by element using {@link #append(long, long)}&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * @param lhs  left-hand array
+     * @param rhs  right-hand array
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final long[] lhs, final long[] rhs) {
+<span class="pc bpc" id="L688" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L689">            return this;</span>
+        }
+<span class="pc bpc" id="L691" title="6 of 10 branches missed.">        if (lhs == rhs) {</span>
+<span class="fc" id="L692">            return this;</span>
+        }
+<span class="pc bpc" id="L694" title="6 of 10 branches missed.">        if (lhs == null) {</span>
+<span class="pc bpc" id="L695" title="5 of 8 branches missed.">            comparison = -1;</span>
+<span class="fc" id="L696">            return this;</span>
+        }
+<span class="pc bpc" id="L698" title="6 of 10 branches missed.">        if (rhs == null) {</span>
+<span class="pc bpc" id="L699" title="10 of 16 branches missed.">            comparison = +1;</span>
+<span class="fc" id="L700">            return this;</span>
+        }
+<span class="pc bpc" id="L702" title="12 of 18 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="pc bpc" id="L703" title="27 of 42 branches missed.">            comparison = (lhs.length &lt; rhs.length) ? -1 : +1;</span>
+<span class="fc" id="L704">            return this;</span>
+        }
+<span class="pc bpc" id="L706" title="5 of 8 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; comparison == 0; i++) {</span>
+<span class="pc bpc" id="L707" title="4 of 6 branches missed.">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L709">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the deep comparison of
+     * two &lt;code&gt;int&lt;/code&gt; arrays.&lt;/p&gt;
+     *
+     * &lt;ol&gt;
+     *  &lt;li&gt;Check if arrays are the same using &lt;code&gt;==&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check if for &lt;code&gt;null&lt;/code&gt;, &lt;code&gt;null&lt;/code&gt; is less than non-&lt;code&gt;null&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check array length, a shorter length array is less than a longer length array&lt;/li&gt;
+     *  &lt;li&gt;Check array contents element by element using {@link #append(int, int)}&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * @param lhs  left-hand array
+     * @param rhs  right-hand array
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final int[] lhs, final int[] rhs) {
+<span class="pc bpc" id="L728" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L729">            return this;</span>
+        }
+<span class="pc bpc" id="L731" title="6 of 10 branches missed.">        if (lhs == rhs) {</span>
+<span class="fc" id="L732">            return this;</span>
+        }
+<span class="pc bpc" id="L734" title="6 of 10 branches missed.">        if (lhs == null) {</span>
+<span class="pc bpc" id="L735" title="5 of 8 branches missed.">            comparison = -1;</span>
+<span class="fc" id="L736">            return this;</span>
+        }
+<span class="pc bpc" id="L738" title="6 of 10 branches missed.">        if (rhs == null) {</span>
+<span class="pc bpc" id="L739" title="10 of 16 branches missed.">            comparison = +1;</span>
+<span class="fc" id="L740">            return this;</span>
+        }
+<span class="pc bpc" id="L742" title="12 of 18 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="pc bpc" id="L743" title="27 of 42 branches missed.">            comparison = (lhs.length &lt; rhs.length) ? -1 : +1;</span>
+<span class="fc" id="L744">            return this;</span>
+        }
+<span class="pc bpc" id="L746" title="5 of 8 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; comparison == 0; i++) {</span>
+<span class="pc bpc" id="L747" title="4 of 6 branches missed.">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L749">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the deep comparison of
+     * two &lt;code&gt;short&lt;/code&gt; arrays.&lt;/p&gt;
+     *
+     * &lt;ol&gt;
+     *  &lt;li&gt;Check if arrays are the same using &lt;code&gt;==&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check if for &lt;code&gt;null&lt;/code&gt;, &lt;code&gt;null&lt;/code&gt; is less than non-&lt;code&gt;null&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check array length, a shorter length array is less than a longer length array&lt;/li&gt;
+     *  &lt;li&gt;Check array contents element by element using {@link #append(short, short)}&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * @param lhs  left-hand array
+     * @param rhs  right-hand array
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final short[] lhs, final short[] rhs) {
+<span class="pc bpc" id="L768" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L769">            return this;</span>
+        }
+<span class="pc bpc" id="L771" title="6 of 10 branches missed.">        if (lhs == rhs) {</span>
+<span class="fc" id="L772">            return this;</span>
+        }
+<span class="pc bpc" id="L774" title="6 of 10 branches missed.">        if (lhs == null) {</span>
+<span class="pc bpc" id="L775" title="5 of 8 branches missed.">            comparison = -1;</span>
+<span class="fc" id="L776">            return this;</span>
+        }
+<span class="pc bpc" id="L778" title="6 of 10 branches missed.">        if (rhs == null) {</span>
+<span class="pc bpc" id="L779" title="10 of 16 branches missed.">            comparison = +1;</span>
+<span class="fc" id="L780">            return this;</span>
+        }
+<span class="pc bpc" id="L782" title="12 of 18 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="pc bpc" id="L783" title="27 of 42 branches missed.">            comparison = (lhs.length &lt; rhs.length) ? -1 : +1;</span>
+<span class="fc" id="L784">            return this;</span>
+        }
+<span class="pc bpc" id="L786" title="5 of 8 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; comparison == 0; i++) {</span>
+<span class="pc bpc" id="L787" title="4 of 6 branches missed.">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L789">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the deep comparison of
+     * two &lt;code&gt;char&lt;/code&gt; arrays.&lt;/p&gt;
+     *
+     * &lt;ol&gt;
+     *  &lt;li&gt;Check if arrays are the same using &lt;code&gt;==&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check if for &lt;code&gt;null&lt;/code&gt;, &lt;code&gt;null&lt;/code&gt; is less than non-&lt;code&gt;null&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check array length, a shorter length array is less than a longer length array&lt;/li&gt;
+     *  &lt;li&gt;Check array contents element by element using {@link #append(char, char)}&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * @param lhs  left-hand array
+     * @param rhs  right-hand array
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final char[] lhs, final char[] rhs) {
+<span class="pc bpc" id="L808" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L809">            return this;</span>
+        }
+<span class="pc bpc" id="L811" title="6 of 10 branches missed.">        if (lhs == rhs) {</span>
+<span class="fc" id="L812">            return this;</span>
+        }
+<span class="pc bpc" id="L814" title="6 of 10 branches missed.">        if (lhs == null) {</span>
+<span class="pc bpc" id="L815" title="5 of 8 branches missed.">            comparison = -1;</span>
+<span class="fc" id="L816">            return this;</span>
+        }
+<span class="pc bpc" id="L818" title="6 of 10 branches missed.">        if (rhs == null) {</span>
+<span class="pc bpc" id="L819" title="10 of 16 branches missed.">            comparison = +1;</span>
+<span class="fc" id="L820">            return this;</span>
+        }
+<span class="pc bpc" id="L822" title="12 of 18 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="pc bpc" id="L823" title="27 of 42 branches missed.">            comparison = (lhs.length &lt; rhs.length) ? -1 : +1;</span>
+<span class="fc" id="L824">            return this;</span>
+        }
+<span class="pc bpc" id="L826" title="5 of 8 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; comparison == 0; i++) {</span>
+<span class="pc bpc" id="L827" title="4 of 6 branches missed.">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L829">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the deep comparison of
+     * two &lt;code&gt;byte&lt;/code&gt; arrays.&lt;/p&gt;
+     *
+     * &lt;ol&gt;
+     *  &lt;li&gt;Check if arrays are the same using &lt;code&gt;==&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check if for &lt;code&gt;null&lt;/code&gt;, &lt;code&gt;null&lt;/code&gt; is less than non-&lt;code&gt;null&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check array length, a shorter length array is less than a longer length array&lt;/li&gt;
+     *  &lt;li&gt;Check array contents element by element using {@link #append(byte, byte)}&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * @param lhs  left-hand array
+     * @param rhs  right-hand array
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final byte[] lhs, final byte[] rhs) {
+<span class="pc bpc" id="L848" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L849">            return this;</span>
+        }
+<span class="pc bpc" id="L851" title="6 of 10 branches missed.">        if (lhs == rhs) {</span>
+<span class="fc" id="L852">            return this;</span>
+        }
+<span class="pc bpc" id="L854" title="6 of 10 branches missed.">        if (lhs == null) {</span>
+<span class="pc bpc" id="L855" title="5 of 8 branches missed.">            comparison = -1;</span>
+<span class="fc" id="L856">            return this;</span>
+        }
+<span class="pc bpc" id="L858" title="6 of 10 branches missed.">        if (rhs == null) {</span>
+<span class="pc bpc" id="L859" title="10 of 16 branches missed.">            comparison = +1;</span>
+<span class="fc" id="L860">            return this;</span>
+        }
+<span class="pc bpc" id="L862" title="12 of 18 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="pc bpc" id="L863" title="27 of 42 branches missed.">            comparison = (lhs.length &lt; rhs.length) ? -1 : +1;</span>
+<span class="fc" id="L864">            return this;</span>
+        }
+<span class="pc bpc" id="L866" title="5 of 8 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; comparison == 0; i++) {</span>
+<span class="pc bpc" id="L867" title="4 of 6 branches missed.">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L869">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the deep comparison of
+     * two &lt;code&gt;double&lt;/code&gt; arrays.&lt;/p&gt;
+     *
+     * &lt;ol&gt;
+     *  &lt;li&gt;Check if arrays are the same using &lt;code&gt;==&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check if for &lt;code&gt;null&lt;/code&gt;, &lt;code&gt;null&lt;/code&gt; is less than non-&lt;code&gt;null&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check array length, a shorter length array is less than a longer length array&lt;/li&gt;
+     *  &lt;li&gt;Check array contents element by element using {@link #append(double, double)}&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * @param lhs  left-hand array
+     * @param rhs  right-hand array
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final double[] lhs, final double[] rhs) {
+<span class="pc bpc" id="L888" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L889">            return this;</span>
+        }
+<span class="pc bpc" id="L891" title="6 of 10 branches missed.">        if (lhs == rhs) {</span>
+<span class="fc" id="L892">            return this;</span>
+        }
+<span class="pc bpc" id="L894" title="6 of 10 branches missed.">        if (lhs == null) {</span>
+<span class="pc bpc" id="L895" title="5 of 8 branches missed.">            comparison = -1;</span>
+<span class="fc" id="L896">            return this;</span>
+        }
+<span class="pc bpc" id="L898" title="6 of 10 branches missed.">        if (rhs == null) {</span>
+<span class="pc bpc" id="L899" title="10 of 16 branches missed.">            comparison = +1;</span>
+<span class="fc" id="L900">            return this;</span>
+        }
+<span class="pc bpc" id="L902" title="12 of 18 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="pc bpc" id="L903" title="27 of 42 branches missed.">            comparison = (lhs.length &lt; rhs.length) ? -1 : +1;</span>
+<span class="fc" id="L904">            return this;</span>
+        }
+<span class="pc bpc" id="L906" title="5 of 8 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; comparison == 0; i++) {</span>
+<span class="pc bpc" id="L907" title="4 of 6 branches missed.">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L909">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the deep comparison of
+     * two &lt;code&gt;float&lt;/code&gt; arrays.&lt;/p&gt;
+     *
+     * &lt;ol&gt;
+     *  &lt;li&gt;Check if arrays are the same using &lt;code&gt;==&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check if for &lt;code&gt;null&lt;/code&gt;, &lt;code&gt;null&lt;/code&gt; is less than non-&lt;code&gt;null&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check array length, a shorter length array is less than a longer length array&lt;/li&gt;
+     *  &lt;li&gt;Check array contents element by element using {@link #append(float, float)}&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * @param lhs  left-hand array
+     * @param rhs  right-hand array
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final float[] lhs, final float[] rhs) {
+<span class="pc bpc" id="L928" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L929">            return this;</span>
+        }
+<span class="pc bpc" id="L931" title="6 of 10 branches missed.">        if (lhs == rhs) {</span>
+<span class="fc" id="L932">            return this;</span>
+        }
+<span class="pc bpc" id="L934" title="6 of 10 branches missed.">        if (lhs == null) {</span>
+<span class="pc bpc" id="L935" title="5 of 8 branches missed.">            comparison = -1;</span>
+<span class="fc" id="L936">            return this;</span>
+        }
+<span class="pc bpc" id="L938" title="6 of 10 branches missed.">        if (rhs == null) {</span>
+<span class="pc bpc" id="L939" title="10 of 16 branches missed.">            comparison = +1;</span>
+<span class="fc" id="L940">            return this;</span>
+        }
+<span class="pc bpc" id="L942" title="12 of 18 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="pc bpc" id="L943" title="27 of 42 branches missed.">            comparison = (lhs.length &lt; rhs.length) ? -1 : +1;</span>
+<span class="fc" id="L944">            return this;</span>
+        }
+<span class="pc bpc" id="L946" title="5 of 8 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; comparison == 0; i++) {</span>
+<span class="pc bpc" id="L947" title="4 of 6 branches missed.">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L949">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Appends to the &lt;code&gt;builder&lt;/code&gt; the deep comparison of
+     * two &lt;code&gt;boolean&lt;/code&gt; arrays.&lt;/p&gt;
+     *
+     * &lt;ol&gt;
+     *  &lt;li&gt;Check if arrays are the same using &lt;code&gt;==&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check if for &lt;code&gt;null&lt;/code&gt;, &lt;code&gt;null&lt;/code&gt; is less than non-&lt;code&gt;null&lt;/code&gt;&lt;/li&gt;
+     *  &lt;li&gt;Check array length, a shorter length array is less than a longer length array&lt;/li&gt;
+     *  &lt;li&gt;Check array contents element by element using {@link #append(boolean, boolean)}&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * @param lhs  left-hand array
+     * @param rhs  right-hand array
+     * @return this - used to chain append calls
+     */
+    public CompareToBuilder append(final boolean[] lhs, final boolean[] rhs) {
+<span class="pc bpc" id="L968" title="18 of 26 branches missed.">        if (comparison != 0) {</span>
+<span class="nc" id="L969">            return this;</span>
+        }
+<span class="pc bpc" id="L971" title="6 of 10 branches missed.">        if (lhs == rhs) {</span>
+<span class="fc" id="L972">            return this;</span>
+        }
+<span class="pc bpc" id="L974" title="6 of 10 branches missed.">        if (lhs == null) {</span>
+<span class="pc bpc" id="L975" title="5 of 8 branches missed.">            comparison = -1;</span>
+<span class="fc" id="L976">            return this;</span>
+        }
+<span class="pc bpc" id="L978" title="6 of 10 branches missed.">        if (rhs == null) {</span>
+<span class="pc bpc" id="L979" title="10 of 16 branches missed.">            comparison = +1;</span>
+<span class="fc" id="L980">            return this;</span>
+        }
+<span class="pc bpc" id="L982" title="12 of 18 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="pc bpc" id="L983" title="27 of 42 branches missed.">            comparison = (lhs.length &lt; rhs.length) ? -1 : +1;</span>
+<span class="fc" id="L984">            return this;</span>
+        }
+<span class="pc bpc" id="L986" title="5 of 8 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; comparison == 0; i++) {</span>
+<span class="pc bpc" id="L987" title="4 of 6 branches missed.">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L989">        return this;</span>
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * Returns a negative integer, a positive integer, or zero as
+     * the &lt;code&gt;builder&lt;/code&gt; has judged the &quot;left-hand&quot; side
+     * as less than, greater than, or equal to the &quot;right-hand&quot;
+     * side.
+     * 
+     * @return final comparison result
+     * @see #build()
+     */
+    public int toComparison() {
+<span class="fc" id="L1003">        return comparison;</span>
+    }
+
+    /**
+     * Returns a negative Integer, a positive Integer, or zero as
+     * the &lt;code&gt;builder&lt;/code&gt; has judged the &quot;left-hand&quot; side
+     * as less than, greater than, or equal to the &quot;right-hand&quot;
+     * side.
+     * 
+     * @return final comparison result as an Integer
+     * @see #toComparison()
+     * @since 3.0
+     */
+    @Override
+    public Integer build() {
+<span class="fc" id="L1018">        return Integer.valueOf(toComparison());</span>
+    }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

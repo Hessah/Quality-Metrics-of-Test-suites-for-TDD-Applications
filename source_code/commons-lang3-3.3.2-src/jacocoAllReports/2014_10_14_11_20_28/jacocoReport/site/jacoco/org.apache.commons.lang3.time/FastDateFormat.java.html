@@ -1,0 +1,606 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>FastDateFormat.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-lang3-3.3.2</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.time</a> &gt; <span class="el_source">FastDateFormat.java</span></div><h1>FastDateFormat.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.time;
+
+import java.text.DateFormat;
+import java.text.FieldPosition;
+import java.text.Format;
+import java.text.ParseException;
+import java.text.ParsePosition;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
+
+/**
+ * &lt;p&gt;FastDateFormat is a fast and thread-safe version of
+ * {@link java.text.SimpleDateFormat}.&lt;/p&gt;
+ *
+ * &lt;p&gt;This class can be used as a direct replacement to
+ * {@code SimpleDateFormat} in most formatting and parsing situations.
+ * This class is especially useful in multi-threaded server environments.
+ * {@code SimpleDateFormat} is not thread-safe in any JDK version,
+ * nor will it be as Sun have closed the bug/RFE.
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;All patterns are compatible with
+ * SimpleDateFormat (except time zones and some year patterns - see below).&lt;/p&gt;
+ *
+ * &lt;p&gt;Since 3.2, FastDateFormat supports parsing as well as printing.&lt;/p&gt;
+ *
+ * &lt;p&gt;Java 1.4 introduced a new pattern letter, {@code 'Z'}, to represent
+ * time zones in RFC822 format (eg. {@code +0800} or {@code -1100}).
+ * This pattern letter can be used here (on all JDK versions).&lt;/p&gt;
+ *
+ * &lt;p&gt;In addition, the pattern {@code 'ZZ'} has been made to represent
+ * ISO8601 full format time zones (eg. {@code +08:00} or {@code -11:00}).
+ * This introduces a minor incompatibility with Java 1.4, but at a gain of
+ * useful functionality.&lt;/p&gt;
+ *
+ * &lt;p&gt;Javadoc cites for the year pattern: &lt;i&gt;For formatting, if the number of
+ * pattern letters is 2, the year is truncated to 2 digits; otherwise it is
+ * interpreted as a number.&lt;/i&gt; Starting with Java 1.7 a pattern of 'Y' or
+ * 'YYY' will be formatted as '2003', while it was '03' in former Java
+ * versions. FastDateFormat implements the behavior of Java 7.&lt;/p&gt;
+ *
+ * @since 2.0
+ * @version $Id: FastDateFormat.java 1572877 2014-02-28 08:42:25Z britter $
+ */
+public class FastDateFormat extends Format implements DateParser, DatePrinter {
+    /**
+     * Required for serialization support.
+     *
+     * @see java.io.Serializable
+     */
+    private static final long serialVersionUID = 2L;
+
+    /**
+     * FULL locale dependent date or time style.
+     */
+    public static final int FULL = DateFormat.FULL;
+    /**
+     * LONG locale dependent date or time style.
+     */
+    public static final int LONG = DateFormat.LONG;
+    /**
+     * MEDIUM locale dependent date or time style.
+     */
+    public static final int MEDIUM = DateFormat.MEDIUM;
+    /**
+     * SHORT locale dependent date or time style.
+     */
+    public static final int SHORT = DateFormat.SHORT;
+
+<span class="fc" id="L88">    private static final FormatCache&lt;FastDateFormat&gt; cache= new FormatCache&lt;FastDateFormat&gt;() {</span>
+        @Override
+        protected FastDateFormat createInstance(final String pattern, final TimeZone timeZone, final Locale locale) {
+<span class="fc" id="L91">            return new FastDateFormat(pattern, timeZone, locale);</span>
+        }
+    };
+
+    private final FastDatePrinter printer;
+    private final FastDateParser parser;
+
+    //-----------------------------------------------------------------------
+    /**
+     * &lt;p&gt;Gets a formatter instance using the default pattern in the
+     * default locale.&lt;/p&gt;
+     *
+     * @return a date/time formatter
+     */
+    public static FastDateFormat getInstance() {
+<span class="fc" id="L106">        return cache.getInstance();</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets a formatter instance using the specified pattern in the
+     * default locale.&lt;/p&gt;
+     *
+     * @param pattern  {@link java.text.SimpleDateFormat} compatible
+     *  pattern
+     * @return a pattern based date/time formatter
+     * @throws IllegalArgumentException if pattern is invalid
+     */
+    public static FastDateFormat getInstance(final String pattern) {
+<span class="fc" id="L119">        return cache.getInstance(pattern, null, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets a formatter instance using the specified pattern and
+     * time zone.&lt;/p&gt;
+     *
+     * @param pattern  {@link java.text.SimpleDateFormat} compatible
+     *  pattern
+     * @param timeZone  optional time zone, overrides time zone of
+     *  formatted date
+     * @return a pattern based date/time formatter
+     * @throws IllegalArgumentException if pattern is invalid
+     */
+    public static FastDateFormat getInstance(final String pattern, final TimeZone timeZone) {
+<span class="fc" id="L134">        return cache.getInstance(pattern, timeZone, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets a formatter instance using the specified pattern and
+     * locale.&lt;/p&gt;
+     *
+     * @param pattern  {@link java.text.SimpleDateFormat} compatible
+     *  pattern
+     * @param locale  optional locale, overrides system locale
+     * @return a pattern based date/time formatter
+     * @throws IllegalArgumentException if pattern is invalid
+     */
+    public static FastDateFormat getInstance(final String pattern, final Locale locale) {
+<span class="fc" id="L148">        return cache.getInstance(pattern, null, locale);</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets a formatter instance using the specified pattern, time zone
+     * and locale.&lt;/p&gt;
+     *
+     * @param pattern  {@link java.text.SimpleDateFormat} compatible
+     *  pattern
+     * @param timeZone  optional time zone, overrides time zone of
+     *  formatted date
+     * @param locale  optional locale, overrides system locale
+     * @return a pattern based date/time formatter
+     * @throws IllegalArgumentException if pattern is invalid
+     *  or {@code null}
+     */
+    public static FastDateFormat getInstance(final String pattern, final TimeZone timeZone, final Locale locale) {
+<span class="fc" id="L165">        return cache.getInstance(pattern, timeZone, locale);</span>
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * &lt;p&gt;Gets a date formatter instance using the specified style in the
+     * default time zone and locale.&lt;/p&gt;
+     *
+     * @param style  date style: FULL, LONG, MEDIUM, or SHORT
+     * @return a localized standard date formatter
+     * @throws IllegalArgumentException if the Locale has no date
+     *  pattern defined
+     * @since 2.1
+     */
+    public static FastDateFormat getDateInstance(final int style) {
+<span class="fc" id="L180">        return cache.getDateInstance(style, null, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets a date formatter instance using the specified style and
+     * locale in the default time zone.&lt;/p&gt;
+     *
+     * @param style  date style: FULL, LONG, MEDIUM, or SHORT
+     * @param locale  optional locale, overrides system locale
+     * @return a localized standard date formatter
+     * @throws IllegalArgumentException if the Locale has no date
+     *  pattern defined
+     * @since 2.1
+     */
+    public static FastDateFormat getDateInstance(final int style, final Locale locale) {
+<span class="fc" id="L195">        return cache.getDateInstance(style, null, locale);</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets a date formatter instance using the specified style and
+     * time zone in the default locale.&lt;/p&gt;
+     *
+     * @param style  date style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeZone  optional time zone, overrides time zone of
+     *  formatted date
+     * @return a localized standard date formatter
+     * @throws IllegalArgumentException if the Locale has no date
+     *  pattern defined
+     * @since 2.1
+     */
+    public static FastDateFormat getDateInstance(final int style, final TimeZone timeZone) {
+<span class="fc" id="L211">        return cache.getDateInstance(style, timeZone, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets a date formatter instance using the specified style, time
+     * zone and locale.&lt;/p&gt;
+     *
+     * @param style  date style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeZone  optional time zone, overrides time zone of
+     *  formatted date
+     * @param locale  optional locale, overrides system locale
+     * @return a localized standard date formatter
+     * @throws IllegalArgumentException if the Locale has no date
+     *  pattern defined
+     */
+    public static FastDateFormat getDateInstance(final int style, final TimeZone timeZone, final Locale locale) {
+<span class="fc" id="L227">        return cache.getDateInstance(style, timeZone, locale);</span>
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * &lt;p&gt;Gets a time formatter instance using the specified style in the
+     * default time zone and locale.&lt;/p&gt;
+     *
+     * @param style  time style: FULL, LONG, MEDIUM, or SHORT
+     * @return a localized standard time formatter
+     * @throws IllegalArgumentException if the Locale has no time
+     *  pattern defined
+     * @since 2.1
+     */
+    public static FastDateFormat getTimeInstance(final int style) {
+<span class="fc" id="L242">        return cache.getTimeInstance(style, null, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets a time formatter instance using the specified style and
+     * locale in the default time zone.&lt;/p&gt;
+     *
+     * @param style  time style: FULL, LONG, MEDIUM, or SHORT
+     * @param locale  optional locale, overrides system locale
+     * @return a localized standard time formatter
+     * @throws IllegalArgumentException if the Locale has no time
+     *  pattern defined
+     * @since 2.1
+     */
+    public static FastDateFormat getTimeInstance(final int style, final Locale locale) {
+<span class="fc" id="L257">        return cache.getTimeInstance(style, null, locale);</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets a time formatter instance using the specified style and
+     * time zone in the default locale.&lt;/p&gt;
+     *
+     * @param style  time style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeZone  optional time zone, overrides time zone of
+     *  formatted time
+     * @return a localized standard time formatter
+     * @throws IllegalArgumentException if the Locale has no time
+     *  pattern defined
+     * @since 2.1
+     */
+    public static FastDateFormat getTimeInstance(final int style, final TimeZone timeZone) {
+<span class="fc" id="L273">        return cache.getTimeInstance(style, timeZone, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets a time formatter instance using the specified style, time
+     * zone and locale.&lt;/p&gt;
+     *
+     * @param style  time style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeZone  optional time zone, overrides time zone of
+     *  formatted time
+     * @param locale  optional locale, overrides system locale
+     * @return a localized standard time formatter
+     * @throws IllegalArgumentException if the Locale has no time
+     *  pattern defined
+     */
+    public static FastDateFormat getTimeInstance(final int style, final TimeZone timeZone, final Locale locale) {
+<span class="fc" id="L289">        return cache.getTimeInstance(style, timeZone, locale);</span>
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * &lt;p&gt;Gets a date/time formatter instance using the specified style
+     * in the default time zone and locale.&lt;/p&gt;
+     *
+     * @param dateStyle  date style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeStyle  time style: FULL, LONG, MEDIUM, or SHORT
+     * @return a localized standard date/time formatter
+     * @throws IllegalArgumentException if the Locale has no date/time
+     *  pattern defined
+     * @since 2.1
+     */
+    public static FastDateFormat getDateTimeInstance(final int dateStyle, final int timeStyle) {
+<span class="fc" id="L305">        return cache.getDateTimeInstance(dateStyle, timeStyle, null, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets a date/time formatter instance using the specified style and
+     * locale in the default time zone.&lt;/p&gt;
+     *
+     * @param dateStyle  date style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeStyle  time style: FULL, LONG, MEDIUM, or SHORT
+     * @param locale  optional locale, overrides system locale
+     * @return a localized standard date/time formatter
+     * @throws IllegalArgumentException if the Locale has no date/time
+     *  pattern defined
+     * @since 2.1
+     */
+    public static FastDateFormat getDateTimeInstance(final int dateStyle, final int timeStyle, final Locale locale) {
+<span class="fc" id="L321">        return cache.getDateTimeInstance(dateStyle, timeStyle, null, locale);</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets a date/time formatter instance using the specified style and
+     * time zone in the default locale.&lt;/p&gt;
+     *
+     * @param dateStyle  date style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeStyle  time style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeZone  optional time zone, overrides time zone of
+     *  formatted date
+     * @return a localized standard date/time formatter
+     * @throws IllegalArgumentException if the Locale has no date/time
+     *  pattern defined
+     * @since 2.1
+     */
+    public static FastDateFormat getDateTimeInstance(final int dateStyle, final int timeStyle, final TimeZone timeZone) {
+<span class="fc" id="L338">        return getDateTimeInstance(dateStyle, timeStyle, timeZone, null);</span>
+    }
+    /**
+     * &lt;p&gt;Gets a date/time formatter instance using the specified style,
+     * time zone and locale.&lt;/p&gt;
+     *
+     * @param dateStyle  date style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeStyle  time style: FULL, LONG, MEDIUM, or SHORT
+     * @param timeZone  optional time zone, overrides time zone of
+     *  formatted date
+     * @param locale  optional locale, overrides system locale
+     * @return a localized standard date/time formatter
+     * @throws IllegalArgumentException if the Locale has no date/time
+     *  pattern defined
+     */
+    public static FastDateFormat getDateTimeInstance(
+            final int dateStyle, final int timeStyle, final TimeZone timeZone, final Locale locale) {
+<span class="fc" id="L355">        return cache.getDateTimeInstance(dateStyle, timeStyle, timeZone, locale);</span>
+    }
+
+    // Constructor
+    //-----------------------------------------------------------------------
+    /**
+     * &lt;p&gt;Constructs a new FastDateFormat.&lt;/p&gt;
+     *
+     * @param pattern  {@link java.text.SimpleDateFormat} compatible pattern
+     * @param timeZone  non-null time zone to use
+     * @param locale  non-null locale to use
+     * @throws NullPointerException if pattern, timeZone, or locale is null.
+     */
+    protected FastDateFormat(final String pattern, final TimeZone timeZone, final Locale locale) {
+<span class="fc" id="L369">        this(pattern, timeZone, locale, null);</span>
+<span class="fc" id="L370">    }</span>
+
+    // Constructor
+    //-----------------------------------------------------------------------
+    /**
+     * &lt;p&gt;Constructs a new FastDateFormat.&lt;/p&gt;
+     *
+     * @param pattern  {@link java.text.SimpleDateFormat} compatible pattern
+     * @param timeZone  non-null time zone to use
+     * @param locale  non-null locale to use
+     * @param centuryStart The start of the 100 year period to use as the &quot;default century&quot; for 2 digit year parsing.  If centuryStart is null, defaults to now - 80 years
+     * @throws NullPointerException if pattern, timeZone, or locale is null.
+     */
+<span class="fc" id="L383">    protected FastDateFormat(final String pattern, final TimeZone timeZone, final Locale locale, final Date centuryStart) {</span>
+<span class="fc" id="L384">        printer= new FastDatePrinter(pattern, timeZone, locale);</span>
+<span class="fc" id="L385">        parser= new FastDateParser(pattern, timeZone, locale, centuryStart);</span>
+<span class="fc" id="L386">    }</span>
+
+    // Format methods
+    //-----------------------------------------------------------------------
+    /**
+     * &lt;p&gt;Formats a {@code Date}, {@code Calendar} or
+     * {@code Long} (milliseconds) object.&lt;/p&gt;
+     *
+     * @param obj  the object to format
+     * @param toAppendTo  the buffer to append to
+     * @param pos  the position - ignored
+     * @return the buffer passed in
+     */
+    @Override
+    public StringBuffer format(final Object obj, final StringBuffer toAppendTo, final FieldPosition pos) {
+<span class="fc" id="L401">        return printer.format(obj, toAppendTo, pos);</span>
+    }
+
+    /**
+     * &lt;p&gt;Formats a millisecond {@code long} value.&lt;/p&gt;
+     *
+     * @param millis  the millisecond value to format
+     * @return the formatted string
+     * @since 2.1
+     */
+    @Override
+    public String format(final long millis) {
+<span class="fc" id="L413">        return printer.format(millis);</span>
+    }
+
+    /**
+     * &lt;p&gt;Formats a {@code Date} object using a {@code GregorianCalendar}.&lt;/p&gt;
+     *
+     * @param date  the date to format
+     * @return the formatted string
+     */
+    @Override
+    public String format(final Date date) {
+<span class="fc" id="L424">        return printer.format(date);</span>
+    }
+
+    /**
+     * &lt;p&gt;Formats a {@code Calendar} object.&lt;/p&gt;
+     *
+     * @param calendar  the calendar to format
+     * @return the formatted string
+     */
+    @Override
+    public String format(final Calendar calendar) {
+<span class="fc" id="L435">        return printer.format(calendar);</span>
+    }
+
+    /**
+     * &lt;p&gt;Formats a millisecond {@code long} value into the
+     * supplied {@code StringBuffer}.&lt;/p&gt;
+     *
+     * @param millis  the millisecond value to format
+     * @param buf  the buffer to format into
+     * @return the specified string buffer
+     * @since 2.1
+     */
+    @Override
+    public StringBuffer format(final long millis, final StringBuffer buf) {
+<span class="nc" id="L449">        return printer.format(millis, buf);</span>
+    }
+
+    /**
+     * &lt;p&gt;Formats a {@code Date} object into the
+     * supplied {@code StringBuffer} using a {@code GregorianCalendar}.&lt;/p&gt;
+     *
+     * @param date  the date to format
+     * @param buf  the buffer to format into
+     * @return the specified string buffer
+     */
+    @Override
+    public StringBuffer format(final Date date, final StringBuffer buf) {
+<span class="nc" id="L462">        return printer.format(date, buf);</span>
+    }
+
+    /**
+     * &lt;p&gt;Formats a {@code Calendar} object into the
+     * supplied {@code StringBuffer}.&lt;/p&gt;
+     *
+     * @param calendar  the calendar to format
+     * @param buf  the buffer to format into
+     * @return the specified string buffer
+     */
+    @Override
+    public StringBuffer format(final Calendar calendar, final StringBuffer buf) {
+<span class="nc" id="L475">        return printer.format(calendar, buf);</span>
+    }
+
+    // Parsing
+    //-----------------------------------------------------------------------
+
+
+    /* (non-Javadoc)
+     * @see DateParser#parse(java.lang.String)
+     */
+    @Override
+    public Date parse(final String source) throws ParseException {
+<span class="fc" id="L487">        return parser.parse(source);</span>
+    }
+
+    /* (non-Javadoc)
+     * @see DateParser#parse(java.lang.String, java.text.ParsePosition)
+     */
+    @Override
+    public Date parse(final String source, final ParsePosition pos) {
+<span class="nc" id="L495">            return parser.parse(source, pos);</span>
+    }
+
+    /* (non-Javadoc)
+     * @see java.text.Format#parseObject(java.lang.String, java.text.ParsePosition)
+     */
+    @Override
+    public Object parseObject(final String source, final ParsePosition pos) {
+<span class="fc" id="L503">        return parser.parseObject(source, pos);</span>
+    }
+
+    // Accessors
+    //-----------------------------------------------------------------------
+    /**
+     * &lt;p&gt;Gets the pattern used by this formatter.&lt;/p&gt;
+     *
+     * @return the pattern, {@link java.text.SimpleDateFormat} compatible
+     */
+    @Override
+    public String getPattern() {
+<span class="fc" id="L515">        return printer.getPattern();</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets the time zone used by this formatter.&lt;/p&gt;
+     *
+     * &lt;p&gt;This zone is always used for {@code Date} formatting. &lt;/p&gt;
+     *
+     * @return the time zone
+     */
+    @Override
+    public TimeZone getTimeZone() {
+<span class="fc" id="L527">        return printer.getTimeZone();</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets the locale used by this formatter.&lt;/p&gt;
+     *
+     * @return the locale
+     */
+    @Override
+    public Locale getLocale() {
+<span class="fc" id="L537">        return printer.getLocale();</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets an estimate for the maximum string length that the
+     * formatter will produce.&lt;/p&gt;
+     *
+     * &lt;p&gt;The actual formatted length will almost always be less than or
+     * equal to this amount.&lt;/p&gt;
+     *
+     * @return the maximum formatted length
+     */
+    public int getMaxLengthEstimate() {
+<span class="nc" id="L550">        return printer.getMaxLengthEstimate();</span>
+    }
+
+    // Basics
+    //-----------------------------------------------------------------------
+    /**
+     * &lt;p&gt;Compares two objects for equality.&lt;/p&gt;
+     *
+     * @param obj  the object to compare to
+     * @return {@code true} if equal
+     */
+    @Override
+    public boolean equals(final Object obj) {
+<span class="pc bpc" id="L563" title="14 of 22 branches missed.">        if (obj instanceof FastDateFormat == false) {</span>
+<span class="pc bpc" id="L564" title="4 of 6 branches missed.">            return false;</span>
+        }
+<span class="fc" id="L566">        final FastDateFormat other = (FastDateFormat) obj;</span>
+        // no need to check parser, as it has same invariants as printer
+<span class="fc" id="L568">        return printer.equals(other.printer);</span>
+    }
+
+    /**
+     * &lt;p&gt;Returns a hashcode compatible with equals.&lt;/p&gt;
+     *
+     * @return a hashcode compatible with equals
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L578">        return printer.hashCode();</span>
+    }
+
+    /**
+     * &lt;p&gt;Gets a debugging string version of this formatter.&lt;/p&gt;
+     *
+     * @return a debugging string
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L588">        return &quot;FastDateFormat[&quot; + printer.getPattern() + &quot;,&quot; + printer.getLocale() + &quot;,&quot; + printer.getTimeZone().getID() + &quot;]&quot;;</span>
+    }
+
+
+    /**
+     * &lt;p&gt;Performs the formatting by applying the rules to the
+     * specified calendar.&lt;/p&gt;
+     *
+     * @param calendar  the calendar to format
+     * @param buf  the buffer to format into
+     * @return the specified string buffer
+     */
+    protected StringBuffer applyRules(final Calendar calendar, final StringBuffer buf) {
+<span class="nc" id="L601">        return printer.applyRules(calendar, buf);</span>
+    }
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

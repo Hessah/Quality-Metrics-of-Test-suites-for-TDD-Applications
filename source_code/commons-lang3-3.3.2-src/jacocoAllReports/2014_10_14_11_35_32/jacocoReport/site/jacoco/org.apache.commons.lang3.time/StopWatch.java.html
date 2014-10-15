@@ -1,0 +1,479 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StopWatch.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-lang3-3.3.2</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.time</a> &gt; <span class="el_source">StopWatch.java</span></div><h1>StopWatch.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ * 
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.lang3.time;
+
+/**
+ * &lt;p&gt;
+ * &lt;code&gt;StopWatch&lt;/code&gt; provides a convenient API for timings.
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * To start the watch, call {@link #start()}. At this point you can:
+ * &lt;/p&gt;
+ * &lt;ul&gt;
+ * &lt;li&gt;{@link #split()} the watch to get the time whilst the watch continues in the background. {@link #unsplit()} will
+ * remove the effect of the split. At this point, these three options are available again.&lt;/li&gt;
+ * &lt;li&gt;{@link #suspend()} the watch to pause it. {@link #resume()} allows the watch to continue. Any time between the
+ * suspend and resume will not be counted in the total. At this point, these three options are available again.&lt;/li&gt;
+ * &lt;li&gt;{@link #stop()} the watch to complete the timing session.&lt;/li&gt;
+ * &lt;/ul&gt;
+ * 
+ * &lt;p&gt;
+ * It is intended that the output methods {@link #toString()} and {@link #getTime()} should only be called after stop,
+ * split or suspend, however a suitable result will be returned at other points.
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * NOTE: As from v2.1, the methods protect against inappropriate calls. Thus you cannot now call stop before start,
+ * resume before suspend or unsplit before split.
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * 1. split(), suspend(), or stop() cannot be invoked twice&lt;br&gt;
+ * 2. unsplit() may only be called if the watch has been split()&lt;br&gt;
+ * 3. resume() may only be called if the watch has been suspend()&lt;br&gt;
+ * 4. start() cannot be called twice without calling reset()
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;This class is not thread-safe&lt;/p&gt;
+ * 
+ * @since 2.0
+ * @version $Id: StopWatch.java 1583482 2014-03-31 22:54:57Z niallp $
+ */
+public class StopWatch {
+
+    private static final long NANO_2_MILLIS = 1000000L;
+    
+    /**
+     * Enumeration type which indicates the status of stopwatch.
+     */
+<span class="pc" id="L65">    private enum State {</span>
+
+<span class="fc" id="L67">        UNSTARTED {</span>
+<span class="pc bpc" id="L68" title="4 of 6 branches missed.">            @Override boolean isStarted() { return false; }</span>
+<span class="pc bpc" id="L69" title="4 of 6 branches missed.">            @Override boolean isStopped() { return true;  }</span>
+<span class="pc bpc" id="L70" title="4 of 6 branches missed.">            @Override boolean isSuspended() { return false; }</span>
+        },
+<span class="fc" id="L72">        RUNNING {</span>
+<span class="pc bpc" id="L73" title="4 of 6 branches missed.">            @Override boolean isStarted() { return true; }</span>
+<span class="pc bpc" id="L74" title="4 of 6 branches missed.">            @Override boolean isStopped() { return false; }</span>
+<span class="pc bpc" id="L75" title="4 of 6 branches missed.">            @Override boolean isSuspended() { return false; }</span>
+        },
+<span class="fc" id="L77">        STOPPED {</span>
+<span class="pc bpc" id="L78" title="4 of 6 branches missed.">            @Override boolean isStarted() { return false; }</span>
+<span class="pc bpc" id="L79" title="4 of 6 branches missed.">            @Override boolean isStopped() { return true; }</span>
+<span class="pc bpc" id="L80" title="4 of 6 branches missed.">            @Override boolean isSuspended() { return false; }</span>
+        },
+<span class="fc" id="L82">        SUSPENDED {</span>
+<span class="pc bpc" id="L83" title="4 of 6 branches missed.">            @Override boolean isStarted() { return true; }</span>
+<span class="pc bpc" id="L84" title="4 of 6 branches missed.">            @Override boolean isStopped() { return false; }</span>
+<span class="pc bpc" id="L85" title="4 of 6 branches missed.">            @Override  boolean isSuspended() { return true; }</span>
+        };
+
+        /**
+         * &lt;p&gt;
+         * The method is used to find out if the StopWatch is started. A suspended
+         * StopWatch is also started watch.
+         * &lt;/p&gt;
+
+         * @return boolean
+         *             If the StopWatch is started.
+         */
+        abstract boolean isStarted();
+
+        /**
+         * &lt;p&gt;
+         * This method is used to find out whether the StopWatch is stopped. The
+         * stopwatch which's not yet started and explicitly stopped stopwatch is
+         * considered as stopped.
+         * &lt;/p&gt;
+         *
+         * @return boolean
+         *             If the StopWatch is stopped.
+         */
+        abstract boolean isStopped();
+
+        /**
+         * &lt;p&gt;
+         * This method is used to find out whether the StopWatch is suspended.
+         * &lt;/p&gt;
+         *
+         * @return boolean
+         *             If the StopWatch is suspended.
+         */
+        abstract boolean isSuspended();
+    }
+
+    /**
+     * Enumeration type which indicates the split status of stopwatch.
+     */    
+<span class="pc" id="L125">    private enum SplitState {</span>
+<span class="fc" id="L126">        SPLIT,</span>
+<span class="fc" id="L127">        UNSPLIT</span>
+    }
+    /**
+     * The current running state of the StopWatch.
+     */
+<span class="fc" id="L132">    private State runningState = State.UNSTARTED;</span>
+
+    /**
+     * Whether the stopwatch has a split time recorded.
+     */
+<span class="fc" id="L137">    private SplitState splitState = SplitState.UNSPLIT;</span>
+
+    /**
+     * The start time.
+     */
+    private long startTime;
+
+    /**
+     * The start time in Millis - nanoTime is only for elapsed time so we 
+     * need to also store the currentTimeMillis to maintain the old 
+     * getStartTime API.
+     */
+    private long startTimeMillis;
+
+    /**
+     * The stop time.
+     */
+    private long stopTime;
+
+    /**
+     * &lt;p&gt;
+     * Constructor.
+     * &lt;/p&gt;
+     */
+    public StopWatch() {
+<span class="fc" id="L162">        super();</span>
+<span class="fc" id="L163">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Start the stopwatch.
+     * &lt;/p&gt;
+     * 
+     * &lt;p&gt;
+     * This method starts a new timing session, clearing any previous values.
+     * &lt;/p&gt;
+     * 
+     * @throws IllegalStateException
+     *             if the StopWatch is already running.
+     */
+    public void start() {
+<span class="pc bpc" id="L178" title="6 of 10 branches missed.">        if (this.runningState == State.STOPPED) {</span>
+<span class="fc" id="L179">            throw new IllegalStateException(&quot;Stopwatch must be reset before being restarted. &quot;);</span>
+        }
+<span class="pc bpc" id="L181" title="6 of 10 branches missed.">        if (this.runningState != State.UNSTARTED) {</span>
+<span class="fc" id="L182">            throw new IllegalStateException(&quot;Stopwatch already started. &quot;);</span>
+        }
+<span class="fc" id="L184">        this.startTime = System.nanoTime();</span>
+<span class="fc" id="L185">        this.startTimeMillis = System.currentTimeMillis();</span>
+<span class="fc" id="L186">        this.runningState = State.RUNNING;</span>
+<span class="fc" id="L187">    }</span>
+
+
+    /**
+     * &lt;p&gt;
+     * Stop the stopwatch.
+     * &lt;/p&gt;
+     * 
+     * &lt;p&gt;
+     * This method ends a new timing session, allowing the time to be retrieved.
+     * &lt;/p&gt;
+     * 
+     * @throws IllegalStateException
+     *             if the StopWatch is not running.
+     */
+    public void stop() {
+<span class="pc bpc" id="L203" title="33 of 46 branches missed.">        if (this.runningState != State.RUNNING &amp;&amp; this.runningState != State.SUSPENDED) {</span>
+<span class="fc" id="L204">            throw new IllegalStateException(&quot;Stopwatch is not running. &quot;);</span>
+        }
+<span class="pc bpc" id="L206" title="6 of 10 branches missed.">        if (this.runningState == State.RUNNING) {</span>
+<span class="fc" id="L207">            this.stopTime = System.nanoTime();</span>
+        }
+<span class="fc" id="L209">        this.runningState = State.STOPPED;</span>
+<span class="fc" id="L210">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Resets the stopwatch. Stops it if need be.
+     * &lt;/p&gt;
+     * 
+     * &lt;p&gt;
+     * This method clears the internal values to allow the object to be reused.
+     * &lt;/p&gt;
+     */
+    public void reset() {
+<span class="fc" id="L222">        this.runningState = State.UNSTARTED;</span>
+<span class="fc" id="L223">        this.splitState = SplitState.UNSPLIT;</span>
+<span class="fc" id="L224">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Split the time.
+     * &lt;/p&gt;
+     * 
+     * &lt;p&gt;
+     * This method sets the stop time of the watch to allow a time to be extracted. The start time is unaffected,
+     * enabling {@link #unsplit()} to continue the timing from the original start point.
+     * &lt;/p&gt;
+     * 
+     * @throws IllegalStateException
+     *             if the StopWatch is not running.
+     */
+    public void split() {
+<span class="pc bpc" id="L240" title="6 of 10 branches missed.">        if (this.runningState != State.RUNNING) {</span>
+<span class="fc" id="L241">            throw new IllegalStateException(&quot;Stopwatch is not running. &quot;);</span>
+        }
+<span class="fc" id="L243">        this.stopTime = System.nanoTime();</span>
+<span class="fc" id="L244">        this.splitState = SplitState.SPLIT;</span>
+<span class="fc" id="L245">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Remove a split.
+     * &lt;/p&gt;
+     * 
+     * &lt;p&gt;
+     * This method clears the stop time. The start time is unaffected, enabling timing from the original start point to
+     * continue.
+     * &lt;/p&gt;
+     * 
+     * @throws IllegalStateException
+     *             if the StopWatch has not been split.
+     */
+    public void unsplit() {
+<span class="pc bpc" id="L261" title="6 of 10 branches missed.">        if (this.splitState != SplitState.SPLIT) {</span>
+<span class="fc" id="L262">            throw new IllegalStateException(&quot;Stopwatch has not been split. &quot;);</span>
+        }
+<span class="fc" id="L264">        this.splitState = SplitState.UNSPLIT;</span>
+<span class="fc" id="L265">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Suspend the stopwatch for later resumption.
+     * &lt;/p&gt;
+     * 
+     * &lt;p&gt;
+     * This method suspends the watch until it is resumed. The watch will not include time between the suspend and
+     * resume calls in the total time.
+     * &lt;/p&gt;
+     * 
+     * @throws IllegalStateException
+     *             if the StopWatch is not currently running.
+     */
+    public void suspend() {
+<span class="pc bpc" id="L281" title="6 of 10 branches missed.">        if (this.runningState != State.RUNNING) {</span>
+<span class="fc" id="L282">            throw new IllegalStateException(&quot;Stopwatch must be running to suspend. &quot;);</span>
+        }
+<span class="fc" id="L284">        this.stopTime = System.nanoTime();</span>
+<span class="fc" id="L285">        this.runningState = State.SUSPENDED;</span>
+<span class="fc" id="L286">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Resume the stopwatch after a suspend.
+     * &lt;/p&gt;
+     * 
+     * &lt;p&gt;
+     * This method resumes the watch after it was suspended. The watch will not include time between the suspend and
+     * resume calls in the total time.
+     * &lt;/p&gt;
+     * 
+     * @throws IllegalStateException
+     *             if the StopWatch has not been suspended.
+     */
+    public void resume() {
+<span class="pc bpc" id="L302" title="6 of 10 branches missed.">        if (this.runningState != State.SUSPENDED) {</span>
+<span class="fc" id="L303">            throw new IllegalStateException(&quot;Stopwatch must be suspended to resume. &quot;);</span>
+        }
+<span class="pc bpc" id="L305" title="11 of 18 branches missed.">        this.startTime += System.nanoTime() - this.stopTime;</span>
+<span class="fc" id="L306">        this.runningState = State.RUNNING;</span>
+<span class="fc" id="L307">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Get the time on the stopwatch.
+     * &lt;/p&gt;
+     * 
+     * &lt;p&gt;
+     * This is either the time between the start and the moment this method is called, or the amount of time between
+     * start and stop.
+     * &lt;/p&gt;
+     * 
+     * @return the time in milliseconds
+     */
+    public long getTime() {
+<span class="pc bpc" id="L322" title="7 of 12 branches missed.">        return getNanoTime() / NANO_2_MILLIS;</span>
+    }
+    /**
+     * &lt;p&gt;
+     * Get the time on the stopwatch in nanoseconds.
+     * &lt;/p&gt;
+     * 
+     * &lt;p&gt;
+     * This is either the time between the start and the moment this method is called, or the amount of time between
+     * start and stop.
+     * &lt;/p&gt;
+     * 
+     * @return the time in nanoseconds
+     * @since 3.0
+     */
+    public long getNanoTime() {
+<span class="pc bpc" id="L338" title="33 of 46 branches missed.">        if (this.runningState == State.STOPPED || this.runningState == State.SUSPENDED) {</span>
+<span class="pc bpc" id="L339" title="7 of 12 branches missed.">            return this.stopTime - this.startTime;</span>
+<span class="pc bpc" id="L340" title="6 of 10 branches missed.">        } else if (this.runningState == State.UNSTARTED) {</span>
+<span class="pc bpc" id="L341" title="5 of 8 branches missed.">            return 0;</span>
+<span class="pc bpc" id="L342" title="7 of 10 branches missed.">        } else if (this.runningState == State.RUNNING) {</span>
+<span class="pc bpc" id="L343" title="7 of 12 branches missed.">            return System.nanoTime() - this.startTime;</span>
+        }
+<span class="nc" id="L345">        throw new RuntimeException(&quot;Illegal running state has occurred.&quot;);</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Get the split time on the stopwatch.
+     * &lt;/p&gt;
+     * 
+     * &lt;p&gt;
+     * This is the time between start and latest split.
+     * &lt;/p&gt;
+     * 
+     * @return the split time in milliseconds
+     * 
+     * @throws IllegalStateException
+     *             if the StopWatch has not yet been split.
+     * @since 2.1
+     */
+    public long getSplitTime() {
+<span class="pc bpc" id="L364" title="7 of 12 branches missed.">        return getSplitNanoTime() / NANO_2_MILLIS;</span>
+    }
+    /**
+     * &lt;p&gt;
+     * Get the split time on the stopwatch in nanoseconds.
+     * &lt;/p&gt;
+     * 
+     * &lt;p&gt;
+     * This is the time between start and latest split.
+     * &lt;/p&gt;
+     * 
+     * @return the split time in nanoseconds
+     * 
+     * @throws IllegalStateException
+     *             if the StopWatch has not yet been split.
+     * @since 3.0
+     */
+    public long getSplitNanoTime() {
+<span class="pc bpc" id="L382" title="6 of 10 branches missed.">        if (this.splitState != SplitState.SPLIT) {</span>
+<span class="fc" id="L383">            throw new IllegalStateException(&quot;Stopwatch must be split to get the split time. &quot;);</span>
+        }
+<span class="pc bpc" id="L385" title="7 of 12 branches missed.">        return this.stopTime - this.startTime;</span>
+    }
+
+    /**
+     * Returns the time this stopwatch was started.
+     * 
+     * @return the time this stopwatch was started
+     * @throws IllegalStateException
+     *             if this StopWatch has not been started
+     * @since 2.4
+     */
+    public long getStartTime() {
+<span class="pc bpc" id="L397" title="6 of 10 branches missed.">        if (this.runningState == State.UNSTARTED) {</span>
+<span class="fc" id="L398">            throw new IllegalStateException(&quot;Stopwatch has not been started&quot;);</span>
+        }
+        // System.nanoTime is for elapsed time
+<span class="fc" id="L401">        return this.startTimeMillis;</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Gets a summary of the time that the stopwatch recorded as a string.
+     * &lt;/p&gt;
+     * 
+     * &lt;p&gt;
+     * The format used is ISO8601-like, &lt;i&gt;hours&lt;/i&gt;:&lt;i&gt;minutes&lt;/i&gt;:&lt;i&gt;seconds&lt;/i&gt;.&lt;i&gt;milliseconds&lt;/i&gt;.
+     * &lt;/p&gt;
+     * 
+     * @return the time as a String
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L417">        return DurationFormatUtils.formatDurationHMS(getTime());</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Gets a summary of the split time that the stopwatch recorded as a string.
+     * &lt;/p&gt;
+     * 
+     * &lt;p&gt;
+     * The format used is ISO8601-like, &lt;i&gt;hours&lt;/i&gt;:&lt;i&gt;minutes&lt;/i&gt;:&lt;i&gt;seconds&lt;/i&gt;.&lt;i&gt;milliseconds&lt;/i&gt;.
+     * &lt;/p&gt;
+     * 
+     * @return the split time as a String
+     * @since 2.1
+     */
+    public String toSplitString() {
+<span class="fc" id="L433">        return DurationFormatUtils.formatDurationHMS(getSplitTime());</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * The method is used to find out if the StopWatch is started. A suspended
+     * StopWatch is also started watch.
+     * &lt;/p&gt;
+     *
+     * @return boolean
+     *             If the StopWatch is started.
+     * @since 3.2
+     */
+    public boolean isStarted() {
+<span class="fc" id="L447">        return runningState.isStarted();</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * This method is used to find out whether the StopWatch is suspended.
+     * &lt;/p&gt;
+     *
+     * @return boolean
+     *             If the StopWatch is suspended.
+     * @since 3.2
+     */
+    public boolean isSuspended() {
+<span class="fc" id="L460">        return runningState.isSuspended();</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * This method is used to find out whether the StopWatch is stopped. The
+     * stopwatch which's not yet started and explicitly stopped stopwatch is
+     * considered as stopped.
+     * &lt;/p&gt;
+     *
+     * @return boolean
+     *             If the StopWatch is stopped.
+     * @since 3.2
+     */
+    public boolean isStopped() {
+<span class="fc" id="L475">        return runningState.isStopped();</span>
+    }    
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

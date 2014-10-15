@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>EventUtils.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-lang3-3.3.2</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.event</a> &gt; <span class="el_source">EventUtils.java</span></div><h1>EventUtils.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.lang3.event;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+
+import org.apache.commons.lang3.reflect.MethodUtils;
+
+/**
+ * Provides some useful event-based utility methods.
+ *
+ * @since 3.0
+ * @version $Id: EventUtils.java 1436770 2013-01-22 07:09:45Z ggregory $
+ */
+<span class="fc" id="L36">public class EventUtils {</span>
+
+    /**
+     * Adds an event listener to the specified source.  This looks for an &quot;add&quot; method corresponding to the event
+     * type (addActionListener, for example).
+     * @param eventSource   the event source
+     * @param listenerType  the event listener type
+     * @param listener      the listener
+     * @param &lt;L&gt;           the event listener type
+     *
+     * @throws IllegalArgumentException if the object doesn't support the listener type
+     */
+    public static &lt;L&gt; void addEventListener(final Object eventSource, final Class&lt;L&gt; listenerType, final L listener) {
+        try {
+<span class="pc bpc" id="L50" title="4 of 6 branches missed.">            MethodUtils.invokeMethod(eventSource, &quot;add&quot; + listenerType.getSimpleName(), listener);</span>
+<span class="fc" id="L51">        } catch (final NoSuchMethodException e) {</span>
+<span class="fc" id="L52">            throw new IllegalArgumentException(&quot;Class &quot; + eventSource.getClass().getName()</span>
+                    + &quot; does not have a public add&quot; + listenerType.getSimpleName()
+                    + &quot; method which takes a parameter of type &quot; + listenerType.getName() + &quot;.&quot;);
+<span class="nc" id="L55">        } catch (final IllegalAccessException e) {</span>
+<span class="nc" id="L56">            throw new IllegalArgumentException(&quot;Class &quot; + eventSource.getClass().getName()</span>
+                    + &quot; does not have an accessible add&quot; + listenerType.getSimpleName ()
+                    + &quot; method which takes a parameter of type &quot; + listenerType.getName() + &quot;.&quot;);
+<span class="fc" id="L59">        } catch (final InvocationTargetException e) {</span>
+<span class="fc" id="L60">            throw new RuntimeException(&quot;Unable to add listener.&quot;, e.getCause());</span>
+<span class="fc" id="L61">        }</span>
+<span class="fc" id="L62">    }</span>
+
+    /**
+     * Binds an event listener to a specific method on a specific object.
+     *
+     * @param &lt;L&gt;          the event listener type
+     * @param target       the target object
+     * @param methodName   the name of the method to be called
+     * @param eventSource  the object which is generating events (JButton, JList, etc.)
+     * @param listenerType the listener interface (ActionListener.class, SelectionListener.class, etc.)
+     * @param eventTypes   the event types (method names) from the listener interface (if none specified, all will be
+     *                     supported)
+     */
+    public static &lt;L&gt; void bindEventsToMethod(final Object target, final String methodName, final Object eventSource,
+            final Class&lt;L&gt; listenerType, final String... eventTypes) {
+<span class="fc" id="L77">        final L listener = listenerType.cast(Proxy.newProxyInstance(target.getClass().getClassLoader(),</span>
+                new Class[] { listenerType }, new EventBindingInvocationHandler(target, methodName, eventTypes)));
+<span class="pc bpc" id="L79" title="4 of 6 branches missed.">        addEventListener(eventSource, listenerType, listener);</span>
+<span class="fc" id="L80">    }</span>
+
+<span class="fc" id="L82">    private static class EventBindingInvocationHandler implements InvocationHandler {</span>
+        private final Object target;
+        private final String methodName;
+        private final Set&lt;String&gt; eventTypes;
+
+        /**
+         * Creates a new instance of {@code EventBindingInvocationHandler}.
+         *
+         * @param target the target object for method invocations
+         * @param methodName the name of the method to be invoked
+         * @param eventTypes the names of the supported event types
+         */
+<span class="fc" id="L94">        EventBindingInvocationHandler(final Object target, final String methodName, final String[] eventTypes) {</span>
+<span class="fc" id="L95">            this.target = target;</span>
+<span class="fc" id="L96">            this.methodName = methodName;</span>
+<span class="fc" id="L97">            this.eventTypes = new HashSet&lt;String&gt;(Arrays.asList(eventTypes));</span>
+<span class="fc" id="L98">        }</span>
+
+        /**
+         * Handles a method invocation on the proxy object.
+         *
+         * @param proxy the proxy instance
+         * @param method the method to be invoked
+         * @param parameters the parameters for the method invocation
+         * @return the result of the method call
+         * @throws Throwable if an error occurs
+         */
+        @Override
+        public Object invoke(final Object proxy, final Method method, final Object[] parameters) throws Throwable {
+<span class="pc bpc" id="L111" title="17 of 26 branches missed.">            if (eventTypes.isEmpty() || eventTypes.contains(method.getName())) {</span>
+<span class="pc bpc" id="L112" title="7 of 12 branches missed.">                if (hasMatchingParametersMethod(method)) {</span>
+<span class="fc" id="L113">                    return MethodUtils.invokeMethod(target, methodName, parameters);</span>
+                } else {
+<span class="fc" id="L115">                    return MethodUtils.invokeMethod(target, methodName);</span>
+                }
+            }
+<span class="fc" id="L118">            return null;</span>
+        }
+
+        /**
+         * Checks whether a method for the passed in parameters can be found.
+         *
+         * @param method the listener method invoked
+         * @return a flag whether the parameters could be matched
+         */
+        private boolean hasMatchingParametersMethod(final Method method) {
+<span class="pc bpc" id="L128" title="6 of 10 branches missed.">            return MethodUtils.getAccessibleMethod(target.getClass(), methodName, method.getParameterTypes()) != null;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>
