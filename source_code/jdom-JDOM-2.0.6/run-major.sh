@@ -1,7 +1,8 @@
 #!/bin/sh
 # By: Hessah Alkaoud
 
-ant -DmutOp=":ALL" clean compile.core compile.junit mutation-test 
+ant -DmutOp=":ALL" clean compile # compile.core compile.junit 
+ant mutation-test 
 
 time_stamp=$(date +%Y_%m_%d_%H_%M_%S)
 mkdir -p "majorReports/${time_stamp}"
