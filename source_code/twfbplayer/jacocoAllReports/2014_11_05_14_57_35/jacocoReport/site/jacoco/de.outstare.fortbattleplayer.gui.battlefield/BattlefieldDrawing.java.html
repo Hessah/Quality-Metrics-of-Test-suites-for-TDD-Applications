@@ -1,0 +1,628 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>BattlefieldDrawing.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">twfbplayer</a> &gt; <a href="index.source.html" class="el_package">de.outstare.fortbattleplayer.gui.battlefield</a> &gt; <span class="el_source">BattlefieldDrawing.java</span></div><h1>BattlefieldDrawing.java</h1><pre class="source lang-java linenums">package de.outstare.fortbattleplayer.gui.battlefield;
+
+/*
+ Copyright (c) 2010 Daniel Raap
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the &quot;Software&quot;), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ */
+
+import java.awt.Color;
+import java.awt.Container;
+import java.awt.Dimension;
+import java.awt.EventQueue;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.Insets;
+import java.awt.Point;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
+import java.awt.geom.Rectangle2D;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
+
+import javax.imageio.ImageIO;
+import javax.swing.JComponent;
+
+import de.outstare.fortbattleplayer.gui.battlefield.BattlefieldDrawing.BattlefieldLine.LineType;
+import de.outstare.fortbattleplayer.model.Area;
+import de.outstare.fortbattleplayer.model.Battlefield;
+import de.outstare.fortbattleplayer.player.Battleplayer.RoundListener;
+import de.outstare.fortbattleplayer.player.PlayerConfiguration;
+import de.outstare.fortbattleplayer.player.PlayerConfigurationListener;
+import de.outstare.fortbattleplayer.statistics.AreaStatistic;
+
+/**
+ * The battlefield is a rectangle divided into {@link BattlefieldCell}s. On each
+ * cell a Player may be drawn.
+ * 
+ * @author daniel
+ */
+public class BattlefieldDrawing extends JComponent implements RoundListener, PlayerConfigurationListener {
+<span class="nc" id="L66">	private static final Logger LOG = Logger.getLogger(BattlefieldDrawing.class.getName());</span>
+	private static final long serialVersionUID = 6701540385277809886L;
+	private static final String imageFilePath = &quot;/images/fortbattleBackground.png&quot;;
+	/**
+	 * original background image which will be scaled to the current window size
+	 */
+	private Image backgroundImage;
+	private final Battlefield battlefield;
+	private final PlayerConfiguration config;
+<span class="nc" id="L75">	private final Map&lt;Point, BattlefieldCell&gt; cells = new HashMap&lt;Point, BattlefieldCell&gt;();</span>
+<span class="nc" id="L76">	private final Set&lt;BattlefieldLine&gt; lines = Collections</span>
+	        .newSetFromMap(new ConcurrentHashMap&lt;BattlefieldLine, Boolean&gt;());
+
+	/**
+	 * @param battlefield
+	 *            the battlefield to draw
+	 * @param fortImage
+	 * @param config
+	 *            used for animating combatant movement
+	 * @param fieldStats
+	 */
+	public BattlefieldDrawing(final Battlefield battlefield, final Image fortImage, final PlayerConfiguration config,
+	        final Map&lt;Area, AreaStatistic&gt; fieldStats) {
+<span class="nc" id="L89">		super();</span>
+<span class="nc" id="L90">		setLayout(new BattleFieldLayoutManager(battlefield));</span>
+<span class="nc" id="L91">		createCells(battlefield, fieldStats);</span>
+<span class="nc" id="L92">		this.config = config;</span>
+		// TODO remove listener after GUI-Player is closed
+<span class="nc" id="L94">		config.addListener(this);</span>
+<span class="nc" id="L95">		this.battlefield = battlefield;</span>
+<span class="nc" id="L96">		setBackground(Color.WHITE);</span>
+		try {
+<span class="nc" id="L98">			final InputStream backgroundFile = BattlefieldDrawing.class.getResourceAsStream(imageFilePath);</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">			if (backgroundFile == null) {</span>
+<span class="nc" id="L100">				throw new IOException(&quot;file not found by ClassLoader: &quot; + imageFilePath);</span>
+			}
+<span class="nc" id="L102">			backgroundImage = ImageIO.read(backgroundFile);</span>
+<span class="nc" id="L103">		} catch (final IOException e) {</span>
+<span class="nc" id="L104">			LOG.severe(e.toString());</span>
+<span class="nc" id="L105">			backgroundImage = new BufferedImage(10, 10, BufferedImage.TYPE_INT_RGB);</span>
+<span class="nc" id="L106">			final Graphics graphics = backgroundImage.getGraphics();</span>
+<span class="nc" id="L107">			graphics.setColor(Color.GREEN);</span>
+<span class="nc" id="L108">			graphics.fillRect(0, 0, 10, 10);</span>
+<span class="nc" id="L109">		}</span>
+		// draw fort on background
+<span class="nc" id="L111">		final int backgroundHeight = backgroundImage.getHeight(null);</span>
+<span class="nc" id="L112">		final int backgroundWidth = backgroundImage.getWidth(null);</span>
+<span class="nc" id="L113">		final Graphics g = backgroundImage.getGraphics();</span>
+<span class="nc" id="L114">		g.drawImage(fortImage, 0, 0, backgroundWidth, backgroundHeight, null);</span>
+<span class="nc" id="L115">		g.dispose();</span>
+<span class="nc" id="L116">		updateBackgroundBuffer();</span>
+		// the backround has to be rescaled
+<span class="nc" id="L118">		addComponentListener(new ComponentAdapter() {</span>
+			/**
+			 * @see java.awt.event.ComponentAdapter#componentResized(java.awt.event.ComponentEvent)
+			 */
+			@Override
+			public void componentResized(final ComponentEvent e) {
+<span class="nc" id="L124">				updateBackgroundBuffer();</span>
+<span class="nc" id="L125">			}</span>
+		});
+<span class="nc" id="L127">	}</span>
+
+<span class="nc" id="L129">	private Image backgroundBuffer = null;</span>
+
+	/**
+	 * redraws the background image only if necessary
+	 */
+	void updateBackgroundBuffer() {
+<span class="nc" id="L135">		final Dimension paintSize = battlefieldPaintArea();</span>
+<span class="nc" id="L136">		backgroundBuffer = createImage(paintSize.width, paintSize.height);</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">		if (backgroundBuffer != null) {</span>
+<span class="nc" id="L138">			final Graphics g = backgroundBuffer.getGraphics();</span>
+<span class="nc" id="L139">			paintBackgroundImage(g, paintSize);</span>
+			// the grid must be painted separately to be one pixel thin
+<span class="nc" id="L141">			paintCellGrid(paintSize, g);</span>
+		}
+<span class="nc" id="L143">	}</span>
+
+	/**
+	 * @param paintSize
+	 * @param g
+	 */
+	void paintCellGrid(final Dimension paintSize, final Graphics g) {
+<span class="nc" id="L150">		final int backgroundHeight = paintSize.height;</span>
+<span class="nc" id="L151">		final int backgroundWidth = paintSize.width;</span>
+		// draw grid/cells
+<span class="nc" id="L153">		g.setColor(BattlefieldCell.gridColor);</span>
+<span class="nc" id="L154">		final int cellHeigth = backgroundHeight / battlefield.getHeight();</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">		for (int cellRow = 0; cellRow &lt; battlefield.getHeight(); cellRow += 2) {</span>
+<span class="nc" id="L156">			g.drawRect(0, cellRow * cellHeigth, backgroundWidth, cellHeigth);</span>
+		}
+<span class="nc" id="L158">		final int cellWidth = backgroundWidth / battlefield.getWidth();</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">		for (int cellColumn = 0; cellColumn &lt; battlefield.getWidth(); cellColumn += 2) {</span>
+<span class="nc" id="L160">			g.drawRect(cellColumn * cellWidth, 0, cellWidth, backgroundHeight);</span>
+		}
+<span class="nc" id="L162">	}</span>
+
+	/**
+	 * @see javax.swing.JComponent#addNotify()
+	 */
+	@Override
+	public void addNotify() {
+<span class="nc" id="L169">		super.addNotify();</span>
+		// optimize image for hardware acceleration (for GraphicsConfiguration)
+		// Cannot be done until added, because it needs a GraphicsConfiguration
+		// which is inherited from the parent
+<span class="nc" id="L173">		final Image acceleratedImage = createImage(backgroundImage.getWidth(null), backgroundImage.getHeight(null));</span>
+<span class="nc" id="L174">		final Graphics g = acceleratedImage.getGraphics();</span>
+<span class="nc" id="L175">		g.drawImage(backgroundImage, 0, 0, null);</span>
+<span class="nc" id="L176">		g.dispose();</span>
+<span class="nc" id="L177">		backgroundImage = acceleratedImage;</span>
+<span class="nc" id="L178">	}</span>
+
+	/**
+	 * @param battlefield2
+	 * @param fieldStats
+	 */
+	private void createCells(final Battlefield battlefield2, final Map&lt;Area, AreaStatistic&gt; fieldStats) {
+		BattlefieldCell left;
+		BattlefieldCell top;
+<span class="nc bnc" id="L187" title="All 2 branches missed.">		for (int y = 0; y &lt; battlefield2.getHeight(); y++) {</span>
+<span class="nc" id="L188">			left = null;</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">			for (int x = 0; x &lt; battlefield2.getWidth(); x++) {</span>
+<span class="nc" id="L190">				final Area area = battlefield2._getArea(x, y);</span>
+<span class="nc" id="L191">				final AreaStatistic stats = fieldStats.get(area);</span>
+<span class="nc" id="L192">				final BattlefieldCell cell = new BattlefieldCell(area, stats);</span>
+<span class="nc" id="L193">				cells.put(cell.getCellCoordinates(), cell);</span>
+<span class="nc" id="L194">				add(cell);</span>
+
+				// calculate sector borders
+<span class="nc bnc" id="L197" title="All 2 branches missed.">				if (!cell.sameSector(left)) {</span>
+<span class="nc" id="L198">					cell.setSectorBorder(4);</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">					if (left != null) {</span>
+<span class="nc" id="L200">						left.setSectorBorder(2);</span>
+					}
+				}
+<span class="nc bnc" id="L203" title="All 2 branches missed.">				if (y == 0) {</span>
+<span class="nc" id="L204">					cell.setSectorBorder(1);</span>
+				} else {
+<span class="nc" id="L206">					top = cells.get(new Point(x, y - 1));</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">					if (!cell.sameSector(top)) {</span>
+<span class="nc" id="L208">						cell.setSectorBorder(1);</span>
+<span class="nc" id="L209">						top.setSectorBorder(3);</span>
+					}
+				}
+<span class="nc bnc" id="L212" title="All 2 branches missed.">				if (y == battlefield2.getHeight()) {</span>
+<span class="nc" id="L213">					cell.setSectorBorder(3);</span>
+				}
+
+<span class="nc" id="L216">				left = cell;</span>
+			}
+			// last cell has a right border
+<span class="nc bnc" id="L219" title="All 2 branches missed.">			if (left != null) {</span>
+<span class="nc" id="L220">				left.setSectorBorder(2);</span>
+			}
+		}
+<span class="nc" id="L223">		LOG.finer(&quot;Battlefield has &quot; + getComponentCount() + &quot; cells&quot;);</span>
+<span class="nc" id="L224">	}</span>
+
+	/**
+	 * @param cellContent
+	 *            not null
+	 * @param target
+	 *            not null
+	 * @param color
+	 *            not null
+	 */
+	void drawShootingAt(final CellContent cellContent, final Area target, final Color color) {
+		// quickfix for shooting at dead people (location == null) if rewinding
+<span class="nc bnc" id="L236" title="All 2 branches missed.">		if (target == null) {</span>
+<span class="nc" id="L237">			return;</span>
+		}
+<span class="nc bnc" id="L239" title="All 2 branches missed.">		if (EventQueue.isDispatchThread()) {</span>
+<span class="nc" id="L240">			connectCells(cellContent.getCurrentCell(), target, color, LineType.SHOOT);</span>
+		} else {
+<span class="nc" id="L242">			EventQueue.invokeLater(new Runnable() {</span>
+				public void run() {
+<span class="nc" id="L244">					connectCells(cellContent.getCurrentCell(), target, color, LineType.SHOOT);</span>
+<span class="nc" id="L245">				}</span>
+			});
+		}
+<span class="nc" id="L248">	}</span>
+
+	/**
+	 * draws the target symbol at the given destination
+	 * 
+	 * @param source
+	 * @param destination
+	 * @param color
+	 */
+	void drawTargetAt(final CellContent source, final Area destination, final Color color) {
+<span class="nc" id="L258">		drawTargetAt(source, destination, color, true);</span>
+<span class="nc" id="L259">	}</span>
+
+	/**
+	 * draws the target symbol at the given destination
+	 * 
+	 * @param source
+	 * @param destination
+	 * @param color
+	 * @param useConfig
+	 *            if &lt;code&gt;false&lt;/code&gt; the line is always painted till the end
+	 *            of the round. The result may be used to manually remove it.
+	 * @return the line drawn or &lt;code&gt;null&lt;/code&gt;
+	 */
+	BattlefieldLine drawTargetAt(final CellContent source, final Area destination, final Color color,
+	        final boolean useConfig) {
+<span class="nc" id="L274">		final Graphics g = getGraphics();</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">		if (g == null) {</span>
+<span class="nc" id="L276">			return null;</span>
+		}
+		LineType type;
+<span class="nc bnc" id="L279" title="All 2 branches missed.">		if (useConfig) {</span>
+<span class="nc" id="L280">			type = LineType.MOVETARGET;</span>
+		} else {
+<span class="nc" id="L282">			type = LineType.FORCEDTARGET;</span>
+		}
+<span class="nc" id="L284">		final BattlefieldLine line = connectCells(source.getCurrentCell(), destination, color, type);</span>
+<span class="nc" id="L285">		return line;</span>
+	}
+
+	/**
+	 * @param destPoint
+	 *            in pixels on this drawing
+	 * @param color
+	 * @param g
+	 */
+	void drawTargetPoint(final Point destPoint, final Color color, final Graphics g) {
+<span class="nc" id="L295">		final int minCellSize = Math.min(cellWidth(), cellHeight());</span>
+<span class="nc" id="L296">		final int radius = (int) (minCellSize * 0.3);</span>
+<span class="nc" id="L297">		final int centerRadius = (int) (minCellSize * 0.15);</span>
+<span class="nc" id="L298">		drawCenteredFilledCircle(Color.GRAY, destPoint, radius, g);</span>
+<span class="nc" id="L299">		drawCenteredFilledCircle(color, destPoint, centerRadius, g);</span>
+<span class="nc" id="L300">	}</span>
+
+	private void drawCenteredFilledCircle(final Color color, final Point center, final int radius, final Graphics g) {
+<span class="nc" id="L303">		g.setColor(color);</span>
+<span class="nc" id="L304">		g.fillOval(center.x - radius, center.y - radius, 2 * radius, 2 * radius);</span>
+<span class="nc" id="L305">	}</span>
+
+	/**
+	 * @param cellContent
+	 * @param target
+	 */
+	void drawMovingTo(final CellContent cellContent, final Area target) {
+<span class="nc bnc" id="L312" title="All 2 branches missed.">		if (getWidth() &gt; 0) {</span>
+<span class="nc" id="L313">			final Container originalContainer = cellContent.getParent();</span>
+			// move content to this battlefield to be drawn in our coordinate
+			// system
+<span class="nc" id="L316">			add(cellContent);</span>
+<span class="nc" id="L317">			cellContent.setLocation(cellPos(cellContent.getCurrentCell().getCellCoordinates()));</span>
+<span class="nc" id="L318">			final Point destination = cellPos(target.getLocation());</span>
+<span class="nc" id="L319">			new MoveAnimation(cellContent, destination, config.PLAYER_DELAY);</span>
+			// place back in original container
+<span class="nc" id="L321">			originalContainer.add(cellContent);</span>
+		}
+<span class="nc" id="L323">	}</span>
+
+	/**
+	 * @param coordinates
+	 * @return the drawing component for the given cell coordinates
+	 */
+	BattlefieldCell getCell(final Point coordinates) {
+<span class="nc" id="L330">		return cells.get(coordinates);</span>
+	}
+
+	/**
+	 * draws a line between the given cells (from center to center)
+	 * 
+	 * @param cell
+	 * @param destination
+	 * @param color
+	 * @param type
+	 *            of the line
+	 * @return
+	 */
+	BattlefieldLine connectCells(final BattlefieldCell cell, final Area destination, final Color color,
+	        final LineType type) {
+<span class="nc" id="L345">		final Point start = cell.getCellCoordinates();</span>
+<span class="nc" id="L346">		final Point end = destination.getLocation();</span>
+<span class="nc" id="L347">		final BattlefieldLine bfLine = new BattlefieldLine(start, end, color, type);</span>
+<span class="nc" id="L348">		lines.add(bfLine);</span>
+
+<span class="nc" id="L350">		final Graphics g = getGraphics();</span>
+<span class="nc" id="L351">		drawLine(bfLine, g);</span>
+<span class="nc" id="L352">		return bfLine;</span>
+	}
+
+	/**
+	 * @param bfLine
+	 * @param g
+	 */
+	void drawLine(final BattlefieldLine bfLine, final Graphics g) {
+<span class="nc bnc" id="L360" title="All 2 branches missed.">		if (isPainted(bfLine)) {</span>
+<span class="nc" id="L361">			final Point startUpperLeftPixel = cellPos(bfLine.start);</span>
+<span class="nc" id="L362">			final Point endUpperLeftPixel = cellPos(bfLine.end);</span>
+<span class="nc" id="L363">			final int centerOffsetX = cellWidth() / 2;</span>
+<span class="nc" id="L364">			final int centerOffsetY = cellHeight() / 2;</span>
+<span class="nc" id="L365">			final Point startCenterPixel = new Point(startUpperLeftPixel.x + centerOffsetX, startUpperLeftPixel.y</span>
+			        + centerOffsetY);
+<span class="nc" id="L367">			final Point endCenterPixel = new Point(endUpperLeftPixel.x + centerOffsetX, endUpperLeftPixel.y</span>
+			        + centerOffsetY);
+
+<span class="nc" id="L370">			drawLine(startCenterPixel, endCenterPixel, bfLine.color, g);</span>
+<span class="nc bnc" id="L371" title="All 4 branches missed.">			if (bfLine.type == LineType.MOVETARGET || bfLine.type == LineType.FORCEDTARGET) {</span>
+<span class="nc" id="L372">				drawTargetPoint(endCenterPixel, bfLine.color, g);</span>
+			}
+		}
+<span class="nc" id="L375">	}</span>
+
+	/**
+	 * @param line
+	 * @return true if the config allows showing the given line
+	 */
+	boolean isPainted(final BattlefieldLine line) {
+<span class="nc bnc" id="L382" title="All 3 branches missed.">		switch (line.type) {</span>
+		case SHOOT:
+<span class="nc" id="L384">			return config.showShootline();</span>
+		case MOVETARGET:
+<span class="nc" id="L386">			return config.showMoveTargets();</span>
+		case FORCEDTARGET:
+		default:
+<span class="nc" id="L389">			return true;</span>
+		}
+	}
+
+	/**
+	 * @param startPixel
+	 * @param endPixel
+	 * @param color
+	 */
+	private void drawLine(final Point startPixel, final Point endPixel, final Color color, final Graphics g) {
+<span class="nc bnc" id="L399" title="All 2 branches missed.">		if (g != null) {</span>
+<span class="nc" id="L400">			g.setColor(color);</span>
+<span class="nc" id="L401">			g.drawLine(startPixel.x, startPixel.y, endPixel.x, endPixel.y);</span>
+		}
+<span class="nc" id="L403">	}</span>
+
+	/**
+	 * @see javax.swing.JComponent#paintComponent(java.awt.Graphics)
+	 */
+	@Override
+	protected void paintComponent(final Graphics g) {
+<span class="nc" id="L410">		super.paintComponent(g);</span>
+<span class="nc" id="L411">		g.drawImage(backgroundBuffer, 0, 0, null);</span>
+<span class="nc" id="L412">		paintLines(g);</span>
+<span class="nc" id="L413">	}</span>
+
+	/**
+	 * @param g
+	 */
+	private void paintLines(final Graphics g) {
+<span class="nc bnc" id="L419" title="All 4 branches missed.">		if (g != null &amp;&amp; g instanceof Graphics2D) {</span>
+<span class="nc bnc" id="L420" title="All 2 branches missed.">			for (final BattlefieldLine line : lines) {</span>
+<span class="nc" id="L421">				drawLine(line, g);</span>
+<span class="nc" id="L422">			}</span>
+		}
+<span class="nc" id="L424">	}</span>
+
+	/**
+	 * @return the size of the area which will be painted (a multiple of
+	 *         {@link #cellWidth()}/{@link #cellHeight()})
+	 */
+	private Dimension battlefieldPaintArea() {
+<span class="nc" id="L431">		final int bfWidth = cellcount_x() * cellWidth();</span>
+<span class="nc" id="L432">		final int bfHeight = cellcount_y() * cellHeight();</span>
+<span class="nc" id="L433">		return new Dimension(bfWidth, bfHeight);</span>
+	}
+
+	private void paintBackgroundImage(final Graphics g2, final Dimension bfSize) {
+<span class="nc" id="L437">		final Insets insets = getInsets();</span>
+<span class="nc" id="L438">		g2.drawImage(backgroundImage, insets.left, insets.top, bfSize.width, bfSize.height, 0, 0,</span>
+		        backgroundImage.getWidth(null), backgroundImage.getHeight(null), null);
+<span class="nc" id="L440">	}</span>
+
+	private int cellcount_x() {
+<span class="nc" id="L443">		return battlefield.getWidth();</span>
+	}
+
+	private int cellcount_y() {
+<span class="nc" id="L447">		return battlefield.getHeight();</span>
+	}
+
+	/**
+	 * converts cell coordinates to pixel coordinates for drawing
+	 * 
+	 * @param cellCoordinates
+	 * @return the upper left pixel of the cell
+	 */
+	private Point cellPos(final Point cellCoordinates) {
+<span class="nc" id="L457">		return new Point(cellPosX(cellCoordinates.x), cellPosY(cellCoordinates.y));</span>
+	}
+
+	/**
+	 * @param y
+	 *            the number of the cell on the y-axis
+	 * @return the position in pixels
+	 */
+	private int cellPosY(final int y) {
+<span class="nc" id="L466">		return y * cellHeight();</span>
+	}
+
+	/**
+	 * @param x
+	 *            the number of the cell on the x-axis
+	 * @return the position in pixels
+	 */
+	private int cellPosX(final int x) {
+<span class="nc" id="L475">		return x * cellWidth();</span>
+	}
+
+	/**
+	 * @return
+	 */
+	private int cellHeight() {
+<span class="nc" id="L482">		return getHeight() / cellcount_y();</span>
+	}
+
+	/**
+	 * @return
+	 */
+	private int cellWidth() {
+<span class="nc" id="L489">		return getWidth() / cellcount_x();</span>
+	}
+
+	/**
+	 * repaint complete screen at round start
+	 * 
+	 * @see de.outstare.fortbattleplayer.player.Battleplayer.RoundListener#nextRound(int)
+	 */
+	public void nextRound(final int roundNo) {
+<span class="nc" id="L498">		drawBigString(String.valueOf(roundNo));</span>
+		try {
+<span class="nc" id="L500">			Thread.sleep(2000);</span>
+<span class="nc" id="L501">		} catch (final InterruptedException e) {</span>
+<span class="nc" id="L502">			e.printStackTrace();</span>
+<span class="nc" id="L503">		}</span>
+<span class="nc" id="L504">		lines.clear();</span>
+<span class="nc" id="L505">		repaint();</span>
+<span class="nc" id="L506">	}</span>
+
+	/**
+	 * draw a String with the default font in a huge size in fancy colors
+	 * 
+	 * @param string
+	 * @param fontSize
+	 */
+	private void drawBigString(final String string) {
+<span class="nc" id="L515">		final float fontSize = getHeight() / 1.5f;</span>
+<span class="nc" id="L516">		final float borderScale = 1.1f;</span>
+<span class="nc" id="L517">		final Graphics2D g = (Graphics2D) getGraphics();</span>
+<span class="nc bnc" id="L518" title="All 2 branches missed.">		if (g == null) {</span>
+<span class="nc" id="L519">			return;</span>
+		}
+<span class="nc" id="L521">		final Font origFont = g.getFont();</span>
+
+<span class="nc" id="L523">		final Font bigFont = origFont.deriveFont(fontSize);</span>
+<span class="nc" id="L524">		final Font borderFont = bigFont.deriveFont(borderScale * fontSize);</span>
+
+<span class="nc" id="L526">		drawBigString(string, borderFont, Color.YELLOW, g);</span>
+<span class="nc" id="L527">		drawBigString(string, bigFont, Color.RED, g);</span>
+		// reset
+<span class="nc" id="L529">		g.setFont(origFont);</span>
+<span class="nc" id="L530">	}</span>
+
+	/**
+	 * @param string
+	 * @param bigFont
+	 * @param g
+	 */
+	private void drawBigString(final String string, final Font bigFont, final Color color, final Graphics2D g) {
+<span class="nc" id="L538">		final Rectangle2D textSize = bigFont.getStringBounds(string, g.getFontRenderContext());</span>
+		// center text on this component
+<span class="nc" id="L540">		final float x = (float) ((getWidth() - textSize.getWidth()) / 2.0);</span>
+<span class="nc" id="L541">		final float y = (float) (getHeight() / 2.0 - textSize.getCenterY());</span>
+<span class="nc" id="L542">		g.setFont(bigFont);</span>
+<span class="nc" id="L543">		g.setColor(color);</span>
+<span class="nc" id="L544">		g.drawString(string, x, y);</span>
+<span class="nc" id="L545">	}</span>
+
+	/**
+	 * A BattlefieldLine connects two cells (battlefield coordinates).
+	 * 
+	 * @author daniel
+	 */
+	static class BattlefieldLine {
+		/**
+		 * Type of line which is displayed
+		 * 
+		 * @author daniel
+		 */
+<span class="nc" id="L558">		enum LineType {</span>
+			/**
+			 * points to the place where a player wants to go.
+			 */
+<span class="nc" id="L562">			MOVETARGET,</span>
+			/**
+			 * points to a place where a player shot at.
+			 */
+<span class="nc" id="L566">			SHOOT,</span>
+			/**
+			 * a move target line that is always displayed
+			 */
+<span class="nc" id="L570">			FORCEDTARGET</span>
+		}
+
+		/**
+		 * the start of the line
+		 */
+		final Point start;
+		/**
+		 * the end of the line
+		 */
+		final Point end;
+		/**
+		 * line color when
+		 */
+		final Color color;
+		/**
+		 * The type decides if the lines has to be painted
+		 */
+		final LineType type;
+
+		/**
+		 * Constructor
+		 * 
+		 * @param start
+		 * @param end
+		 * @param color
+		 * @param type
+		 */
+<span class="nc" id="L598">		BattlefieldLine(final Point start, final Point end, final Color color, final LineType type) {</span>
+<span class="nc" id="L599">			this.start = start;</span>
+<span class="nc" id="L600">			this.end = end;</span>
+<span class="nc" id="L601">			this.color = color;</span>
+<span class="nc" id="L602">			this.type = type;</span>
+<span class="nc" id="L603">		}</span>
+	}
+
+	/**
+	 * @param line
+	 */
+	void removeLine(final BattlefieldLine line) {
+<span class="nc" id="L610">		lines.remove(line);</span>
+<span class="nc" id="L611">		repaint();</span>
+<span class="nc" id="L612">	}</span>
+
+	/**
+	 * @see de.outstare.fortbattleplayer.player.PlayerConfigurationListener#changedShowMoveTarget(boolean)
+	 */
+	public void changedShowMoveTarget(final boolean newValue) {
+<span class="nc" id="L618">		repaint();</span>
+<span class="nc" id="L619">	}</span>
+
+	/**
+	 * @see de.outstare.fortbattleplayer.player.PlayerConfigurationListener#changedShowShootingLine(boolean)
+	 */
+	public void changedShowShootingLine(final boolean newValue) {
+<span class="nc" id="L625">		repaint();</span>
+<span class="nc" id="L626">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

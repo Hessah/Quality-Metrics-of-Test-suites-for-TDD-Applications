@@ -1,0 +1,408 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>LookupPaintScale.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.renderer</a> &gt; <span class="el_source">LookupPaintScale.java</span></div><h1>LookupPaintScale.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ---------------------
+ * LookupPaintScale.java
+ * ---------------------
+ * (C) Copyright 2006-2013, by Object Refinery Limited.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   -;
+ *
+ * Changes
+ * -------
+ * 05-Jul-2006 : Version 1 (DG);
+ * 31-Jan-2007 : Fixed serialization support (DG);
+ * 09-Mar-2007 : Fixed cloning (DG);
+ * 14-Jun-2007 : Use double primitive in PaintItem (DG);
+ * 28-Mar-2009 : Made PaintItem inner class static (DG);
+ * 03-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.chart.renderer;
+
+import java.awt.Color;
+import java.awt.Paint;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.Collections;
+import java.util.List;
+import org.jfree.chart.util.ParamChecks;
+
+import org.jfree.io.SerialUtilities;
+import org.jfree.util.PaintUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A paint scale that uses a lookup table to associate paint instances
+ * with data value ranges.
+ *
+ * @since 1.0.4
+ */
+public class LookupPaintScale
+        implements PaintScale, PublicCloneable, Serializable {
+
+    /**
+     * Stores the paint for a value.
+     */
+    static class PaintItem implements Comparable, Serializable {
+
+        /** For serialization. */
+        static final long serialVersionUID = 698920578512361570L;
+
+        /** The value. */
+        double value;
+
+        /** The paint. */
+        transient Paint paint;
+
+        /**
+         * Creates a new instance.
+         *
+         * @param value  the value.
+         * @param paint  the paint.
+         */
+<span class="fc" id="L91">        public PaintItem(double value, Paint paint) {</span>
+<span class="fc" id="L92">            this.value = value;</span>
+<span class="fc" id="L93">            this.paint = paint;</span>
+<span class="fc" id="L94">        }</span>
+
+        /**
+         * Compares this item to an arbitrary object.
+         *
+         * @param obj  the object.
+         *
+         * @return An int defining the relative order of the objects.
+         */
+        @Override
+        public int compareTo(Object obj) {
+<span class="fc" id="L105">            PaintItem that = (PaintItem) obj;</span>
+<span class="fc" id="L106">            double d1 = this.value;</span>
+<span class="fc" id="L107">            double d2 = that.value;</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (d1 &gt; d2) {</span>
+<span class="fc" id="L109">                return 1;</span>
+            }
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (d1 &lt; d2) {</span>
+<span class="fc" id="L112">                return -1;</span>
+            }
+<span class="fc" id="L114">            return 0;</span>
+        }
+
+        /**
+         * Tests this item for equality with an arbitrary object.
+         *
+         * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+         *
+         * @return A boolean.
+         */
+        @Override
+        public boolean equals(Object obj) {
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            if (obj == this) {</span>
+<span class="fc" id="L127">                return true;</span>
+            }
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">            if (!(obj instanceof PaintItem)) {</span>
+<span class="nc" id="L130">                return false;</span>
+            }
+<span class="fc" id="L132">            PaintItem that = (PaintItem) obj;</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">            if (this.value != that.value) {</span>
+<span class="nc" id="L134">                return false;</span>
+            }
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">            if (!PaintUtilities.equal(this.paint, that.paint)) {</span>
+<span class="nc" id="L137">                return false;</span>
+            }
+<span class="fc" id="L139">            return true;</span>
+        }
+
+        /**
+         * Provides serialization support.
+         *
+         * @param stream  the output stream.
+         *
+         * @throws IOException  if there is an I/O error.
+         */
+        private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L150">            stream.defaultWriteObject();</span>
+<span class="fc" id="L151">            SerialUtilities.writePaint(this.paint, stream);</span>
+<span class="fc" id="L152">        }</span>
+
+        /**
+         * Provides serialization support.
+         *
+         * @param stream  the input stream.
+         *
+         * @throws IOException  if there is an I/O error.
+         * @throws ClassNotFoundException  if there is a classpath problem.
+         */
+        private void readObject(ObjectInputStream stream)
+                throws IOException, ClassNotFoundException {
+<span class="fc" id="L164">            stream.defaultReadObject();</span>
+<span class="fc" id="L165">            this.paint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L166">        }</span>
+
+    }
+
+    /** For serialization. */
+    static final long serialVersionUID = -5239384246251042006L;
+
+    /** The lower bound. */
+    private double lowerBound;
+
+    /** The upper bound. */
+    private double upperBound;
+
+    /** The default paint. */
+    private transient Paint defaultPaint;
+
+    /** The lookup table. */
+    private List lookupTable;
+
+    /**
+     * Creates a new paint scale.
+     */
+    public LookupPaintScale() {
+<span class="fc" id="L189">        this(0.0, 1.0, Color.lightGray);</span>
+<span class="fc" id="L190">    }</span>
+
+    /**
+     * Creates a new paint scale with the specified default paint.
+     *
+     * @param lowerBound  the lower bound.
+     * @param upperBound  the upper bound.
+     * @param defaultPaint  the default paint (&lt;code&gt;null&lt;/code&gt; not
+     *     permitted).
+     */
+    public LookupPaintScale(double lowerBound, double upperBound,
+<span class="fc" id="L201">            Paint defaultPaint) {</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">        if (lowerBound &gt;= upperBound) {</span>
+<span class="nc" id="L203">            throw new IllegalArgumentException(</span>
+                    &quot;Requires lowerBound &lt; upperBound.&quot;);
+        }
+<span class="fc" id="L206">        ParamChecks.nullNotPermitted(defaultPaint, &quot;defaultPaint&quot;);</span>
+<span class="fc" id="L207">        this.lowerBound = lowerBound;</span>
+<span class="fc" id="L208">        this.upperBound = upperBound;</span>
+<span class="fc" id="L209">        this.defaultPaint = defaultPaint;</span>
+<span class="fc" id="L210">        this.lookupTable = new java.util.ArrayList();</span>
+<span class="fc" id="L211">    }</span>
+
+    /**
+     * Returns the default paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @return The default paint.
+     */
+    public Paint getDefaultPaint() {
+<span class="fc" id="L219">        return this.defaultPaint;</span>
+    }
+
+    /**
+     * Returns the lower bound.
+     *
+     * @return The lower bound.
+     *
+     * @see #getUpperBound()
+     */
+    @Override
+    public double getLowerBound() {
+<span class="fc" id="L231">        return this.lowerBound;</span>
+    }
+
+    /**
+     * Returns the upper bound.
+     *
+     * @return The upper bound.
+     *
+     * @see #getLowerBound()
+     */
+    @Override
+    public double getUpperBound() {
+<span class="fc" id="L243">        return this.upperBound;</span>
+    }
+
+    /**
+     * Adds an entry to the lookup table.  Any values from &lt;code&gt;n&lt;/code&gt; up
+     * to but not including the next value in the table take on the specified
+     * &lt;code&gt;paint&lt;/code&gt;.
+     *
+     * @param value  the data value (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param paint  the paint.
+     *
+     * @deprecated Use {@link #add(double, Paint)}.
+     */
+    public void add(Number value, Paint paint) {
+<span class="nc" id="L257">        add(value.doubleValue(), paint);</span>
+<span class="nc" id="L258">    }</span>
+
+    /**
+     * Adds an entry to the lookup table.  Any values from &lt;code&gt;n&lt;/code&gt; up
+     * to but not including the next value in the table take on the specified
+     * &lt;code&gt;paint&lt;/code&gt;.
+     *
+     * @param value  the data value.
+     * @param paint  the paint.
+     *
+     * @since 1.0.6
+     */
+    public void add(double value, Paint paint) {
+<span class="fc" id="L271">        PaintItem item = new PaintItem(value, paint);</span>
+<span class="fc" id="L272">        int index = Collections.binarySearch(this.lookupTable, item);</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">        if (index &gt;= 0) {</span>
+<span class="fc" id="L274">            this.lookupTable.set(index, item);</span>
+        }
+        else {
+<span class="fc" id="L277">            this.lookupTable.add(-(index + 1), item);</span>
+        }
+<span class="fc" id="L279">    }</span>
+
+    /**
+     * Returns the paint associated with the specified value.
+     *
+     * @param value  the value.
+     *
+     * @return The paint.
+     *
+     * @see #getDefaultPaint()
+     */
+    @Override
+    public Paint getPaint(double value) {
+
+        // handle value outside bounds...
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        if (value &lt; this.lowerBound) {</span>
+<span class="fc" id="L295">            return this.defaultPaint;</span>
+        }
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        if (value &gt; this.upperBound) {</span>
+<span class="fc" id="L298">            return this.defaultPaint;</span>
+        }
+
+<span class="fc" id="L301">        int count = this.lookupTable.size();</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">        if (count == 0) {</span>
+<span class="fc" id="L303">            return this.defaultPaint;</span>
+        }
+
+        // handle special case where value is less that item zero
+<span class="fc" id="L307">        PaintItem item = (PaintItem) this.lookupTable.get(0);</span>
+<span class="fc bfc" id="L308" title="All 2 branches covered.">        if (value &lt; item.value) {</span>
+<span class="fc" id="L309">            return this.defaultPaint;</span>
+        }
+
+        // for value in bounds, do the lookup...
+<span class="fc" id="L313">        int low = 0;</span>
+<span class="fc" id="L314">        int high = this.lookupTable.size() - 1;</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">        while (high - low &gt; 1) {</span>
+<span class="fc" id="L316">            int current = (low + high) / 2;</span>
+<span class="fc" id="L317">            item = (PaintItem) this.lookupTable.get(current);</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">            if (value &gt;= item.value) {</span>
+<span class="fc" id="L319">                low = current;</span>
+            }
+            else {
+<span class="fc" id="L322">                high = current;</span>
+            }
+<span class="fc" id="L324">        }</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">        if (high &gt; low) {</span>
+<span class="fc" id="L326">            item = (PaintItem) this.lookupTable.get(high);</span>
+<span class="fc bfc" id="L327" title="All 2 branches covered.">            if (value &lt; item.value) {</span>
+<span class="fc" id="L328">                item = (PaintItem) this.lookupTable.get(low);</span>
+            }
+        }
+<span class="pc bpc" id="L331" title="1 of 2 branches missed.">        return (item != null ? item.paint : this.defaultPaint);</span>
+    }
+
+
+    /**
+     * Tests this instance for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        if (obj == this) {</span>
+<span class="fc" id="L345">            return true;</span>
+        }
+<span class="fc bfc" id="L347" title="All 2 branches covered.">        if (!(obj instanceof LookupPaintScale)) {</span>
+<span class="fc" id="L348">            return false;</span>
+        }
+<span class="fc" id="L350">        LookupPaintScale that = (LookupPaintScale) obj;</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        if (this.lowerBound != that.lowerBound) {</span>
+<span class="fc" id="L352">            return false;</span>
+        }
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">        if (this.upperBound != that.upperBound) {</span>
+<span class="nc" id="L355">            return false;</span>
+        }
+<span class="pc bpc" id="L357" title="1 of 2 branches missed.">        if (!PaintUtilities.equal(this.defaultPaint, that.defaultPaint)) {</span>
+<span class="nc" id="L358">            return false;</span>
+        }
+<span class="fc bfc" id="L360" title="All 2 branches covered.">        if (!this.lookupTable.equals(that.lookupTable)) {</span>
+<span class="fc" id="L361">            return false;</span>
+        }
+<span class="fc" id="L363">        return true;</span>
+    }
+
+    /**
+     * Returns a clone of the instance.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException if there is a problem cloning the
+     *     instance.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L376">        LookupPaintScale clone = (LookupPaintScale) super.clone();</span>
+<span class="fc" id="L377">        clone.lookupTable = new java.util.ArrayList(this.lookupTable);</span>
+<span class="fc" id="L378">        return clone;</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L389">        stream.defaultWriteObject();</span>
+<span class="fc" id="L390">        SerialUtilities.writePaint(this.defaultPaint, stream);</span>
+<span class="fc" id="L391">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+            throws IOException, ClassNotFoundException {
+<span class="fc" id="L403">        stream.defaultReadObject();</span>
+<span class="fc" id="L404">        this.defaultPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L405">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

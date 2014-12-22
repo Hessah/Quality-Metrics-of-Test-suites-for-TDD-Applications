@@ -1,0 +1,502 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>CrosshairState.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.plot</a> &gt; <span class="el_source">CrosshairState.java</span></div><h1>CrosshairState.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * -------------------
+ * CrosshairState.java
+ * -------------------
+ * (C) Copyright 2002-2008, by Object Refinery Limited.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   -;
+ *
+ * Changes
+ * -------
+ * 24-Jan-2002 : Version 1 (DG);
+ * 05-Mar-2002 : Added Javadoc comments (DG);
+ * 26-Sep-2002 : Fixed errors reported by Checkstyle (DG);
+ * 19-Sep-2003 : Modified crosshair distance calculation (DG);
+ * 04-Dec-2003 : Crosshair anchor point now stored outside chart since it is
+ *               dependent on the display target (DG);
+ * 25-Feb-2004 : Replaced CrosshairInfo --&gt; CrosshairState (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 13-Oct-2006 : Fixed initialisation of CrosshairState - see bug report
+ *               1565168 (DG);
+ * 06-Feb-2007 : Added new fields and methods to fix bug 1086307 (DG);
+ * 26-Jun-2008 : Now tracks dataset index (DG);
+ *
+ */
+
+package org.jfree.chart.plot;
+
+import java.awt.geom.Point2D;
+
+/**
+ * Maintains state information about crosshairs on a plot between successive
+ * calls to the renderer's draw method.  This class is used internally by
+ * JFreeChart - it is not intended for external use.
+ */
+public class CrosshairState {
+
+    /**
+     * A flag that controls whether the distance is calculated in data space
+     * or Java2D space.
+     */
+<span class="fc" id="L67">    private boolean calculateDistanceInDataSpace = false;</span>
+
+    /** The x-value (in data space) for the anchor point. */
+    private double anchorX;
+
+    /** The y-value (in data space) for the anchor point. */
+    private double anchorY;
+
+    /** The anchor point in Java2D space - if null, don't update crosshair. */
+    private Point2D anchor;
+
+    /** The x-value for the current crosshair point. */
+    private double crosshairX;
+
+    /** The y-value for the current crosshair point. */
+    private double crosshairY;
+
+    /**
+     * The dataset index that the crosshair point relates to (this determines
+     * the axes that the crosshairs will be plotted against).
+     *
+     * @since 1.0.11
+     */
+    private int datasetIndex;
+
+    /**
+     * The index of the domain axis that the crosshair x-value is measured
+     * against.
+     *
+     * @since 1.0.4
+     */
+    private int domainAxisIndex;
+
+    /**
+     * The index of the range axis that the crosshair y-value is measured
+     * against.
+     *
+     * @since 1.0.4
+     */
+    private int rangeAxisIndex;
+
+    /**
+     * The smallest distance (so far) between the anchor point and a data
+     * point.
+     */
+    private double distance;
+
+    /**
+     * Creates a new &lt;code&gt;CrosshairState&lt;/code&gt; instance that calculates
+     * distance in Java2D space.
+     */
+    public CrosshairState() {
+<span class="fc" id="L119">        this(false);</span>
+<span class="fc" id="L120">    }</span>
+
+    /**
+     * Creates a new &lt;code&gt;CrosshairState&lt;/code&gt; instance.
+     *
+     * @param calculateDistanceInDataSpace  a flag that controls whether the
+     *                                      distance is calculated in data
+     *                                      space or Java2D space.
+     */
+<span class="fc" id="L129">    public CrosshairState(boolean calculateDistanceInDataSpace) {</span>
+<span class="fc" id="L130">        this.calculateDistanceInDataSpace = calculateDistanceInDataSpace;</span>
+<span class="fc" id="L131">    }</span>
+
+    /**
+     * Returns the distance between the anchor point and the current crosshair
+     * point.
+     *
+     * @return The distance.
+     *
+     * @see #setCrosshairDistance(double)
+     * @since 1.0.3
+     */
+    public double getCrosshairDistance() {
+<span class="nc" id="L143">        return this.distance;</span>
+    }
+
+    /**
+     * Sets the distance between the anchor point and the current crosshair
+     * point.  As each data point is processed, its distance to the anchor
+     * point is compared with this value and, if it is closer, the data point
+     * becomes the new crosshair point.
+     *
+     * @param distance  the distance.
+     *
+     * @see #getCrosshairDistance()
+     */
+    public void setCrosshairDistance(double distance) {
+<span class="fc" id="L157">        this.distance = distance;</span>
+<span class="fc" id="L158">    }</span>
+
+    /**
+     * Evaluates a data point and if it is the closest to the anchor point it
+     * becomes the new crosshair point.
+     * &lt;P&gt;
+     * To understand this method, you need to know the context in which it will
+     * be called.  An instance of this class is passed to an
+     * {@link org.jfree.chart.renderer.xy.XYItemRenderer} as
+     * each data point is plotted.  As the point is plotted, it is passed to
+     * this method to see if it should be the new crosshair point.
+     *
+     * @param x  x coordinate (measured against the domain axis).
+     * @param y  y coordinate (measured against the range axis).
+     * @param transX  x translated into Java2D space.
+     * @param transY  y translated into Java2D space.
+     * @param orientation  the plot orientation.
+     *
+     * @deprecated Use {@link #updateCrosshairPoint(double, double, int, int,
+     *     double, double, PlotOrientation)}.  See bug report 1086307.
+     */
+    public void updateCrosshairPoint(double x, double y,
+                                     double transX, double transY,
+                                     PlotOrientation orientation) {
+<span class="nc" id="L182">        updateCrosshairPoint(x, y, 0, 0, transX, transY, orientation);</span>
+<span class="nc" id="L183">    }</span>
+
+    /**
+     * Evaluates a data point and if it is the closest to the anchor point it
+     * becomes the new crosshair point.
+     * &lt;P&gt;
+     * To understand this method, you need to know the context in which it will
+     * be called.  An instance of this class is passed to an
+     * {@link org.jfree.chart.renderer.xy.XYItemRenderer} as
+     * each data point is plotted.  As the point is plotted, it is passed to
+     * this method to see if it should be the new crosshair point.
+     *
+     * @param x  x coordinate (measured against the domain axis).
+     * @param y  y coordinate (measured against the range axis).
+     * @param domainAxisIndex  the index of the domain axis for this point.
+     * @param rangeAxisIndex  the index of the range axis for this point.
+     * @param transX  x translated into Java2D space.
+     * @param transY  y translated into Java2D space.
+     * @param orientation  the plot orientation.
+     *
+     * @since 1.0.4
+     */
+    public void updateCrosshairPoint(double x, double y, int domainAxisIndex,
+            int rangeAxisIndex, double transX, double transY,
+            PlotOrientation orientation) {
+
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">        if (this.anchor != null) {</span>
+<span class="nc" id="L210">            double d = 0.0;</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">            if (this.calculateDistanceInDataSpace) {</span>
+<span class="nc" id="L212">                d = (x - this.anchorX) * (x - this.anchorX)</span>
+                  + (y - this.anchorY) * (y - this.anchorY);
+            }
+            else {
+<span class="nc" id="L216">                double xx = this.anchor.getX();</span>
+<span class="nc" id="L217">                double yy = this.anchor.getY();</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">                if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L219">                    double temp = yy;</span>
+<span class="nc" id="L220">                    yy = xx;</span>
+<span class="nc" id="L221">                    xx = temp;</span>
+                }
+<span class="nc" id="L223">                d = (transX - xx) * (transX - xx)</span>
+                    + (transY - yy) * (transY - yy);
+            }
+
+<span class="nc bnc" id="L227" title="All 2 branches missed.">            if (d &lt; this.distance) {</span>
+<span class="nc" id="L228">                this.crosshairX = x;</span>
+<span class="nc" id="L229">                this.crosshairY = y;</span>
+<span class="nc" id="L230">                this.domainAxisIndex = domainAxisIndex;</span>
+<span class="nc" id="L231">                this.rangeAxisIndex = rangeAxisIndex;</span>
+<span class="nc" id="L232">                this.distance = d;</span>
+            }
+        }
+
+<span class="fc" id="L236">    }</span>
+
+    /**
+     * Evaluates an x-value and if it is the closest to the anchor x-value it
+     * becomes the new crosshair value.
+     * &lt;P&gt;
+     * Used in cases where only the x-axis is numerical.
+     *
+     * @param candidateX  x position of the candidate for the new crosshair
+     *                    point.
+     *
+     * @deprecated Use {@link #updateCrosshairX(double, int)}.  See bug report
+     *     1086307.
+     */
+    public void updateCrosshairX(double candidateX) {
+<span class="nc" id="L251">        updateCrosshairX(candidateX, 0);</span>
+<span class="nc" id="L252">    }</span>
+
+    /**
+     * Evaluates an x-value and if it is the closest to the anchor x-value it
+     * becomes the new crosshair value.
+     * &lt;P&gt;
+     * Used in cases where only the x-axis is numerical.
+     *
+     * @param candidateX  x position of the candidate for the new crosshair
+     *                    point.
+     * @param domainAxisIndex  the index of the domain axis for this x-value.
+     *
+     * @since 1.0.4
+     */
+    public void updateCrosshairX(double candidateX, int domainAxisIndex) {
+
+<span class="nc" id="L268">        double d = Math.abs(candidateX - this.anchorX);</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">        if (d &lt; this.distance) {</span>
+<span class="nc" id="L270">            this.crosshairX = candidateX;</span>
+<span class="nc" id="L271">            this.domainAxisIndex = domainAxisIndex;</span>
+<span class="nc" id="L272">            this.distance = d;</span>
+        }
+
+<span class="nc" id="L275">    }</span>
+
+    /**
+     * Evaluates a y-value and if it is the closest to the anchor y-value it
+     * becomes the new crosshair value.
+     * &lt;P&gt;
+     * Used in cases where only the y-axis is numerical.
+     *
+     * @param candidateY  y position of the candidate for the new crosshair
+     *                    point.
+     *
+     * @deprecated Use {@link #updateCrosshairY(double, int)}.  See bug report
+     *     1086307.
+     */
+    public void updateCrosshairY(double candidateY) {
+<span class="nc" id="L290">        updateCrosshairY(candidateY, 0);</span>
+<span class="nc" id="L291">    }</span>
+
+    /**
+     * Evaluates a y-value and if it is the closest to the anchor y-value it
+     * becomes the new crosshair value.
+     * &lt;P&gt;
+     * Used in cases where only the y-axis is numerical.
+     *
+     * @param candidateY  y position of the candidate for the new crosshair
+     *                    point.
+     * @param rangeAxisIndex  the index of the range axis for this y-value.
+     *
+     * @since 1.0.4
+     */
+    public void updateCrosshairY(double candidateY, int rangeAxisIndex) {
+<span class="nc" id="L306">        double d = Math.abs(candidateY - this.anchorY);</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        if (d &lt; this.distance) {</span>
+<span class="nc" id="L308">            this.crosshairY = candidateY;</span>
+<span class="nc" id="L309">            this.rangeAxisIndex = rangeAxisIndex;</span>
+<span class="nc" id="L310">            this.distance = d;</span>
+        }
+
+<span class="nc" id="L313">    }</span>
+
+    /**
+     * Returns the anchor point.
+     *
+     * @return The anchor point.
+     *
+     * @see #setAnchor(Point2D)
+     *
+     * @since 1.0.3
+     */
+    public Point2D getAnchor() {
+<span class="fc" id="L325">        return this.anchor;</span>
+    }
+
+    /**
+     * Sets the anchor point.  This is usually the mouse click point in a chart
+     * panel, and the crosshair point will often be the data item that is
+     * closest to the anchor point.
+     * &lt;br&gt;&lt;br&gt;
+     * Note that the x and y coordinates (in data space) are not updated by
+     * this method - the caller is responsible for ensuring that this happens
+     * in sync.
+     *
+     * @param anchor  the anchor point (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @see #getAnchor()
+     */
+    public void setAnchor(Point2D anchor) {
+<span class="fc" id="L342">        this.anchor = anchor;</span>
+<span class="fc" id="L343">    }</span>
+
+    /**
+     * Returns the x-coordinate (in data space) for the anchor point.
+     *
+     * @return The x-coordinate of the anchor point.
+     *
+     * @since 1.0.3
+     */
+    public double getAnchorX() {
+<span class="nc" id="L353">        return this.anchorX;</span>
+    }
+
+    /**
+     * Sets the x-coordinate (in data space) for the anchor point.  Note that
+     * this does NOT update the anchor itself - the caller is responsible for
+     * ensuring this is done in sync.
+     *
+     * @param x  the x-coordinate.
+     *
+     * @since 1.0.3
+     */
+    public void setAnchorX(double x) {
+<span class="fc" id="L366">        this.anchorX = x;</span>
+<span class="fc" id="L367">    }</span>
+
+    /**
+     * Returns the y-coordinate (in data space) for the anchor point.
+     *
+     * @return The y-coordinate of teh anchor point.
+     *
+     * @since 1.0.3
+     */
+    public double getAnchorY() {
+<span class="nc" id="L377">        return this.anchorY;</span>
+    }
+
+    /**
+     * Sets the y-coordinate (in data space) for the anchor point.  Note that
+     * this does NOT update the anchor itself - the caller is responsible for
+     * ensuring this is done in sync.
+     *
+     * @param y  the y-coordinate.
+     *
+     * @since 1.0.3
+     */
+    public void setAnchorY(double y) {
+<span class="fc" id="L390">        this.anchorY = y;</span>
+<span class="fc" id="L391">    }</span>
+
+    /**
+     * Get the x-value for the crosshair point.
+     *
+     * @return The x position of the crosshair point.
+     *
+     * @see #setCrosshairX(double)
+     */
+    public double getCrosshairX() {
+<span class="fc" id="L401">        return this.crosshairX;</span>
+    }
+
+    /**
+     * Sets the x coordinate for the crosshair.  This is the coordinate in data
+     * space measured against the domain axis.
+     *
+     * @param x the coordinate.
+     *
+     * @see #getCrosshairX()
+     * @see #setCrosshairY(double)
+     * @see #updateCrosshairPoint(double, double, double, double,
+     * PlotOrientation)
+     */
+    public void setCrosshairX(double x) {
+<span class="fc" id="L416">        this.crosshairX = x;</span>
+<span class="fc" id="L417">    }</span>
+
+    /**
+     * Get the y-value for the crosshair point.  This is the coordinate in data
+     * space measured against the range axis.
+     *
+     * @return The y position of the crosshair point.
+     *
+     * @see #setCrosshairY(double)
+     */
+    public double getCrosshairY() {
+<span class="fc" id="L428">        return this.crosshairY;</span>
+    }
+
+    /**
+     * Sets the y coordinate for the crosshair.
+     *
+     * @param y  the y coordinate.
+     *
+     * @see #getCrosshairY()
+     * @see #setCrosshairX(double)
+     * @see #updateCrosshairPoint(double, double, double, double,
+     * PlotOrientation)
+     */
+    public void setCrosshairY(double y) {
+<span class="fc" id="L442">        this.crosshairY = y;</span>
+<span class="fc" id="L443">    }</span>
+
+    /**
+     * Returns the dataset index that the crosshair values relate to.  The
+     * dataset is mapped to specific axes, and this is how the crosshairs are
+     * mapped also.
+     *
+     * @return The dataset index.
+     *
+     * @see #setDatasetIndex(int)
+     *
+     * @since 1.0.11
+     */
+    public int getDatasetIndex() {
+<span class="fc" id="L457">        return this.datasetIndex;</span>
+    }
+
+    /**
+     * Sets the dataset index that the current crosshair values relate to.
+     *
+     * @param index  the dataset index.
+     *
+     * @see #getDatasetIndex()
+     *
+     * @since 1.0.11
+     */
+    public void setDatasetIndex(int index) {
+<span class="nc" id="L470">        this.datasetIndex = index;</span>
+<span class="nc" id="L471">    }</span>
+
+    /**
+     * Returns the domain axis index for the crosshair x-value.
+     *
+     * @return The domain axis index.
+     *
+     * @since 1.0.4
+     *
+     * @deprecated As of version 1.0.11, the domain axis should be determined
+     *     using the dataset index.
+     */
+    public int getDomainAxisIndex() {
+<span class="fc" id="L484">        return this.domainAxisIndex;</span>
+    }
+
+    /**
+     * Returns the range axis index for the crosshair y-value.
+     *
+     * @return The range axis index.
+     *
+     * @since 1.0.4
+     *
+     * @deprecated As of version 1.0.11, the domain axis should be determined
+     *     using the dataset index.
+     */
+    public int getRangeAxisIndex() {
+<span class="fc" id="L498">        return this.rangeAxisIndex;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

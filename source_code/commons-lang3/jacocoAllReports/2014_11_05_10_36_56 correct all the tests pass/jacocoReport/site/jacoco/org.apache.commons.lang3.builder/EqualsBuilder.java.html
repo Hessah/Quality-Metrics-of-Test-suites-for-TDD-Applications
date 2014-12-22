@@ -1,0 +1,950 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>EqualsBuilder.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-lang3</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.builder</a> &gt; <span class="el_source">EqualsBuilder.java</span></div><h1>EqualsBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.builder;
+
+import java.lang.reflect.AccessibleObject;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
+
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.tuple.Pair;
+
+/**
+ * &lt;p&gt;Assists in implementing {@link Object#equals(Object)} methods.&lt;/p&gt;
+ *
+ * &lt;p&gt; This class provides methods to build a good equals method for any
+ * class. It follows rules laid out in
+ * &lt;a href=&quot;http://www.oracle.com/technetwork/java/effectivejava-136174.html&quot;&gt;Effective Java&lt;/a&gt;
+ * , by Joshua Bloch. In particular the rule for comparing &lt;code&gt;doubles&lt;/code&gt;,
+ * &lt;code&gt;floats&lt;/code&gt;, and arrays can be tricky. Also, making sure that
+ * &lt;code&gt;equals()&lt;/code&gt; and &lt;code&gt;hashCode()&lt;/code&gt; are consistent can be
+ * difficult.&lt;/p&gt;
+ *
+ * &lt;p&gt;Two Objects that compare as equals must generate the same hash code,
+ * but two Objects with the same hash code do not have to be equal.&lt;/p&gt;
+ *
+ * &lt;p&gt;All relevant fields should be included in the calculation of equals.
+ * Derived fields may be ignored. In particular, any field used in
+ * generating a hash code must be used in the equals method, and vice
+ * versa.&lt;/p&gt;
+ *
+ * &lt;p&gt;Typical use for the code is as follows:&lt;/p&gt;
+ * &lt;pre&gt;
+ * public boolean equals(Object obj) {
+ *   if (obj == null) { return false; }
+ *   if (obj == this) { return true; }
+ *   if (obj.getClass() != getClass()) {
+ *     return false;
+ *   }
+ *   MyClass rhs = (MyClass) obj;
+ *   return new EqualsBuilder()
+ *                 .appendSuper(super.equals(obj))
+ *                 .append(field1, rhs.field1)
+ *                 .append(field2, rhs.field2)
+ *                 .append(field3, rhs.field3)
+ *                 .isEquals();
+ *  }
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt; Alternatively, there is a method that uses reflection to determine
+ * the fields to test. Because these fields are usually private, the method,
+ * &lt;code&gt;reflectionEquals&lt;/code&gt;, uses &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt; to
+ * change the visibility of the fields. This will fail under a security
+ * manager, unless the appropriate permissions are set up correctly. It is
+ * also slower than testing explicitly.&lt;/p&gt;
+ *
+ * &lt;p&gt; A typical invocation for this method would look like:&lt;/p&gt;
+ * &lt;pre&gt;
+ * public boolean equals(Object obj) {
+ *   return EqualsBuilder.reflectionEquals(this, obj);
+ * }
+ * &lt;/pre&gt;
+ *
+ * @since 1.0
+ * @version $Id: EqualsBuilder.java 1535757 2013-10-25 15:07:13Z mbenson $
+ */
+public class EqualsBuilder implements Builder&lt;Boolean&gt; {
+
+    /**
+     * &lt;p&gt;
+     * A registry of objects used by reflection methods to detect cyclical object references and avoid infinite loops.
+     * &lt;/p&gt;
+     *
+     * @since 3.0
+     */
+<span class="fc" id="L92">    private static final ThreadLocal&lt;Set&lt;Pair&lt;IDKey, IDKey&gt;&gt;&gt; REGISTRY = new ThreadLocal&lt;Set&lt;Pair&lt;IDKey, IDKey&gt;&gt;&gt;();</span>
+
+    /*
+     * NOTE: we cannot store the actual objects in a HashSet, as that would use the very hashCode()
+     * we are in the process of calculating.
+     *
+     * So we generate a one-to-one mapping from the original object to a new object.
+     *
+     * Now HashSet uses equals() to determine if two elements with the same hashcode really
+     * are equal, so we also need to ensure that the replacement objects are only equal
+     * if the original objects are identical.
+     *
+     * The original implementation (2.4 and before) used the System.indentityHashCode()
+     * method - however this is not guaranteed to generate unique ids (e.g. LANG-459)
+     *
+     * We now use the IDKey helper class (adapted from org.apache.axis.utils.IDKey)
+     * to disambiguate the duplicate ids.
+     */
+
+    /**
+     * &lt;p&gt;
+     * Returns the registry of object pairs being traversed by the reflection
+     * methods in the current thread.
+     * &lt;/p&gt;
+     *
+     * @return Set the registry of objects being traversed
+     * @since 3.0
+     */
+    static Set&lt;Pair&lt;IDKey, IDKey&gt;&gt; getRegistry() {
+<span class="fc" id="L121">        return REGISTRY.get();</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Converters value pair into a register pair.
+     * &lt;/p&gt;
+     *
+     * @param lhs &lt;code&gt;this&lt;/code&gt; object
+     * @param rhs the other object
+     *
+     * @return the pair
+     */
+    static Pair&lt;IDKey, IDKey&gt; getRegisterPair(final Object lhs, final Object rhs) {
+<span class="fc" id="L135">        final IDKey left = new IDKey(lhs);</span>
+<span class="fc" id="L136">        final IDKey right = new IDKey(rhs);</span>
+<span class="fc" id="L137">        return Pair.of(left, right);</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Returns &lt;code&gt;true&lt;/code&gt; if the registry contains the given object pair.
+     * Used by the reflection methods to avoid infinite loops.
+     * Objects might be swapped therefore a check is needed if the object pair
+     * is registered in given or swapped order.
+     * &lt;/p&gt;
+     *
+     * @param lhs &lt;code&gt;this&lt;/code&gt; object to lookup in registry
+     * @param rhs the other object to lookup on registry
+     * @return boolean &lt;code&gt;true&lt;/code&gt; if the registry contains the given object.
+     * @since 3.0
+     */
+    static boolean isRegistered(final Object lhs, final Object rhs) {
+<span class="fc" id="L154">        final Set&lt;Pair&lt;IDKey, IDKey&gt;&gt; registry = getRegistry();</span>
+<span class="fc" id="L155">        final Pair&lt;IDKey, IDKey&gt; pair = getRegisterPair(lhs, rhs);</span>
+<span class="fc" id="L156">        final Pair&lt;IDKey, IDKey&gt; swappedPair = Pair.of(pair.getLeft(), pair.getRight());</span>
+
+<span class="pc bpc" id="L158" title="1 of 6 branches missed.">        return registry != null</span>
+                &amp;&amp; (registry.contains(pair) || registry.contains(swappedPair));
+    }
+
+    /**
+     * &lt;p&gt;
+     * Registers the given object pair.
+     * Used by the reflection methods to avoid infinite loops.
+     * &lt;/p&gt;
+     *
+     * @param lhs &lt;code&gt;this&lt;/code&gt; object to register
+     * @param rhs the other object to register
+     */
+    static void register(final Object lhs, final Object rhs) {
+<span class="fc" id="L172">        synchronized (EqualsBuilder.class) {</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            if (getRegistry() == null) {</span>
+<span class="fc" id="L174">                REGISTRY.set(new HashSet&lt;Pair&lt;IDKey, IDKey&gt;&gt;());</span>
+            }
+<span class="pc" id="L176">        }</span>
+
+<span class="fc" id="L178">        final Set&lt;Pair&lt;IDKey, IDKey&gt;&gt; registry = getRegistry();</span>
+<span class="fc" id="L179">        final Pair&lt;IDKey, IDKey&gt; pair = getRegisterPair(lhs, rhs);</span>
+<span class="fc" id="L180">        registry.add(pair);</span>
+<span class="fc" id="L181">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Unregisters the given object pair.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * Used by the reflection methods to avoid infinite loops.
+     *
+     * @param lhs &lt;code&gt;this&lt;/code&gt; object to unregister
+     * @param rhs the other object to unregister
+     * @since 3.0
+     */
+    static void unregister(final Object lhs, final Object rhs) {
+<span class="fc" id="L196">        Set&lt;Pair&lt;IDKey, IDKey&gt;&gt; registry = getRegistry();</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">        if (registry != null) {</span>
+<span class="fc" id="L198">            final Pair&lt;IDKey, IDKey&gt; pair = getRegisterPair(lhs, rhs);</span>
+<span class="fc" id="L199">            registry.remove(pair);</span>
+<span class="fc" id="L200">            synchronized (EqualsBuilder.class) {</span>
+                //read again
+<span class="fc" id="L202">                registry = getRegistry();</span>
+<span class="pc bpc" id="L203" title="1 of 4 branches missed.">                if (registry != null &amp;&amp; registry.isEmpty()) {</span>
+<span class="fc" id="L204">                    REGISTRY.remove();</span>
+                }
+<span class="pc" id="L206">            }</span>
+        }
+<span class="fc" id="L208">    }</span>
+
+    /**
+     * If the fields tested are equals.
+     * The default value is &lt;code&gt;true&lt;/code&gt;.
+     */
+<span class="fc" id="L214">    private boolean isEquals = true;</span>
+
+    /**
+     * &lt;p&gt;Constructor for EqualsBuilder.&lt;/p&gt;
+     *
+     * &lt;p&gt;Starts off assuming that equals is &lt;code&gt;true&lt;/code&gt;.&lt;/p&gt;
+     * @see Object#equals(Object)
+     */
+<span class="fc" id="L222">    public EqualsBuilder() {</span>
+        // do nothing for now.
+<span class="fc" id="L224">    }</span>
+
+    //-------------------------------------------------------------------------
+
+    /**
+     * &lt;p&gt;This method uses reflection to determine if the two &lt;code&gt;Object&lt;/code&gt;s
+     * are equal.&lt;/p&gt;
+     *
+     * &lt;p&gt;It uses &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt; to gain access to private
+     * fields. This means that it will throw a security exception if run under
+     * a security manager, if the permissions are not set up correctly. It is also
+     * not as efficient as testing explicitly.&lt;/p&gt;
+     *
+     * &lt;p&gt;Transient members will be not be tested, as they are likely derived
+     * fields, and not part of the value of the Object.&lt;/p&gt;
+     *
+     * &lt;p&gt;Static fields will not be tested. Superclass fields will be included.&lt;/p&gt;
+     *
+     * @param lhs  &lt;code&gt;this&lt;/code&gt; object
+     * @param rhs  the other object
+     * @param excludeFields  Collection of String field names to exclude from testing
+     * @return &lt;code&gt;true&lt;/code&gt; if the two Objects have tested equals.
+     */
+    public static boolean reflectionEquals(final Object lhs, final Object rhs, final Collection&lt;String&gt; excludeFields) {
+<span class="nc" id="L248">        return reflectionEquals(lhs, rhs, ReflectionToStringBuilder.toNoNullStringArray(excludeFields));</span>
+    }
+
+    /**
+     * &lt;p&gt;This method uses reflection to determine if the two &lt;code&gt;Object&lt;/code&gt;s
+     * are equal.&lt;/p&gt;
+     *
+     * &lt;p&gt;It uses &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt; to gain access to private
+     * fields. This means that it will throw a security exception if run under
+     * a security manager, if the permissions are not set up correctly. It is also
+     * not as efficient as testing explicitly.&lt;/p&gt;
+     *
+     * &lt;p&gt;Transient members will be not be tested, as they are likely derived
+     * fields, and not part of the value of the Object.&lt;/p&gt;
+     *
+     * &lt;p&gt;Static fields will not be tested. Superclass fields will be included.&lt;/p&gt;
+     *
+     * @param lhs  &lt;code&gt;this&lt;/code&gt; object
+     * @param rhs  the other object
+     * @param excludeFields  array of field names to exclude from testing
+     * @return &lt;code&gt;true&lt;/code&gt; if the two Objects have tested equals.
+     */
+    public static boolean reflectionEquals(final Object lhs, final Object rhs, final String... excludeFields) {
+<span class="fc" id="L271">        return reflectionEquals(lhs, rhs, false, null, excludeFields);</span>
+    }
+
+    /**
+     * &lt;p&gt;This method uses reflection to determine if the two &lt;code&gt;Object&lt;/code&gt;s
+     * are equal.&lt;/p&gt;
+     *
+     * &lt;p&gt;It uses &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt; to gain access to private
+     * fields. This means that it will throw a security exception if run under
+     * a security manager, if the permissions are not set up correctly. It is also
+     * not as efficient as testing explicitly.&lt;/p&gt;
+     *
+     * &lt;p&gt;If the TestTransients parameter is set to &lt;code&gt;true&lt;/code&gt;, transient
+     * members will be tested, otherwise they are ignored, as they are likely
+     * derived fields, and not part of the value of the &lt;code&gt;Object&lt;/code&gt;.&lt;/p&gt;
+     *
+     * &lt;p&gt;Static fields will not be tested. Superclass fields will be included.&lt;/p&gt;
+     *
+     * @param lhs  &lt;code&gt;this&lt;/code&gt; object
+     * @param rhs  the other object
+     * @param testTransients  whether to include transient fields
+     * @return &lt;code&gt;true&lt;/code&gt; if the two Objects have tested equals.
+     */
+    public static boolean reflectionEquals(final Object lhs, final Object rhs, final boolean testTransients) {
+<span class="fc" id="L295">        return reflectionEquals(lhs, rhs, testTransients, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;This method uses reflection to determine if the two &lt;code&gt;Object&lt;/code&gt;s
+     * are equal.&lt;/p&gt;
+     *
+     * &lt;p&gt;It uses &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt; to gain access to private
+     * fields. This means that it will throw a security exception if run under
+     * a security manager, if the permissions are not set up correctly. It is also
+     * not as efficient as testing explicitly.&lt;/p&gt;
+     *
+     * &lt;p&gt;If the testTransients parameter is set to &lt;code&gt;true&lt;/code&gt;, transient
+     * members will be tested, otherwise they are ignored, as they are likely
+     * derived fields, and not part of the value of the &lt;code&gt;Object&lt;/code&gt;.&lt;/p&gt;
+     *
+     * &lt;p&gt;Static fields will not be included. Superclass fields will be appended
+     * up to and including the specified superclass. A null superclass is treated
+     * as java.lang.Object.&lt;/p&gt;
+     *
+     * @param lhs  &lt;code&gt;this&lt;/code&gt; object
+     * @param rhs  the other object
+     * @param testTransients  whether to include transient fields
+     * @param reflectUpToClass  the superclass to reflect up to (inclusive),
+     *  may be &lt;code&gt;null&lt;/code&gt;
+     * @param excludeFields  array of field names to exclude from testing
+     * @return &lt;code&gt;true&lt;/code&gt; if the two Objects have tested equals.
+     * @since 2.0
+     */
+    public static boolean reflectionEquals(final Object lhs, final Object rhs, final boolean testTransients, final Class&lt;?&gt; reflectUpToClass,
+            final String... excludeFields) {
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        if (lhs == rhs) {</span>
+<span class="fc" id="L327">            return true;</span>
+        }
+<span class="fc bfc" id="L329" title="All 4 branches covered.">        if (lhs == null || rhs == null) {</span>
+<span class="fc" id="L330">            return false;</span>
+        }
+        // Find the leaf class since there may be transients in the leaf
+        // class or in classes between the leaf and root.
+        // If we are not testing transients or a subclass has no ivars,
+        // then a subclass can test equals to a superclass.
+<span class="fc" id="L336">        final Class&lt;?&gt; lhsClass = lhs.getClass();</span>
+<span class="fc" id="L337">        final Class&lt;?&gt; rhsClass = rhs.getClass();</span>
+        Class&lt;?&gt; testClass;
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        if (lhsClass.isInstance(rhs)) {</span>
+<span class="fc" id="L340">            testClass = lhsClass;</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">            if (!rhsClass.isInstance(lhs)) {</span>
+                // rhsClass is a subclass of lhsClass
+<span class="fc" id="L343">                testClass = rhsClass;</span>
+            }
+<span class="fc bfc" id="L345" title="All 2 branches covered.">        } else if (rhsClass.isInstance(lhs)) {</span>
+<span class="fc" id="L346">            testClass = rhsClass;</span>
+<span class="pc bpc" id="L347" title="1 of 2 branches missed.">            if (!lhsClass.isInstance(rhs)) {</span>
+                // lhsClass is a subclass of rhsClass
+<span class="fc" id="L349">                testClass = lhsClass;</span>
+            }
+        } else {
+            // The two classes are not related.
+<span class="fc" id="L353">            return false;</span>
+        }
+<span class="fc" id="L355">        final EqualsBuilder equalsBuilder = new EqualsBuilder();</span>
+        try {
+<span class="fc bfc" id="L357" title="All 2 branches covered.">            if (testClass.isArray()) {</span>
+<span class="fc" id="L358">                equalsBuilder.append(lhs, rhs);</span>
+            } else {
+<span class="fc" id="L360">                reflectionAppend(lhs, rhs, testClass, equalsBuilder, testTransients, excludeFields);</span>
+<span class="pc bpc" id="L361" title="1 of 4 branches missed.">                while (testClass.getSuperclass() != null &amp;&amp; testClass != reflectUpToClass) {</span>
+<span class="fc" id="L362">                    testClass = testClass.getSuperclass();</span>
+<span class="fc" id="L363">                    reflectionAppend(lhs, rhs, testClass, equalsBuilder, testTransients, excludeFields);</span>
+                }
+            }
+<span class="fc" id="L366">        } catch (final IllegalArgumentException e) {</span>
+            // In this case, we tried to test a subclass vs. a superclass and
+            // the subclass has ivars or the ivars are transient and
+            // we are testing transients.
+            // If a subclass has ivars that we are trying to test them, we get an
+            // exception and we know that the objects are not equal.
+<span class="fc" id="L372">            return false;</span>
+<span class="fc" id="L373">        }</span>
+<span class="fc" id="L374">        return equalsBuilder.isEquals();</span>
+    }
+
+    /**
+     * &lt;p&gt;Appends the fields and values defined by the given object of the
+     * given Class.&lt;/p&gt;
+     *
+     * @param lhs  the left hand object
+     * @param rhs  the right hand object
+     * @param clazz  the class to append details of
+     * @param builder  the builder to append to
+     * @param useTransients  whether to test transient fields
+     * @param excludeFields  array of field names to exclude from testing
+     */
+    private static void reflectionAppend(
+        final Object lhs,
+        final Object rhs,
+        final Class&lt;?&gt; clazz,
+        final EqualsBuilder builder,
+        final boolean useTransients,
+        final String[] excludeFields) {
+
+<span class="fc bfc" id="L396" title="All 2 branches covered.">        if (isRegistered(lhs, rhs)) {</span>
+<span class="fc" id="L397">            return;</span>
+        }
+
+        try {
+<span class="fc" id="L401">            register(lhs, rhs);</span>
+<span class="fc" id="L402">            final Field[] fields = clazz.getDeclaredFields();</span>
+<span class="fc" id="L403">            AccessibleObject.setAccessible(fields, true);</span>
+<span class="fc bfc" id="L404" title="All 4 branches covered.">            for (int i = 0; i &lt; fields.length &amp;&amp; builder.isEquals; i++) {</span>
+<span class="fc" id="L405">                final Field f = fields[i];</span>
+<span class="fc bfc" id="L406" title="All 10 branches covered.">                if (!ArrayUtils.contains(excludeFields, f.getName())</span>
+                    &amp;&amp; (f.getName().indexOf('$') == -1)
+                    &amp;&amp; (useTransients || !Modifier.isTransient(f.getModifiers()))
+                    &amp;&amp; (!Modifier.isStatic(f.getModifiers()))) {
+                    try {
+<span class="fc" id="L411">                        builder.append(f.get(lhs), f.get(rhs));</span>
+<span class="nc" id="L412">                    } catch (final IllegalAccessException e) {</span>
+                        //this can't happen. Would get a Security exception instead
+                        //throw a runtime exception in case the impossible happens.
+<span class="nc" id="L415">                        throw new InternalError(&quot;Unexpected IllegalAccessException&quot;);</span>
+<span class="fc" id="L416">                    }</span>
+                }
+            }
+        } finally {
+<span class="fc" id="L420">            unregister(lhs, rhs);</span>
+<span class="fc" id="L421">        }</span>
+<span class="fc" id="L422">    }</span>
+
+    //-------------------------------------------------------------------------
+
+    /**
+     * &lt;p&gt;Adds the result of &lt;code&gt;super.equals()&lt;/code&gt; to this builder.&lt;/p&gt;
+     *
+     * @param superEquals  the result of calling &lt;code&gt;super.equals()&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     * @since 2.0
+     */
+    public EqualsBuilder appendSuper(final boolean superEquals) {
+<span class="pc bpc" id="L434" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L435">            return this;</span>
+        }
+<span class="fc" id="L437">        isEquals = superEquals;</span>
+<span class="fc" id="L438">        return this;</span>
+    }
+
+    //-------------------------------------------------------------------------
+
+    /**
+     * &lt;p&gt;Test if two &lt;code&gt;Object&lt;/code&gt;s are equal using their
+     * &lt;code&gt;equals&lt;/code&gt; method.&lt;/p&gt;
+     *
+     * @param lhs  the left hand object
+     * @param rhs  the right hand object
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final Object lhs, final Object rhs) {
+<span class="fc bfc" id="L452" title="All 2 branches covered.">        if (isEquals == false) {</span>
+<span class="fc" id="L453">            return this;</span>
+        }
+<span class="fc bfc" id="L455" title="All 2 branches covered.">        if (lhs == rhs) {</span>
+<span class="fc" id="L456">            return this;</span>
+        }
+<span class="fc bfc" id="L458" title="All 4 branches covered.">        if (lhs == null || rhs == null) {</span>
+<span class="fc" id="L459">            this.setEquals(false);</span>
+<span class="fc" id="L460">            return this;</span>
+        }
+<span class="fc" id="L462">        final Class&lt;?&gt; lhsClass = lhs.getClass();</span>
+<span class="fc bfc" id="L463" title="All 2 branches covered.">        if (!lhsClass.isArray()) {</span>
+            // The simple case, not an array, just test the element
+<span class="fc" id="L465">            isEquals = lhs.equals(rhs);</span>
+<span class="fc bfc" id="L466" title="All 2 branches covered.">        } else if (lhs.getClass() != rhs.getClass()) {</span>
+            // Here when we compare different dimensions, for example: a boolean[][] to a boolean[]
+<span class="fc" id="L468">            this.setEquals(false);</span>
+        }
+        // 'Switch' on type of array, to dispatch to the correct handler
+        // This handles multi dimensional arrays of the same depth
+<span class="fc bfc" id="L472" title="All 2 branches covered.">        else if (lhs instanceof long[]) {</span>
+<span class="fc" id="L473">            append((long[]) lhs, (long[]) rhs);</span>
+<span class="fc bfc" id="L474" title="All 2 branches covered.">        } else if (lhs instanceof int[]) {</span>
+<span class="fc" id="L475">            append((int[]) lhs, (int[]) rhs);</span>
+<span class="fc bfc" id="L476" title="All 2 branches covered.">        } else if (lhs instanceof short[]) {</span>
+<span class="fc" id="L477">            append((short[]) lhs, (short[]) rhs);</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">        } else if (lhs instanceof char[]) {</span>
+<span class="fc" id="L479">            append((char[]) lhs, (char[]) rhs);</span>
+<span class="fc bfc" id="L480" title="All 2 branches covered.">        } else if (lhs instanceof byte[]) {</span>
+<span class="fc" id="L481">            append((byte[]) lhs, (byte[]) rhs);</span>
+<span class="fc bfc" id="L482" title="All 2 branches covered.">        } else if (lhs instanceof double[]) {</span>
+<span class="fc" id="L483">            append((double[]) lhs, (double[]) rhs);</span>
+<span class="fc bfc" id="L484" title="All 2 branches covered.">        } else if (lhs instanceof float[]) {</span>
+<span class="fc" id="L485">            append((float[]) lhs, (float[]) rhs);</span>
+<span class="fc bfc" id="L486" title="All 2 branches covered.">        } else if (lhs instanceof boolean[]) {</span>
+<span class="fc" id="L487">            append((boolean[]) lhs, (boolean[]) rhs);</span>
+        } else {
+            // Not an array of primitives
+<span class="fc" id="L490">            append((Object[]) lhs, (Object[]) rhs);</span>
+        }
+<span class="fc" id="L492">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Test if two &lt;code&gt;long&lt;/code&gt; s are equal.
+     * &lt;/p&gt;
+     *
+     * @param lhs
+     *                  the left hand &lt;code&gt;long&lt;/code&gt;
+     * @param rhs
+     *                  the right hand &lt;code&gt;long&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final long lhs, final long rhs) {
+<span class="pc bpc" id="L507" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L508">            return this;</span>
+        }
+<span class="fc bfc" id="L510" title="All 2 branches covered.">        isEquals = (lhs == rhs);</span>
+<span class="fc" id="L511">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Test if two &lt;code&gt;int&lt;/code&gt;s are equal.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;int&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;int&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final int lhs, final int rhs) {
+<span class="pc bpc" id="L522" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L523">            return this;</span>
+        }
+<span class="fc bfc" id="L525" title="All 2 branches covered.">        isEquals = (lhs == rhs);</span>
+<span class="fc" id="L526">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Test if two &lt;code&gt;short&lt;/code&gt;s are equal.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;short&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;short&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final short lhs, final short rhs) {
+<span class="pc bpc" id="L537" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L538">            return this;</span>
+        }
+<span class="fc bfc" id="L540" title="All 2 branches covered.">        isEquals = (lhs == rhs);</span>
+<span class="fc" id="L541">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Test if two &lt;code&gt;char&lt;/code&gt;s are equal.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;char&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;char&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final char lhs, final char rhs) {
+<span class="pc bpc" id="L552" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L553">            return this;</span>
+        }
+<span class="fc bfc" id="L555" title="All 2 branches covered.">        isEquals = (lhs == rhs);</span>
+<span class="fc" id="L556">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Test if two &lt;code&gt;byte&lt;/code&gt;s are equal.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;byte&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;byte&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final byte lhs, final byte rhs) {
+<span class="pc bpc" id="L567" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L568">            return this;</span>
+        }
+<span class="fc bfc" id="L570" title="All 2 branches covered.">        isEquals = (lhs == rhs);</span>
+<span class="fc" id="L571">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Test if two &lt;code&gt;double&lt;/code&gt;s are equal by testing that the
+     * pattern of bits returned by &lt;code&gt;doubleToLong&lt;/code&gt; are equal.&lt;/p&gt;
+     *
+     * &lt;p&gt;This handles NaNs, Infinities, and &lt;code&gt;-0.0&lt;/code&gt;.&lt;/p&gt;
+     *
+     * &lt;p&gt;It is compatible with the hash code generated by
+     * &lt;code&gt;HashCodeBuilder&lt;/code&gt;.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;double&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;double&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final double lhs, final double rhs) {
+<span class="pc bpc" id="L588" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L589">            return this;</span>
+        }
+<span class="fc" id="L591">        return append(Double.doubleToLongBits(lhs), Double.doubleToLongBits(rhs));</span>
+    }
+
+    /**
+     * &lt;p&gt;Test if two &lt;code&gt;float&lt;/code&gt;s are equal byt testing that the
+     * pattern of bits returned by doubleToLong are equal.&lt;/p&gt;
+     *
+     * &lt;p&gt;This handles NaNs, Infinities, and &lt;code&gt;-0.0&lt;/code&gt;.&lt;/p&gt;
+     *
+     * &lt;p&gt;It is compatible with the hash code generated by
+     * &lt;code&gt;HashCodeBuilder&lt;/code&gt;.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;float&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;float&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final float lhs, final float rhs) {
+<span class="pc bpc" id="L608" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L609">            return this;</span>
+        }
+<span class="fc" id="L611">        return append(Float.floatToIntBits(lhs), Float.floatToIntBits(rhs));</span>
+    }
+
+    /**
+     * &lt;p&gt;Test if two &lt;code&gt;booleans&lt;/code&gt;s are equal.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;boolean&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;boolean&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+      */
+    public EqualsBuilder append(final boolean lhs, final boolean rhs) {
+<span class="pc bpc" id="L622" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L623">            return this;</span>
+        }
+<span class="fc bfc" id="L625" title="All 2 branches covered.">        isEquals = (lhs == rhs);</span>
+<span class="fc" id="L626">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Performs a deep comparison of two &lt;code&gt;Object&lt;/code&gt; arrays.&lt;/p&gt;
+     *
+     * &lt;p&gt;This also will be called for the top level of
+     * multi-dimensional, ragged, and multi-typed arrays.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;Object[]&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;Object[]&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final Object[] lhs, final Object[] rhs) {
+<span class="pc bpc" id="L640" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L641">            return this;</span>
+        }
+<span class="fc bfc" id="L643" title="All 2 branches covered.">        if (lhs == rhs) {</span>
+<span class="fc" id="L644">            return this;</span>
+        }
+<span class="pc bpc" id="L646" title="1 of 4 branches missed.">        if (lhs == null || rhs == null) {</span>
+<span class="fc" id="L647">            this.setEquals(false);</span>
+<span class="fc" id="L648">            return this;</span>
+        }
+<span class="pc bpc" id="L650" title="1 of 2 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="nc" id="L651">            this.setEquals(false);</span>
+<span class="nc" id="L652">            return this;</span>
+        }
+<span class="fc bfc" id="L654" title="All 4 branches covered.">        for (int i = 0; i &lt; lhs.length &amp;&amp; isEquals; ++i) {</span>
+<span class="fc" id="L655">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L657">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Deep comparison of array of &lt;code&gt;long&lt;/code&gt;. Length and all
+     * values are compared.&lt;/p&gt;
+     *
+     * &lt;p&gt;The method {@link #append(long, long)} is used.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;long[]&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;long[]&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final long[] lhs, final long[] rhs) {
+<span class="pc bpc" id="L671" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L672">            return this;</span>
+        }
+<span class="fc bfc" id="L674" title="All 2 branches covered.">        if (lhs == rhs) {</span>
+<span class="fc" id="L675">            return this;</span>
+        }
+<span class="pc bpc" id="L677" title="1 of 4 branches missed.">        if (lhs == null || rhs == null) {</span>
+<span class="fc" id="L678">            this.setEquals(false);</span>
+<span class="fc" id="L679">            return this;</span>
+        }
+<span class="pc bpc" id="L681" title="1 of 2 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="nc" id="L682">            this.setEquals(false);</span>
+<span class="nc" id="L683">            return this;</span>
+        }
+<span class="pc bpc" id="L685" title="1 of 4 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; isEquals; ++i) {</span>
+<span class="fc" id="L686">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L688">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Deep comparison of array of &lt;code&gt;int&lt;/code&gt;. Length and all
+     * values are compared.&lt;/p&gt;
+     *
+     * &lt;p&gt;The method {@link #append(int, int)} is used.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;int[]&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;int[]&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final int[] lhs, final int[] rhs) {
+<span class="pc bpc" id="L702" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L703">            return this;</span>
+        }
+<span class="fc bfc" id="L705" title="All 2 branches covered.">        if (lhs == rhs) {</span>
+<span class="fc" id="L706">            return this;</span>
+        }
+<span class="pc bpc" id="L708" title="1 of 4 branches missed.">        if (lhs == null || rhs == null) {</span>
+<span class="fc" id="L709">            this.setEquals(false);</span>
+<span class="fc" id="L710">            return this;</span>
+        }
+<span class="pc bpc" id="L712" title="1 of 2 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="nc" id="L713">            this.setEquals(false);</span>
+<span class="nc" id="L714">            return this;</span>
+        }
+<span class="pc bpc" id="L716" title="1 of 4 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; isEquals; ++i) {</span>
+<span class="fc" id="L717">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L719">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Deep comparison of array of &lt;code&gt;short&lt;/code&gt;. Length and all
+     * values are compared.&lt;/p&gt;
+     *
+     * &lt;p&gt;The method {@link #append(short, short)} is used.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;short[]&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;short[]&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final short[] lhs, final short[] rhs) {
+<span class="pc bpc" id="L733" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L734">            return this;</span>
+        }
+<span class="fc bfc" id="L736" title="All 2 branches covered.">        if (lhs == rhs) {</span>
+<span class="fc" id="L737">            return this;</span>
+        }
+<span class="pc bpc" id="L739" title="1 of 4 branches missed.">        if (lhs == null || rhs == null) {</span>
+<span class="fc" id="L740">            this.setEquals(false);</span>
+<span class="fc" id="L741">            return this;</span>
+        }
+<span class="pc bpc" id="L743" title="1 of 2 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="nc" id="L744">            this.setEquals(false);</span>
+<span class="nc" id="L745">            return this;</span>
+        }
+<span class="pc bpc" id="L747" title="1 of 4 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; isEquals; ++i) {</span>
+<span class="fc" id="L748">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L750">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Deep comparison of array of &lt;code&gt;char&lt;/code&gt;. Length and all
+     * values are compared.&lt;/p&gt;
+     *
+     * &lt;p&gt;The method {@link #append(char, char)} is used.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;char[]&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;char[]&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final char[] lhs, final char[] rhs) {
+<span class="pc bpc" id="L764" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L765">            return this;</span>
+        }
+<span class="fc bfc" id="L767" title="All 2 branches covered.">        if (lhs == rhs) {</span>
+<span class="fc" id="L768">            return this;</span>
+        }
+<span class="pc bpc" id="L770" title="1 of 4 branches missed.">        if (lhs == null || rhs == null) {</span>
+<span class="fc" id="L771">            this.setEquals(false);</span>
+<span class="fc" id="L772">            return this;</span>
+        }
+<span class="pc bpc" id="L774" title="1 of 2 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="nc" id="L775">            this.setEquals(false);</span>
+<span class="nc" id="L776">            return this;</span>
+        }
+<span class="pc bpc" id="L778" title="1 of 4 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; isEquals; ++i) {</span>
+<span class="fc" id="L779">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L781">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Deep comparison of array of &lt;code&gt;byte&lt;/code&gt;. Length and all
+     * values are compared.&lt;/p&gt;
+     *
+     * &lt;p&gt;The method {@link #append(byte, byte)} is used.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;byte[]&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;byte[]&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final byte[] lhs, final byte[] rhs) {
+<span class="pc bpc" id="L795" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L796">            return this;</span>
+        }
+<span class="fc bfc" id="L798" title="All 2 branches covered.">        if (lhs == rhs) {</span>
+<span class="fc" id="L799">            return this;</span>
+        }
+<span class="pc bpc" id="L801" title="1 of 4 branches missed.">        if (lhs == null || rhs == null) {</span>
+<span class="fc" id="L802">            this.setEquals(false);</span>
+<span class="fc" id="L803">            return this;</span>
+        }
+<span class="pc bpc" id="L805" title="1 of 2 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="nc" id="L806">            this.setEquals(false);</span>
+<span class="nc" id="L807">            return this;</span>
+        }
+<span class="pc bpc" id="L809" title="1 of 4 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; isEquals; ++i) {</span>
+<span class="fc" id="L810">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L812">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Deep comparison of array of &lt;code&gt;double&lt;/code&gt;. Length and all
+     * values are compared.&lt;/p&gt;
+     *
+     * &lt;p&gt;The method {@link #append(double, double)} is used.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;double[]&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;double[]&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final double[] lhs, final double[] rhs) {
+<span class="pc bpc" id="L826" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L827">            return this;</span>
+        }
+<span class="fc bfc" id="L829" title="All 2 branches covered.">        if (lhs == rhs) {</span>
+<span class="fc" id="L830">            return this;</span>
+        }
+<span class="pc bpc" id="L832" title="1 of 4 branches missed.">        if (lhs == null || rhs == null) {</span>
+<span class="fc" id="L833">            this.setEquals(false);</span>
+<span class="fc" id="L834">            return this;</span>
+        }
+<span class="pc bpc" id="L836" title="1 of 2 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="nc" id="L837">            this.setEquals(false);</span>
+<span class="nc" id="L838">            return this;</span>
+        }
+<span class="fc bfc" id="L840" title="All 4 branches covered.">        for (int i = 0; i &lt; lhs.length &amp;&amp; isEquals; ++i) {</span>
+<span class="fc" id="L841">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L843">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Deep comparison of array of &lt;code&gt;float&lt;/code&gt;. Length and all
+     * values are compared.&lt;/p&gt;
+     *
+     * &lt;p&gt;The method {@link #append(float, float)} is used.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;float[]&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;float[]&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final float[] lhs, final float[] rhs) {
+<span class="pc bpc" id="L857" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L858">            return this;</span>
+        }
+<span class="fc bfc" id="L860" title="All 2 branches covered.">        if (lhs == rhs) {</span>
+<span class="fc" id="L861">            return this;</span>
+        }
+<span class="pc bpc" id="L863" title="1 of 4 branches missed.">        if (lhs == null || rhs == null) {</span>
+<span class="fc" id="L864">            this.setEquals(false);</span>
+<span class="fc" id="L865">            return this;</span>
+        }
+<span class="pc bpc" id="L867" title="1 of 2 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="nc" id="L868">            this.setEquals(false);</span>
+<span class="nc" id="L869">            return this;</span>
+        }
+<span class="pc bpc" id="L871" title="1 of 4 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; isEquals; ++i) {</span>
+<span class="fc" id="L872">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L874">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Deep comparison of array of &lt;code&gt;boolean&lt;/code&gt;. Length and all
+     * values are compared.&lt;/p&gt;
+     *
+     * &lt;p&gt;The method {@link #append(boolean, boolean)} is used.&lt;/p&gt;
+     *
+     * @param lhs  the left hand &lt;code&gt;boolean[]&lt;/code&gt;
+     * @param rhs  the right hand &lt;code&gt;boolean[]&lt;/code&gt;
+     * @return EqualsBuilder - used to chain calls.
+     */
+    public EqualsBuilder append(final boolean[] lhs, final boolean[] rhs) {
+<span class="pc bpc" id="L888" title="1 of 2 branches missed.">        if (isEquals == false) {</span>
+<span class="nc" id="L889">            return this;</span>
+        }
+<span class="fc bfc" id="L891" title="All 2 branches covered.">        if (lhs == rhs) {</span>
+<span class="fc" id="L892">            return this;</span>
+        }
+<span class="pc bpc" id="L894" title="1 of 4 branches missed.">        if (lhs == null || rhs == null) {</span>
+<span class="fc" id="L895">            this.setEquals(false);</span>
+<span class="fc" id="L896">            return this;</span>
+        }
+<span class="pc bpc" id="L898" title="1 of 2 branches missed.">        if (lhs.length != rhs.length) {</span>
+<span class="nc" id="L899">            this.setEquals(false);</span>
+<span class="nc" id="L900">            return this;</span>
+        }
+<span class="pc bpc" id="L902" title="1 of 4 branches missed.">        for (int i = 0; i &lt; lhs.length &amp;&amp; isEquals; ++i) {</span>
+<span class="fc" id="L903">            append(lhs[i], rhs[i]);</span>
+        }
+<span class="fc" id="L905">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;Returns &lt;code&gt;true&lt;/code&gt; if the fields that have been checked
+     * are all equal.&lt;/p&gt;
+     *
+     * @return boolean
+     */
+    public boolean isEquals() {
+<span class="fc" id="L915">        return this.isEquals;</span>
+    }
+
+    /**
+     * &lt;p&gt;Returns &lt;code&gt;true&lt;/code&gt; if the fields that have been checked
+     * are all equal.&lt;/p&gt;
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; if all of the fields that have been checked
+     *         are equal, &lt;code&gt;false&lt;/code&gt; otherwise.
+     *
+     * @since 3.0
+     */
+    @Override
+    public Boolean build() {
+<span class="fc" id="L929">        return Boolean.valueOf(isEquals());</span>
+    }
+
+    /**
+     * Sets the &lt;code&gt;isEquals&lt;/code&gt; value.
+     *
+     * @param isEquals The value to set.
+     * @since 2.1
+     */
+    protected void setEquals(final boolean isEquals) {
+<span class="fc" id="L939">        this.isEquals = isEquals;</span>
+<span class="fc" id="L940">    }</span>
+
+    /**
+     * Reset the EqualsBuilder so you can use the same object again
+     * @since 2.5
+     */
+    public void reset() {
+<span class="fc" id="L947">        this.isEquals = true;</span>
+<span class="fc" id="L948">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

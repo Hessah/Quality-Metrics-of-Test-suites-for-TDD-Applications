@@ -1,0 +1,883 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StackedBarRenderer3D.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.renderer.category</a> &gt; <span class="el_source">StackedBarRenderer3D.java</span></div><h1>StackedBarRenderer3D.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * -------------------------
+ * StackedBarRenderer3D.java
+ * -------------------------
+ * (C) Copyright 2000-2013, by Serge V. Grachov and Contributors.
+ *
+ * Original Author:  Serge V. Grachov;
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *                   Richard Atkinson;
+ *                   Christian W. Zuckschwerdt;
+ *                   Max Herfort (patch 1459313);
+ *                   DaveLaw (dave ATT davelaw DOTT de) (patch 3204823);
+ *
+ * Changes
+ * -------
+ * 31-Oct-2001 : Version 1, contributed by Serge V. Grachov (DG);
+ * 15-Nov-2001 : Modified to allow for null data values (DG);
+ * 13-Dec-2001 : Added tooltips (DG);
+ * 15-Feb-2002 : Added isStacked() method (DG);
+ * 24-May-2002 : Incorporated tooltips into chart entities (DG);
+ * 19-Jun-2002 : Added check for null info in drawCategoryItem method (DG);
+ * 25-Jun-2002 : Removed redundant imports (DG);
+ * 26-Jun-2002 : Small change to entity (DG);
+ * 05-Aug-2002 : Small modification to drawCategoryItem method to support URLs
+ *               for HTML image maps (RA);
+ * 26-Sep-2002 : Fixed errors reported by Checkstyle (DG);
+ * 24-Oct-2002 : Amendments for changes in CategoryDataset interface and
+ *               CategoryToolTipGenerator interface (DG);
+ * 05-Nov-2002 : Replaced references to CategoryDataset with TableDataset (DG);
+ * 26-Nov-2002 : Replaced isStacked() method with getRangeType() method (DG);
+ * 17-Jan-2003 : Moved plot classes to a separate package (DG);
+ * 25-Mar-2003 : Implemented Serializable (DG);
+ * 01-May-2003 : Added default constructor (bug 726235) and fixed bug
+ *               726260) (DG);
+ * 13-May-2003 : Renamed StackedVerticalBarRenderer3D
+ *               --&gt; StackedBarRenderer3D (DG);
+ * 30-Jul-2003 : Modified entity constructor (CZ);
+ * 07-Oct-2003 : Added renderer state (DG);
+ * 21-Nov-2003 : Added a new constructor (DG);
+ * 27-Nov-2003 : Modified code to respect maxBarWidth setting (DG);
+ * 11-Aug-2004 : Fixed bug where isDrawBarOutline() was ignored (DG);
+ * 05-Nov-2004 : Modified drawItem() signature (DG);
+ * 07-Jan-2005 : Renamed getRangeExtent() --&gt; findRangeBounds (DG);
+ * 18-Mar-2005 : Override for getPassCount() method (DG);
+ * 20-Apr-2005 : Renamed CategoryLabelGenerator
+ *               --&gt; CategoryItemLabelGenerator (DG);
+ * 09-Jun-2005 : Use addItemEntity() method from superclass (DG);
+ * 22-Sep-2005 : Renamed getMaxBarWidth() --&gt; getMaximumBarWidth() (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 31-Mar-2006 : Added renderAsPercentages option - see patch 1459313 submitted
+ *               by Max Herfort (DG);
+ * 16-Jan-2007 : Replaced rendering code to draw whole stack at once (DG);
+ * 18-Jan-2007 : Fixed bug handling null values in createStackedValueList()
+ *               method (DG);
+ * 18-Jan-2007 : Updated block drawing code to take account of inverted axes,
+ *               see bug report 1599652 (DG);
+ * 08-May-2007 : Fixed bugs 1713401 (drawBarOutlines flag) and  1713474
+ *               (shading) (DG);
+ * 15-Aug-2008 : Fixed bug 2031407 - no negative zero for stack encoding (DG);
+ * 03-Feb-2009 : Fixed regression in findRangeBounds() method for null
+ *               dataset (DG);
+ * 04-Feb-2009 : Handle seriesVisible flag (DG);
+ * 07-Jul-2009 : Added flag for handling zero values (DG);
+ * 11-Jun-2012 : Use new PaintAlpha class (patch 3204823 from DaveLaw) (DG);
+ *
+ */
+
+package org.jfree.chart.renderer.category;
+
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Shape;
+import java.awt.geom.GeneralPath;
+import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.jfree.chart.HashUtilities;
+import org.jfree.chart.axis.CategoryAxis;
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.entity.EntityCollection;
+import org.jfree.chart.event.RendererChangeEvent;
+import org.jfree.chart.labels.CategoryItemLabelGenerator;
+import org.jfree.chart.plot.CategoryPlot;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.util.PaintAlpha;
+import org.jfree.data.DataUtilities;
+import org.jfree.data.Range;
+import org.jfree.data.category.CategoryDataset;
+import org.jfree.data.general.DatasetUtilities;
+import org.jfree.util.BooleanUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * Renders stacked bars with 3D-effect, for use with the {@link CategoryPlot}
+ * class.  The example shown here is generated by the
+ * &lt;code&gt;StackedBarChart3DDemo1.java&lt;/code&gt; program included in the
+ * JFreeChart Demo Collection:
+ * &lt;br&gt;&lt;br&gt;
+ * &lt;img src=&quot;../../../../../images/StackedBarRenderer3DSample.png&quot;
+ * alt=&quot;StackedBarRenderer3DSample.png&quot; /&gt;
+ */
+public class StackedBarRenderer3D extends BarRenderer3D
+        implements Cloneable, PublicCloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = -5832945916493247123L;
+
+    /** A flag that controls whether the bars display values or percentages. */
+    private boolean renderAsPercentages;
+
+    /**
+     * A flag that controls whether or not zero values are drawn by the
+     * renderer.
+     *
+     * @since 1.0.14
+     */
+    private boolean ignoreZeroValues;
+
+    /**
+     * Creates a new renderer with no tool tip generator and no URL generator.
+     * &lt;P&gt;
+     * The defaults (no tool tip or URL generators) have been chosen to
+     * minimise the processing required to generate a default chart.  If you
+     * require tool tips or URLs, then you can easily add the required
+     * generators.
+     */
+    public StackedBarRenderer3D() {
+<span class="fc" id="L156">        this(false);</span>
+<span class="fc" id="L157">    }</span>
+
+    /**
+     * Constructs a new renderer with the specified '3D effect'.
+     *
+     * @param xOffset  the x-offset for the 3D effect.
+     * @param yOffset  the y-offset for the 3D effect.
+     */
+    public StackedBarRenderer3D(double xOffset, double yOffset) {
+<span class="nc" id="L166">        super(xOffset, yOffset);</span>
+<span class="nc" id="L167">    }</span>
+
+    /**
+     * Creates a new renderer.
+     *
+     * @param renderAsPercentages  a flag that controls whether the data values
+     *                             are rendered as percentages.
+     *
+     * @since 1.0.2
+     */
+    public StackedBarRenderer3D(boolean renderAsPercentages) {
+<span class="fc" id="L178">        super();</span>
+<span class="fc" id="L179">        this.renderAsPercentages = renderAsPercentages;</span>
+<span class="fc" id="L180">    }</span>
+
+    /**
+     * Constructs a new renderer with the specified '3D effect'.
+     *
+     * @param xOffset  the x-offset for the 3D effect.
+     * @param yOffset  the y-offset for the 3D effect.
+     * @param renderAsPercentages  a flag that controls whether the data values
+     *                             are rendered as percentages.
+     *
+     * @since 1.0.2
+     */
+    public StackedBarRenderer3D(double xOffset, double yOffset,
+            boolean renderAsPercentages) {
+<span class="nc" id="L194">        super(xOffset, yOffset);</span>
+<span class="nc" id="L195">        this.renderAsPercentages = renderAsPercentages;</span>
+<span class="nc" id="L196">    }</span>
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; if the renderer displays each item value as
+     * a percentage (so that the stacked bars add to 100%), and
+     * &lt;code&gt;false&lt;/code&gt; otherwise.
+     *
+     * @return A boolean.
+     *
+     * @since 1.0.2
+     */
+    public boolean getRenderAsPercentages() {
+<span class="fc" id="L208">        return this.renderAsPercentages;</span>
+    }
+
+    /**
+     * Sets the flag that controls whether the renderer displays each item
+     * value as a percentage (so that the stacked bars add to 100%), and sends
+     * a {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param asPercentages  the flag.
+     *
+     * @since 1.0.2
+     */
+    public void setRenderAsPercentages(boolean asPercentages) {
+<span class="nc" id="L221">        this.renderAsPercentages = asPercentages;</span>
+<span class="nc" id="L222">        fireChangeEvent();</span>
+<span class="nc" id="L223">    }</span>
+
+    /**
+     * Returns the flag that controls whether or not zero values are drawn
+     * by the renderer.
+     *
+     * @return A boolean.
+     *
+     * @since 1.0.14
+     */
+    public boolean getIgnoreZeroValues() {
+<span class="nc" id="L234">        return this.ignoreZeroValues;</span>
+    }
+
+    /**
+     * Sets a flag that controls whether or not zero values are drawn by the
+     * renderer, and sends a {@link RendererChangeEvent} to all registered
+     * listeners.
+     *
+     * @param ignore  the new flag value.
+     *
+     * @since 1.0.14
+     */
+    public void setIgnoreZeroValues(boolean ignore) {
+<span class="nc" id="L247">        this.ignoreZeroValues = ignore;</span>
+<span class="nc" id="L248">        notifyListeners(new RendererChangeEvent(this));</span>
+<span class="nc" id="L249">    }</span>
+
+    /**
+     * Returns the range of values the renderer requires to display all the
+     * items from the specified dataset.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return The range (or &lt;code&gt;null&lt;/code&gt; if the dataset is empty).
+     */
+    @Override
+    public Range findRangeBounds(CategoryDataset dataset) {
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        if (dataset == null) {</span>
+<span class="fc" id="L262">            return null;</span>
+        }
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">        if (this.renderAsPercentages) {</span>
+<span class="nc" id="L265">            return new Range(0.0, 1.0);</span>
+        }
+<span class="fc" id="L267">        return DatasetUtilities.findStackedRangeBounds(dataset);</span>
+    }
+
+    /**
+     * Calculates the bar width and stores it in the renderer state.
+     *
+     * @param plot  the plot.
+     * @param dataArea  the data area.
+     * @param rendererIndex  the renderer index.
+     * @param state  the renderer state.
+     */
+    @Override
+    protected void calculateBarWidth(CategoryPlot plot, Rectangle2D dataArea,
+            int rendererIndex, CategoryItemRendererState state) {
+
+        // calculate the bar width
+<span class="nc" id="L283">        CategoryAxis domainAxis = getDomainAxis(plot, rendererIndex);</span>
+<span class="nc" id="L284">        CategoryDataset data = plot.getDataset(rendererIndex);</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">        if (data != null) {</span>
+<span class="nc" id="L286">            PlotOrientation orientation = plot.getOrientation();</span>
+<span class="nc" id="L287">            double space = 0.0;</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">            if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L289">                space = dataArea.getHeight();</span>
+            }
+<span class="nc bnc" id="L291" title="All 2 branches missed.">            else if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="nc" id="L292">                space = dataArea.getWidth();</span>
+            }
+<span class="nc" id="L294">            double maxWidth = space * getMaximumBarWidth();</span>
+<span class="nc" id="L295">            int columns = data.getColumnCount();</span>
+<span class="nc" id="L296">            double categoryMargin = 0.0;</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">            if (columns &gt; 1) {</span>
+<span class="nc" id="L298">                categoryMargin = domainAxis.getCategoryMargin();</span>
+            }
+
+<span class="nc" id="L301">            double used = space * (1 - domainAxis.getLowerMargin()</span>
+                                     - domainAxis.getUpperMargin()
+                                     - categoryMargin);
+<span class="nc bnc" id="L304" title="All 2 branches missed.">            if (columns &gt; 0) {</span>
+<span class="nc" id="L305">                state.setBarWidth(Math.min(used / columns, maxWidth));</span>
+            }
+            else {
+<span class="nc" id="L308">                state.setBarWidth(Math.min(used, maxWidth));</span>
+            }
+        }
+
+<span class="nc" id="L312">    }</span>
+
+    /**
+     * Returns a list containing the stacked values for the specified series
+     * in the given dataset, plus the supplied base value.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param category  the category key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param base  the base value.
+     * @param asPercentages  a flag that controls whether the values in the
+     *     list are converted to percentages of the total.
+     *
+     * @return The value list.
+     *
+     * @since 1.0.4
+     *
+     * @deprecated As of 1.0.13, use {@link #createStackedValueList(
+     *     CategoryDataset, Comparable, int[], double, boolean)}.
+     */
+    protected List createStackedValueList(CategoryDataset dataset,
+            Comparable category, double base, boolean asPercentages) {
+<span class="nc" id="L333">        int[] rows = new int[dataset.getRowCount()];</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">        for (int i = 0; i &lt; rows.length; i++) {</span>
+<span class="nc" id="L335">            rows[i] = i;</span>
+        }
+<span class="nc" id="L337">        return createStackedValueList(dataset, category, rows, base,</span>
+                asPercentages);
+    }
+
+    /**
+     * Returns a list containing the stacked values for the specified series
+     * in the given dataset, plus the supplied base value.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param category  the category key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param includedRows  the included rows.
+     * @param base  the base value.
+     * @param asPercentages  a flag that controls whether the values in the
+     *     list are converted to percentages of the total.
+     *
+     * @return The value list.
+     *
+     * @since 1.0.13
+     */
+    protected List createStackedValueList(CategoryDataset dataset,
+            Comparable category, int[] includedRows, double base,
+            boolean asPercentages) {
+
+<span class="fc" id="L360">        List result = new ArrayList();</span>
+<span class="fc" id="L361">        double posBase = base;</span>
+<span class="fc" id="L362">        double negBase = base;</span>
+<span class="fc" id="L363">        double total = 0.0;</span>
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">        if (asPercentages) {</span>
+<span class="nc" id="L365">            total = DataUtilities.calculateColumnTotal(dataset,</span>
+                    dataset.getColumnIndex(category), includedRows);
+        }
+
+<span class="fc" id="L369">        int baseIndex = -1;</span>
+<span class="fc" id="L370">        int rowCount = includedRows.length;</span>
+<span class="fc bfc" id="L371" title="All 2 branches covered.">        for (int i = 0; i &lt; rowCount; i++) {</span>
+<span class="fc" id="L372">            int r = includedRows[i];</span>
+<span class="fc" id="L373">            Number n = dataset.getValue(dataset.getRowKey(r), category);</span>
+<span class="fc bfc" id="L374" title="All 2 branches covered.">            if (n == null) {</span>
+<span class="fc" id="L375">                continue;</span>
+            }
+<span class="fc" id="L377">            double v = n.doubleValue();</span>
+<span class="pc bpc" id="L378" title="1 of 2 branches missed.">            if (asPercentages) {</span>
+<span class="nc" id="L379">                v = v / total;</span>
+            }
+<span class="pc bpc" id="L381" title="1 of 6 branches missed.">            if ((v &gt; 0.0) || (!this.ignoreZeroValues &amp;&amp; v &gt;= 0.0)) {</span>
+<span class="fc bfc" id="L382" title="All 2 branches covered.">                if (baseIndex &lt; 0) {</span>
+<span class="fc" id="L383">                    result.add(new Object[] {null, new Double(base)});</span>
+<span class="fc" id="L384">                    baseIndex = 0;</span>
+                }
+<span class="fc" id="L386">                posBase = posBase + v;</span>
+<span class="fc" id="L387">                result.add(new Object[] {new Integer(r), new Double(posBase)});</span>
+            }
+<span class="pc bpc" id="L389" title="1 of 2 branches missed.">            else if (v &lt; 0.0) {</span>
+<span class="fc bfc" id="L390" title="All 2 branches covered.">                if (baseIndex &lt; 0) {</span>
+<span class="fc" id="L391">                    result.add(new Object[] {null, new Double(base)});</span>
+<span class="fc" id="L392">                    baseIndex = 0;</span>
+                }
+<span class="fc" id="L394">                negBase = negBase + v; // '+' because v is negative</span>
+<span class="fc" id="L395">                result.add(0, new Object[] {new Integer(-r - 1),</span>
+                        new Double(negBase)});
+<span class="fc" id="L397">                baseIndex++;</span>
+            }
+        }
+<span class="fc" id="L400">        return result;</span>
+
+    }
+
+    /**
+     * Draws the visual representation of one data item from the chart (in
+     * fact, this method does nothing until it reaches the last item for each
+     * category, at which point it draws all the items for that category).
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the plot area.
+     * @param plot  the plot.
+     * @param domainAxis  the domain (category) axis.
+     * @param rangeAxis  the range (value) axis.
+     * @param dataset  the data.
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     * @param pass  the pass index.
+     */
+    @Override
+    public void drawItem(Graphics2D g2, CategoryItemRendererState state,
+            Rectangle2D dataArea, CategoryPlot plot, CategoryAxis domainAxis,
+            ValueAxis rangeAxis, CategoryDataset dataset, int row, int column,
+            int pass) {
+
+        // wait till we are at the last item for the row then draw the
+        // whole stack at once
+<span class="nc bnc" id="L428" title="All 2 branches missed.">        if (row &lt; dataset.getRowCount() - 1) {</span>
+<span class="nc" id="L429">            return;</span>
+        }
+<span class="nc" id="L431">        Comparable category = dataset.getColumnKey(column);</span>
+
+<span class="nc" id="L433">        List values = createStackedValueList(dataset,</span>
+                dataset.getColumnKey(column), state.getVisibleSeriesArray(),
+                getBase(), this.renderAsPercentages);
+
+<span class="nc" id="L437">        Rectangle2D adjusted = new Rectangle2D.Double(dataArea.getX(),</span>
+                dataArea.getY() + getYOffset(),
+                dataArea.getWidth() - getXOffset(),
+                dataArea.getHeight() - getYOffset());
+
+
+<span class="nc" id="L443">        PlotOrientation orientation = plot.getOrientation();</span>
+
+        // handle rendering separately for the two plot orientations...
+<span class="nc bnc" id="L446" title="All 2 branches missed.">        if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L447">            drawStackHorizontal(values, category, g2, state, adjusted, plot,</span>
+                    domainAxis, rangeAxis, dataset);
+        }
+        else {
+<span class="nc" id="L451">            drawStackVertical(values, category, g2, state, adjusted, plot,</span>
+                    domainAxis, rangeAxis, dataset);
+        }
+
+<span class="nc" id="L455">    }</span>
+
+    /**
+     * Draws a stack of bars for one category, with a horizontal orientation.
+     *
+     * @param values  the value list.
+     * @param category  the category.
+     * @param g2  the graphics device.
+     * @param state  the state.
+     * @param dataArea  the data area (adjusted for the 3D effect).
+     * @param plot  the plot.
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the dataset.
+     *
+     * @since 1.0.4
+     */
+    protected void drawStackHorizontal(List values, Comparable category,
+            Graphics2D g2, CategoryItemRendererState state,
+            Rectangle2D dataArea, CategoryPlot plot,
+            CategoryAxis domainAxis, ValueAxis rangeAxis,
+            CategoryDataset dataset) {
+
+<span class="nc" id="L478">        int column = dataset.getColumnIndex(category);</span>
+<span class="nc" id="L479">        double barX0 = domainAxis.getCategoryMiddle(column,</span>
+                dataset.getColumnCount(), dataArea, plot.getDomainAxisEdge())
+                - state.getBarWidth() / 2.0;
+<span class="nc" id="L482">        double barW = state.getBarWidth();</span>
+
+        // a list to store the series index and bar region, so we can draw
+        // all the labels at the end...
+<span class="nc" id="L486">        List itemLabelList = new ArrayList();</span>
+
+        // draw the blocks
+<span class="nc" id="L489">        boolean inverted = rangeAxis.isInverted();</span>
+<span class="nc" id="L490">        int blockCount = values.size() - 1;</span>
+<span class="nc bnc" id="L491" title="All 2 branches missed.">        for (int k = 0; k &lt; blockCount; k++) {</span>
+<span class="nc bnc" id="L492" title="All 2 branches missed.">            int index = (inverted ? blockCount - k - 1 : k);</span>
+<span class="nc" id="L493">            Object[] prev = (Object[]) values.get(index);</span>
+<span class="nc" id="L494">            Object[] curr = (Object[]) values.get(index + 1);</span>
+            int series;
+<span class="nc bnc" id="L496" title="All 2 branches missed.">            if (curr[0] == null) {</span>
+<span class="nc" id="L497">                series = -((Integer) prev[0]).intValue() - 1;</span>
+            }
+            else {
+<span class="nc" id="L500">                series = ((Integer) curr[0]).intValue();</span>
+<span class="nc bnc" id="L501" title="All 2 branches missed.">                if (series &lt; 0) {</span>
+<span class="nc" id="L502">                    series = -((Integer) prev[0]).intValue() - 1;</span>
+                }
+            }
+<span class="nc" id="L505">            double v0 = ((Double) prev[1]).doubleValue();</span>
+<span class="nc" id="L506">            double vv0 = rangeAxis.valueToJava2D(v0, dataArea,</span>
+                    plot.getRangeAxisEdge());
+
+<span class="nc" id="L509">            double v1 = ((Double) curr[1]).doubleValue();</span>
+<span class="nc" id="L510">            double vv1 = rangeAxis.valueToJava2D(v1, dataArea,</span>
+                    plot.getRangeAxisEdge());
+
+<span class="nc" id="L513">            Shape[] faces = createHorizontalBlock(barX0, barW, vv0, vv1,</span>
+                    inverted);
+<span class="nc" id="L515">            Paint fillPaint = getItemPaint(series, column);</span>
+<span class="nc" id="L516">            Paint fillPaintDark = PaintAlpha.darker(fillPaint);</span>
+<span class="nc" id="L517">            boolean drawOutlines = isDrawBarOutline();</span>
+<span class="nc" id="L518">            Paint outlinePaint = fillPaint;</span>
+<span class="nc bnc" id="L519" title="All 2 branches missed.">            if (drawOutlines) {</span>
+<span class="nc" id="L520">                outlinePaint = getItemOutlinePaint(series, column);</span>
+<span class="nc" id="L521">                g2.setStroke(getItemOutlineStroke(series, column));</span>
+            }
+<span class="nc bnc" id="L523" title="All 2 branches missed.">            for (int f = 0; f &lt; 6; f++) {</span>
+<span class="nc bnc" id="L524" title="All 2 branches missed.">                if (f == 5) {</span>
+<span class="nc" id="L525">                    g2.setPaint(fillPaint);</span>
+                }
+                else {
+<span class="nc" id="L528">                    g2.setPaint(fillPaintDark);</span>
+                }
+<span class="nc" id="L530">                g2.fill(faces[f]);</span>
+<span class="nc bnc" id="L531" title="All 2 branches missed.">                if (drawOutlines) {</span>
+<span class="nc" id="L532">                    g2.setPaint(outlinePaint);</span>
+<span class="nc" id="L533">                    g2.draw(faces[f]);</span>
+                }
+            }
+
+<span class="nc bnc" id="L537" title="All 2 branches missed.">            itemLabelList.add(new Object[] {new Integer(series),</span>
+                    faces[5].getBounds2D(),
+                    BooleanUtilities.valueOf(v0 &lt; getBase())});
+
+            // add an item entity, if this information is being collected
+<span class="nc" id="L542">            EntityCollection entities = state.getEntityCollection();</span>
+<span class="nc bnc" id="L543" title="All 2 branches missed.">            if (entities != null) {</span>
+<span class="nc" id="L544">                addItemEntity(entities, dataset, series, column, faces[5]);</span>
+            }
+
+        }
+
+<span class="nc bnc" id="L549" title="All 2 branches missed.">        for (int i = 0; i &lt; itemLabelList.size(); i++) {</span>
+<span class="nc" id="L550">            Object[] record = (Object[]) itemLabelList.get(i);</span>
+<span class="nc" id="L551">            int series = ((Integer) record[0]).intValue();</span>
+<span class="nc" id="L552">            Rectangle2D bar = (Rectangle2D) record[1];</span>
+<span class="nc" id="L553">            boolean neg = ((Boolean) record[2]).booleanValue();</span>
+<span class="nc" id="L554">            CategoryItemLabelGenerator generator</span>
+                    = getItemLabelGenerator(series, column);
+<span class="nc bnc" id="L556" title="All 4 branches missed.">            if (generator != null &amp;&amp; isItemLabelVisible(series, column)) {</span>
+<span class="nc" id="L557">                drawItemLabel(g2, dataset, series, column, plot, generator,</span>
+                        bar, neg);
+            }
+
+        }
+<span class="nc" id="L562">    }</span>
+
+    /**
+     * Creates an array of shapes representing the six sides of a block in a
+     * horizontal stack.
+     *
+     * @param x0  left edge of bar (in Java2D space).
+     * @param width  the width of the bar (in Java2D units).
+     * @param y0  the base of the block (in Java2D space).
+     * @param y1  the top of the block (in Java2D space).
+     * @param inverted  a flag indicating whether or not the block is inverted
+     *     (this changes the order of the faces of the block).
+     *
+     * @return The sides of the block.
+     */
+    private Shape[] createHorizontalBlock(double x0, double width, double y0,
+            double y1, boolean inverted) {
+<span class="nc" id="L579">        Shape[] result = new Shape[6];</span>
+<span class="nc" id="L580">        Point2D p00 = new Point2D.Double(y0, x0);</span>
+<span class="nc" id="L581">        Point2D p01 = new Point2D.Double(y0, x0 + width);</span>
+<span class="nc" id="L582">        Point2D p02 = new Point2D.Double(p01.getX() + getXOffset(),</span>
+                p01.getY() - getYOffset());
+<span class="nc" id="L584">        Point2D p03 = new Point2D.Double(p00.getX() + getXOffset(),</span>
+                p00.getY() - getYOffset());
+
+<span class="nc" id="L587">        Point2D p0 = new Point2D.Double(y1, x0);</span>
+<span class="nc" id="L588">        Point2D p1 = new Point2D.Double(y1, x0 + width);</span>
+<span class="nc" id="L589">        Point2D p2 = new Point2D.Double(p1.getX() + getXOffset(),</span>
+                p1.getY() - getYOffset());
+<span class="nc" id="L591">        Point2D p3 = new Point2D.Double(p0.getX() + getXOffset(),</span>
+                p0.getY() - getYOffset());
+
+<span class="nc" id="L594">        GeneralPath bottom = new GeneralPath();</span>
+<span class="nc" id="L595">        bottom.moveTo((float) p1.getX(), (float) p1.getY());</span>
+<span class="nc" id="L596">        bottom.lineTo((float) p01.getX(), (float) p01.getY());</span>
+<span class="nc" id="L597">        bottom.lineTo((float) p02.getX(), (float) p02.getY());</span>
+<span class="nc" id="L598">        bottom.lineTo((float) p2.getX(), (float) p2.getY());</span>
+<span class="nc" id="L599">        bottom.closePath();</span>
+
+<span class="nc" id="L601">        GeneralPath top = new GeneralPath();</span>
+<span class="nc" id="L602">        top.moveTo((float) p0.getX(), (float) p0.getY());</span>
+<span class="nc" id="L603">        top.lineTo((float) p00.getX(), (float) p00.getY());</span>
+<span class="nc" id="L604">        top.lineTo((float) p03.getX(), (float) p03.getY());</span>
+<span class="nc" id="L605">        top.lineTo((float) p3.getX(), (float) p3.getY());</span>
+<span class="nc" id="L606">        top.closePath();</span>
+
+<span class="nc" id="L608">        GeneralPath back = new GeneralPath();</span>
+<span class="nc" id="L609">        back.moveTo((float) p2.getX(), (float) p2.getY());</span>
+<span class="nc" id="L610">        back.lineTo((float) p02.getX(), (float) p02.getY());</span>
+<span class="nc" id="L611">        back.lineTo((float) p03.getX(), (float) p03.getY());</span>
+<span class="nc" id="L612">        back.lineTo((float) p3.getX(), (float) p3.getY());</span>
+<span class="nc" id="L613">        back.closePath();</span>
+
+<span class="nc" id="L615">        GeneralPath front = new GeneralPath();</span>
+<span class="nc" id="L616">        front.moveTo((float) p0.getX(), (float) p0.getY());</span>
+<span class="nc" id="L617">        front.lineTo((float) p1.getX(), (float) p1.getY());</span>
+<span class="nc" id="L618">        front.lineTo((float) p01.getX(), (float) p01.getY());</span>
+<span class="nc" id="L619">        front.lineTo((float) p00.getX(), (float) p00.getY());</span>
+<span class="nc" id="L620">        front.closePath();</span>
+
+<span class="nc" id="L622">        GeneralPath left = new GeneralPath();</span>
+<span class="nc" id="L623">        left.moveTo((float) p0.getX(), (float) p0.getY());</span>
+<span class="nc" id="L624">        left.lineTo((float) p1.getX(), (float) p1.getY());</span>
+<span class="nc" id="L625">        left.lineTo((float) p2.getX(), (float) p2.getY());</span>
+<span class="nc" id="L626">        left.lineTo((float) p3.getX(), (float) p3.getY());</span>
+<span class="nc" id="L627">        left.closePath();</span>
+
+<span class="nc" id="L629">        GeneralPath right = new GeneralPath();</span>
+<span class="nc" id="L630">        right.moveTo((float) p00.getX(), (float) p00.getY());</span>
+<span class="nc" id="L631">        right.lineTo((float) p01.getX(), (float) p01.getY());</span>
+<span class="nc" id="L632">        right.lineTo((float) p02.getX(), (float) p02.getY());</span>
+<span class="nc" id="L633">        right.lineTo((float) p03.getX(), (float) p03.getY());</span>
+<span class="nc" id="L634">        right.closePath();</span>
+<span class="nc" id="L635">        result[0] = bottom;</span>
+<span class="nc" id="L636">        result[1] = back;</span>
+<span class="nc bnc" id="L637" title="All 2 branches missed.">        if (inverted) {</span>
+<span class="nc" id="L638">            result[2] = right;</span>
+<span class="nc" id="L639">            result[3] = left;</span>
+        }
+        else {
+<span class="nc" id="L642">            result[2] = left;</span>
+<span class="nc" id="L643">            result[3] = right;</span>
+        }
+<span class="nc" id="L645">        result[4] = top;</span>
+<span class="nc" id="L646">        result[5] = front;</span>
+<span class="nc" id="L647">        return result;</span>
+    }
+
+    /**
+     * Draws a stack of bars for one category, with a vertical orientation.
+     *
+     * @param values  the value list.
+     * @param category  the category.
+     * @param g2  the graphics device.
+     * @param state  the state.
+     * @param dataArea  the data area (adjusted for the 3D effect).
+     * @param plot  the plot.
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the dataset.
+     *
+     * @since 1.0.4
+     */
+    protected void drawStackVertical(List values, Comparable category,
+            Graphics2D g2, CategoryItemRendererState state,
+            Rectangle2D dataArea, CategoryPlot plot,
+            CategoryAxis domainAxis, ValueAxis rangeAxis,
+            CategoryDataset dataset) {
+
+<span class="nc" id="L671">        int column = dataset.getColumnIndex(category);</span>
+<span class="nc" id="L672">        double barX0 = domainAxis.getCategoryMiddle(column,</span>
+                dataset.getColumnCount(), dataArea, plot.getDomainAxisEdge())
+                - state.getBarWidth() / 2.0;
+<span class="nc" id="L675">        double barW = state.getBarWidth();</span>
+
+        // a list to store the series index and bar region, so we can draw
+        // all the labels at the end...
+<span class="nc" id="L679">        List itemLabelList = new ArrayList();</span>
+
+        // draw the blocks
+<span class="nc" id="L682">        boolean inverted = rangeAxis.isInverted();</span>
+<span class="nc" id="L683">        int blockCount = values.size() - 1;</span>
+<span class="nc bnc" id="L684" title="All 2 branches missed.">        for (int k = 0; k &lt; blockCount; k++) {</span>
+<span class="nc bnc" id="L685" title="All 2 branches missed.">            int index = (inverted ? blockCount - k - 1 : k);</span>
+<span class="nc" id="L686">            Object[] prev = (Object[]) values.get(index);</span>
+<span class="nc" id="L687">            Object[] curr = (Object[]) values.get(index + 1);</span>
+            int series;
+<span class="nc bnc" id="L689" title="All 2 branches missed.">            if (curr[0] == null) {</span>
+<span class="nc" id="L690">                series = -((Integer) prev[0]).intValue() - 1;</span>
+            }
+            else {
+<span class="nc" id="L693">                series = ((Integer) curr[0]).intValue();</span>
+<span class="nc bnc" id="L694" title="All 2 branches missed.">                if (series &lt; 0) {</span>
+<span class="nc" id="L695">                    series = -((Integer) prev[0]).intValue() - 1;</span>
+                }
+            }
+<span class="nc" id="L698">            double v0 = ((Double) prev[1]).doubleValue();</span>
+<span class="nc" id="L699">            double vv0 = rangeAxis.valueToJava2D(v0, dataArea,</span>
+                    plot.getRangeAxisEdge());
+
+<span class="nc" id="L702">            double v1 = ((Double) curr[1]).doubleValue();</span>
+<span class="nc" id="L703">            double vv1 = rangeAxis.valueToJava2D(v1, dataArea,</span>
+                    plot.getRangeAxisEdge());
+
+<span class="nc" id="L706">            Shape[] faces = createVerticalBlock(barX0, barW, vv0, vv1,</span>
+                    inverted);
+<span class="nc" id="L708">            Paint fillPaint = getItemPaint(series, column);</span>
+<span class="nc" id="L709">            Paint fillPaintDark = PaintAlpha.darker(fillPaint);</span>
+<span class="nc" id="L710">            boolean drawOutlines = isDrawBarOutline();</span>
+<span class="nc" id="L711">            Paint outlinePaint = fillPaint;</span>
+<span class="nc bnc" id="L712" title="All 2 branches missed.">            if (drawOutlines) {</span>
+<span class="nc" id="L713">                outlinePaint = getItemOutlinePaint(series, column);</span>
+<span class="nc" id="L714">                g2.setStroke(getItemOutlineStroke(series, column));</span>
+            }
+
+<span class="nc bnc" id="L717" title="All 2 branches missed.">            for (int f = 0; f &lt; 6; f++) {</span>
+<span class="nc bnc" id="L718" title="All 2 branches missed.">                if (f == 5) {</span>
+<span class="nc" id="L719">                    g2.setPaint(fillPaint);</span>
+                }
+                else {
+<span class="nc" id="L722">                    g2.setPaint(fillPaintDark);</span>
+                }
+<span class="nc" id="L724">                g2.fill(faces[f]);</span>
+<span class="nc bnc" id="L725" title="All 2 branches missed.">                if (drawOutlines) {</span>
+<span class="nc" id="L726">                    g2.setPaint(outlinePaint);</span>
+<span class="nc" id="L727">                    g2.draw(faces[f]);</span>
+                }
+            }
+
+<span class="nc bnc" id="L731" title="All 2 branches missed.">            itemLabelList.add(new Object[] {new Integer(series),</span>
+                    faces[5].getBounds2D(),
+                    BooleanUtilities.valueOf(v0 &lt; getBase())});
+
+            // add an item entity, if this information is being collected
+<span class="nc" id="L736">            EntityCollection entities = state.getEntityCollection();</span>
+<span class="nc bnc" id="L737" title="All 2 branches missed.">            if (entities != null) {</span>
+<span class="nc" id="L738">                addItemEntity(entities, dataset, series, column, faces[5]);</span>
+            }
+
+        }
+
+<span class="nc bnc" id="L743" title="All 2 branches missed.">        for (int i = 0; i &lt; itemLabelList.size(); i++) {</span>
+<span class="nc" id="L744">            Object[] record = (Object[]) itemLabelList.get(i);</span>
+<span class="nc" id="L745">            int series = ((Integer) record[0]).intValue();</span>
+<span class="nc" id="L746">            Rectangle2D bar = (Rectangle2D) record[1];</span>
+<span class="nc" id="L747">            boolean neg = ((Boolean) record[2]).booleanValue();</span>
+<span class="nc" id="L748">            CategoryItemLabelGenerator generator</span>
+                    = getItemLabelGenerator(series, column);
+<span class="nc bnc" id="L750" title="All 4 branches missed.">            if (generator != null &amp;&amp; isItemLabelVisible(series, column)) {</span>
+<span class="nc" id="L751">                drawItemLabel(g2, dataset, series, column, plot, generator,</span>
+                        bar, neg);
+            }
+
+        }
+<span class="nc" id="L756">    }</span>
+
+    /**
+     * Creates an array of shapes representing the six sides of a block in a
+     * vertical stack.
+     *
+     * @param x0  left edge of bar (in Java2D space).
+     * @param width  the width of the bar (in Java2D units).
+     * @param y0  the base of the block (in Java2D space).
+     * @param y1  the top of the block (in Java2D space).
+     * @param inverted  a flag indicating whether or not the block is inverted
+     *     (this changes the order of the faces of the block).
+     *
+     * @return The sides of the block.
+     */
+    private Shape[] createVerticalBlock(double x0, double width, double y0,
+            double y1, boolean inverted) {
+<span class="nc" id="L773">        Shape[] result = new Shape[6];</span>
+<span class="nc" id="L774">        Point2D p00 = new Point2D.Double(x0, y0);</span>
+<span class="nc" id="L775">        Point2D p01 = new Point2D.Double(x0 + width, y0);</span>
+<span class="nc" id="L776">        Point2D p02 = new Point2D.Double(p01.getX() + getXOffset(),</span>
+                p01.getY() - getYOffset());
+<span class="nc" id="L778">        Point2D p03 = new Point2D.Double(p00.getX() + getXOffset(),</span>
+                p00.getY() - getYOffset());
+
+
+<span class="nc" id="L782">        Point2D p0 = new Point2D.Double(x0, y1);</span>
+<span class="nc" id="L783">        Point2D p1 = new Point2D.Double(x0 + width, y1);</span>
+<span class="nc" id="L784">        Point2D p2 = new Point2D.Double(p1.getX() + getXOffset(),</span>
+                p1.getY() - getYOffset());
+<span class="nc" id="L786">        Point2D p3 = new Point2D.Double(p0.getX() + getXOffset(),</span>
+                p0.getY() - getYOffset());
+
+<span class="nc" id="L789">        GeneralPath right = new GeneralPath();</span>
+<span class="nc" id="L790">        right.moveTo((float) p1.getX(), (float) p1.getY());</span>
+<span class="nc" id="L791">        right.lineTo((float) p01.getX(), (float) p01.getY());</span>
+<span class="nc" id="L792">        right.lineTo((float) p02.getX(), (float) p02.getY());</span>
+<span class="nc" id="L793">        right.lineTo((float) p2.getX(), (float) p2.getY());</span>
+<span class="nc" id="L794">        right.closePath();</span>
+
+<span class="nc" id="L796">        GeneralPath left = new GeneralPath();</span>
+<span class="nc" id="L797">        left.moveTo((float) p0.getX(), (float) p0.getY());</span>
+<span class="nc" id="L798">        left.lineTo((float) p00.getX(), (float) p00.getY());</span>
+<span class="nc" id="L799">        left.lineTo((float) p03.getX(), (float) p03.getY());</span>
+<span class="nc" id="L800">        left.lineTo((float) p3.getX(), (float) p3.getY());</span>
+<span class="nc" id="L801">        left.closePath();</span>
+
+<span class="nc" id="L803">        GeneralPath back = new GeneralPath();</span>
+<span class="nc" id="L804">        back.moveTo((float) p2.getX(), (float) p2.getY());</span>
+<span class="nc" id="L805">        back.lineTo((float) p02.getX(), (float) p02.getY());</span>
+<span class="nc" id="L806">        back.lineTo((float) p03.getX(), (float) p03.getY());</span>
+<span class="nc" id="L807">        back.lineTo((float) p3.getX(), (float) p3.getY());</span>
+<span class="nc" id="L808">        back.closePath();</span>
+
+<span class="nc" id="L810">        GeneralPath front = new GeneralPath();</span>
+<span class="nc" id="L811">        front.moveTo((float) p0.getX(), (float) p0.getY());</span>
+<span class="nc" id="L812">        front.lineTo((float) p1.getX(), (float) p1.getY());</span>
+<span class="nc" id="L813">        front.lineTo((float) p01.getX(), (float) p01.getY());</span>
+<span class="nc" id="L814">        front.lineTo((float) p00.getX(), (float) p00.getY());</span>
+<span class="nc" id="L815">        front.closePath();</span>
+
+<span class="nc" id="L817">        GeneralPath top = new GeneralPath();</span>
+<span class="nc" id="L818">        top.moveTo((float) p0.getX(), (float) p0.getY());</span>
+<span class="nc" id="L819">        top.lineTo((float) p1.getX(), (float) p1.getY());</span>
+<span class="nc" id="L820">        top.lineTo((float) p2.getX(), (float) p2.getY());</span>
+<span class="nc" id="L821">        top.lineTo((float) p3.getX(), (float) p3.getY());</span>
+<span class="nc" id="L822">        top.closePath();</span>
+
+<span class="nc" id="L824">        GeneralPath bottom = new GeneralPath();</span>
+<span class="nc" id="L825">        bottom.moveTo((float) p00.getX(), (float) p00.getY());</span>
+<span class="nc" id="L826">        bottom.lineTo((float) p01.getX(), (float) p01.getY());</span>
+<span class="nc" id="L827">        bottom.lineTo((float) p02.getX(), (float) p02.getY());</span>
+<span class="nc" id="L828">        bottom.lineTo((float) p03.getX(), (float) p03.getY());</span>
+<span class="nc" id="L829">        bottom.closePath();</span>
+
+<span class="nc" id="L831">        result[0] = bottom;</span>
+<span class="nc" id="L832">        result[1] = back;</span>
+<span class="nc" id="L833">        result[2] = left;</span>
+<span class="nc" id="L834">        result[3] = right;</span>
+<span class="nc" id="L835">        result[4] = top;</span>
+<span class="nc" id="L836">        result[5] = front;</span>
+<span class="nc bnc" id="L837" title="All 2 branches missed.">        if (inverted) {</span>
+<span class="nc" id="L838">            result[0] = top;</span>
+<span class="nc" id="L839">            result[4] = bottom;</span>
+        }
+<span class="nc" id="L841">        return result;</span>
+    }
+
+    /**
+     * Tests this renderer for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L853" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L854">            return true;</span>
+        }
+<span class="pc bpc" id="L856" title="1 of 2 branches missed.">        if (!(obj instanceof StackedBarRenderer3D)) {</span>
+<span class="nc" id="L857">            return false;</span>
+        }
+<span class="fc" id="L859">        StackedBarRenderer3D that = (StackedBarRenderer3D) obj;</span>
+<span class="pc bpc" id="L860" title="1 of 2 branches missed.">        if (this.renderAsPercentages != that.getRenderAsPercentages()) {</span>
+<span class="nc" id="L861">            return false;</span>
+        }
+<span class="pc bpc" id="L863" title="1 of 2 branches missed.">        if (this.ignoreZeroValues != that.ignoreZeroValues) {</span>
+<span class="nc" id="L864">            return false;</span>
+        }
+<span class="fc" id="L866">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Returns a hash code for this instance.
+     * 
+     * @return A hash code.
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L876">        int hash = super.hashCode();</span>
+<span class="fc" id="L877">        hash = HashUtilities.hashCode(hash, this.renderAsPercentages);</span>
+<span class="fc" id="L878">        hash = HashUtilities.hashCode(hash, this.ignoreZeroValues);</span>
+<span class="fc" id="L879">        return hash;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

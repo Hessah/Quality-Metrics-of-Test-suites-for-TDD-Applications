@@ -1,0 +1,463 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Title.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.title</a> &gt; <span class="el_source">Title.java</span></div><h1>Title.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ----------
+ * Title.java
+ * ----------
+ * (C) Copyright 2000-2013, by David Berry and Contributors.
+ *
+ * Original Author:  David Berry;
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *                   Nicolas Brodu;
+ *
+ * Changes (from 21-Aug-2001)
+ * --------------------------
+ * 21-Aug-2001 : Added standard header (DG);
+ * 18-Sep-2001 : Updated header (DG);
+ * 14-Nov-2001 : Package com.jrefinery.common.ui.* changed to
+ *               com.jrefinery.ui.* (DG);
+ * 07-Feb-2002 : Changed blank space around title from Insets --&gt; Spacer, to
+ *               allow for relative or absolute spacing (DG);
+ * 25-Jun-2002 : Removed unnecessary imports (DG);
+ * 01-Oct-2002 : Fixed errors reported by Checkstyle (DG);
+ * 14-Oct-2002 : Changed the event listener storage structure (DG);
+ * 11-Sep-2003 : Took care of listeners while cloning (NB);
+ * 22-Sep-2003 : Spacer cannot be null. Added nullpointer checks for this (TM);
+ * 08-Jan-2003 : Renamed AbstractTitle --&gt; Title and moved to separate
+ *               package (DG);
+ * 26-Oct-2004 : Refactored to implement Block interface, and removed redundant
+ *               constants (DG);
+ * 11-Jan-2005 : Removed deprecated code in preparation for the 1.0.0
+ *               release (DG);
+ * 02-Feb-2005 : Changed Spacer --&gt; RectangleInsets for padding (DG);
+ * 03-May-2005 : Fixed problem in equals() method (DG);
+ * 19-Sep-2008 : Added visibility flag (DG);
+ * 02-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.chart.title;
+
+import java.awt.Graphics2D;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+
+import javax.swing.event.EventListenerList;
+
+import org.jfree.chart.block.AbstractBlock;
+import org.jfree.chart.block.Block;
+import org.jfree.chart.event.TitleChangeEvent;
+import org.jfree.chart.event.TitleChangeListener;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.ui.HorizontalAlignment;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.ui.RectangleInsets;
+import org.jfree.ui.VerticalAlignment;
+import org.jfree.util.ObjectUtilities;
+
+/**
+ * The base class for all chart titles.  A chart can have multiple titles,
+ * appearing at the top, bottom, left or right of the chart.
+ * &lt;P&gt;
+ * Concrete implementations of this class will render text and images, and
+ * hence do the actual work of drawing titles.
+ */
+public abstract class Title extends AbstractBlock
+            implements Block, Cloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = -6675162505277817221L;
+
+    /** The default title position. */
+<span class="fc" id="L98">    public static final RectangleEdge DEFAULT_POSITION = RectangleEdge.TOP;</span>
+
+    /** The default horizontal alignment. */
+    public static final HorizontalAlignment
+<span class="fc" id="L102">            DEFAULT_HORIZONTAL_ALIGNMENT = HorizontalAlignment.CENTER;</span>
+
+    /** The default vertical alignment. */
+    public static final VerticalAlignment
+<span class="fc" id="L106">            DEFAULT_VERTICAL_ALIGNMENT = VerticalAlignment.CENTER;</span>
+
+    /** Default title padding. */
+<span class="fc" id="L109">    public static final RectangleInsets DEFAULT_PADDING = new RectangleInsets(</span>
+            1, 1, 1, 1);
+
+    /**
+     * A flag that controls whether or not the title is visible.
+     *
+     * @since 1.0.11
+     */
+    public boolean visible;
+
+    /** The title position. */
+    private RectangleEdge position;
+
+    /** The horizontal alignment of the title content. */
+    private HorizontalAlignment horizontalAlignment;
+
+    /** The vertical alignment of the title content. */
+    private VerticalAlignment verticalAlignment;
+
+    /** Storage for registered change listeners. */
+    private transient EventListenerList listenerList;
+
+    /**
+     * A flag that can be used to temporarily disable the listener mechanism.
+     */
+    private boolean notify;
+
+    /**
+     * Creates a new title, using default attributes where necessary.
+     */
+    protected Title() {
+<span class="fc" id="L140">        this(Title.DEFAULT_POSITION,</span>
+                Title.DEFAULT_HORIZONTAL_ALIGNMENT,
+                Title.DEFAULT_VERTICAL_ALIGNMENT, Title.DEFAULT_PADDING);
+<span class="fc" id="L143">    }</span>
+
+    /**
+     * Creates a new title, using default attributes where necessary.
+     *
+     * @param position  the position of the title (&lt;code&gt;null&lt;/code&gt; not
+     *                  permitted).
+     * @param horizontalAlignment  the horizontal alignment of the title
+     *                             (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param verticalAlignment  the vertical alignment of the title
+     *                           (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    protected Title(RectangleEdge position,
+                    HorizontalAlignment horizontalAlignment,
+                    VerticalAlignment verticalAlignment) {
+
+<span class="nc" id="L159">        this(position, horizontalAlignment, verticalAlignment,</span>
+                Title.DEFAULT_PADDING);
+
+<span class="nc" id="L162">    }</span>
+
+    /**
+     * Creates a new title.
+     *
+     * @param position  the position of the title (&lt;code&gt;null&lt;/code&gt; not
+     *                  permitted).
+     * @param horizontalAlignment  the horizontal alignment of the title (LEFT,
+     *                             CENTER or RIGHT, &lt;code&gt;null&lt;/code&gt; not
+     *                             permitted).
+     * @param verticalAlignment  the vertical alignment of the title (TOP,
+     *                           MIDDLE or BOTTOM, &lt;code&gt;null&lt;/code&gt; not
+     *                           permitted).
+     * @param padding  the amount of space to leave around the outside of the
+     *                 title (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    protected Title(RectangleEdge position, 
+            HorizontalAlignment horizontalAlignment, 
+<span class="fc" id="L180">            VerticalAlignment verticalAlignment, RectangleInsets padding) {</span>
+
+<span class="fc" id="L182">        ParamChecks.nullNotPermitted(position, &quot;position&quot;);</span>
+<span class="fc" id="L183">        ParamChecks.nullNotPermitted(horizontalAlignment, &quot;horizontalAlignment&quot;);</span>
+<span class="fc" id="L184">        ParamChecks.nullNotPermitted(verticalAlignment, &quot;verticalAlignment&quot;);</span>
+<span class="fc" id="L185">        ParamChecks.nullNotPermitted(padding, &quot;padding&quot;);</span>
+
+<span class="fc" id="L187">        this.visible = true;</span>
+<span class="fc" id="L188">        this.position = position;</span>
+<span class="fc" id="L189">        this.horizontalAlignment = horizontalAlignment;</span>
+<span class="fc" id="L190">        this.verticalAlignment = verticalAlignment;</span>
+<span class="fc" id="L191">        setPadding(padding);</span>
+<span class="fc" id="L192">        this.listenerList = new EventListenerList();</span>
+<span class="fc" id="L193">        this.notify = true;</span>
+<span class="fc" id="L194">    }</span>
+
+    /**
+     * Returns a flag that controls whether or not the title should be
+     * drawn.  The default value is &lt;code&gt;true&lt;/code&gt;.
+     *
+     * @return A boolean.
+     *
+     * @see #setVisible(boolean)
+     *
+     * @since 1.0.11
+     */
+    public boolean isVisible() {
+<span class="fc" id="L207">        return this.visible;</span>
+    }
+
+    /**
+     * Sets a flag that controls whether or not the title should be drawn, and
+     * sends a {@link TitleChangeEvent} to all registered listeners.
+     *
+     * @param visible  the new flag value.
+     *
+     * @see #isVisible()
+     *
+     * @since 1.0.11
+     */
+    public void setVisible(boolean visible) {
+<span class="fc" id="L221">        this.visible = visible;</span>
+<span class="fc" id="L222">        notifyListeners(new TitleChangeEvent(this));</span>
+<span class="fc" id="L223">    }</span>
+
+    /**
+     * Returns the position of the title.
+     *
+     * @return The title position (never &lt;code&gt;null&lt;/code&gt;).
+     */
+    public RectangleEdge getPosition() {
+<span class="fc" id="L231">        return this.position;</span>
+    }
+
+    /**
+     * Sets the position for the title and sends a {@link TitleChangeEvent} to
+     * all registered listeners.
+     *
+     * @param position  the position (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void setPosition(RectangleEdge position) {
+<span class="fc" id="L241">        ParamChecks.nullNotPermitted(position, &quot;position&quot;);</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">        if (this.position != position) {</span>
+<span class="fc" id="L243">            this.position = position;</span>
+<span class="fc" id="L244">            notifyListeners(new TitleChangeEvent(this));</span>
+        }
+<span class="fc" id="L246">    }</span>
+
+    /**
+     * Returns the horizontal alignment of the title.
+     *
+     * @return The horizontal alignment (never &lt;code&gt;null&lt;/code&gt;).
+     */
+    public HorizontalAlignment getHorizontalAlignment() {
+<span class="fc" id="L254">        return this.horizontalAlignment;</span>
+    }
+
+    /**
+     * Sets the horizontal alignment for the title and sends a
+     * {@link TitleChangeEvent} to all registered listeners.
+     *
+     * @param alignment  the horizontal alignment (&lt;code&gt;null&lt;/code&gt; not
+     *                   permitted).
+     */
+    public void setHorizontalAlignment(HorizontalAlignment alignment) {
+<span class="fc" id="L265">        ParamChecks.nullNotPermitted(alignment, &quot;alignment&quot;);</span>
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">        if (this.horizontalAlignment != alignment) {</span>
+<span class="fc" id="L267">            this.horizontalAlignment = alignment;</span>
+<span class="fc" id="L268">            notifyListeners(new TitleChangeEvent(this));</span>
+        }
+<span class="fc" id="L270">    }</span>
+
+    /**
+     * Returns the vertical alignment of the title.
+     *
+     * @return The vertical alignment (never &lt;code&gt;null&lt;/code&gt;).
+     */
+    public VerticalAlignment getVerticalAlignment() {
+<span class="nc" id="L278">        return this.verticalAlignment;</span>
+    }
+
+    /**
+     * Sets the vertical alignment for the title, and notifies any registered
+     * listeners of the change.
+     *
+     * @param alignment  the new vertical alignment (TOP, MIDDLE or BOTTOM,
+     *                   &lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void setVerticalAlignment(VerticalAlignment alignment) {
+<span class="fc" id="L289">        ParamChecks.nullNotPermitted(alignment, &quot;alignment&quot;);</span>
+<span class="pc bpc" id="L290" title="1 of 2 branches missed.">        if (this.verticalAlignment != alignment) {</span>
+<span class="fc" id="L291">            this.verticalAlignment = alignment;</span>
+<span class="fc" id="L292">            notifyListeners(new TitleChangeEvent(this));</span>
+        }
+<span class="fc" id="L294">    }</span>
+
+    /**
+     * Returns the flag that indicates whether or not the notification
+     * mechanism is enabled.
+     *
+     * @return The flag.
+     */
+    public boolean getNotify() {
+<span class="nc" id="L303">        return this.notify;</span>
+    }
+
+    /**
+     * Sets the flag that indicates whether or not the notification mechanism
+     * is enabled.  There are certain situations (such as cloning) where you
+     * want to turn notification off temporarily.
+     *
+     * @param flag  the new value of the flag.
+     */
+    public void setNotify(boolean flag) {
+<span class="nc" id="L314">        this.notify = flag;</span>
+<span class="nc bnc" id="L315" title="All 2 branches missed.">        if (flag) {</span>
+<span class="nc" id="L316">            notifyListeners(new TitleChangeEvent(this));</span>
+        }
+<span class="nc" id="L318">    }</span>
+
+    /**
+     * Draws the title on a Java 2D graphics device (such as the screen or a
+     * printer).
+     *
+     * @param g2  the graphics device.
+     * @param area  the area allocated for the title (subclasses should not
+     *              draw outside this area).
+     */
+    @Override
+    public abstract void draw(Graphics2D g2, Rectangle2D area);
+
+    /**
+     * Returns a clone of the title.
+     * &lt;P&gt;
+     * One situation when this is useful is when editing the title properties -
+     * you can edit a clone, and then it is easier to cancel the changes if
+     * necessary.
+     *
+     * @return A clone of the title.
+     *
+     * @throws CloneNotSupportedException not thrown by this class, but it may
+     *         be thrown by subclasses.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L345">        Title duplicate = (Title) super.clone();</span>
+<span class="fc" id="L346">        duplicate.listenerList = new EventListenerList();</span>
+        // RectangleInsets is immutable =&gt; same reference in clone OK
+<span class="fc" id="L348">        return duplicate;</span>
+    }
+
+    /**
+     * Registers an object for notification of changes to the title.
+     *
+     * @param listener  the object that is being registered.
+     */
+    public void addChangeListener(TitleChangeListener listener) {
+<span class="fc" id="L357">        this.listenerList.add(TitleChangeListener.class, listener);</span>
+<span class="fc" id="L358">    }</span>
+
+    /**
+     * Unregisters an object for notification of changes to the chart title.
+     *
+     * @param listener  the object that is being unregistered.
+     */
+    public void removeChangeListener(TitleChangeListener listener) {
+<span class="fc" id="L366">        this.listenerList.remove(TitleChangeListener.class, listener);</span>
+<span class="fc" id="L367">    }</span>
+
+    /**
+     * Notifies all registered listeners that the chart title has changed in
+     * some way.
+     *
+     * @param event  an object that contains information about the change to
+     *               the title.
+     */
+    protected void notifyListeners(TitleChangeEvent event) {
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">        if (this.notify) {</span>
+<span class="fc" id="L378">            Object[] listeners = this.listenerList.getListenerList();</span>
+<span class="fc bfc" id="L379" title="All 2 branches covered.">            for (int i = listeners.length - 2; i &gt;= 0; i -= 2) {</span>
+<span class="pc bpc" id="L380" title="1 of 2 branches missed.">                if (listeners[i] == TitleChangeListener.class) {</span>
+<span class="fc" id="L381">                    ((TitleChangeListener) listeners[i + 1]).titleChanged(</span>
+                            event);
+                }
+            }
+        }
+<span class="fc" id="L386">    }</span>
+
+    /**
+     * Tests an object for equality with this title.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L397" title="All 2 branches covered.">        if (obj == this) {</span>
+<span class="fc" id="L398">            return true;</span>
+        }
+<span class="pc bpc" id="L400" title="1 of 2 branches missed.">        if (!(obj instanceof Title)) {</span>
+<span class="nc" id="L401">            return false;</span>
+        }
+<span class="fc" id="L403">        Title that = (Title) obj;</span>
+<span class="fc bfc" id="L404" title="All 2 branches covered.">        if (this.visible != that.visible) {</span>
+<span class="fc" id="L405">            return false;</span>
+        }
+<span class="fc bfc" id="L407" title="All 2 branches covered.">        if (this.position != that.position) {</span>
+<span class="fc" id="L408">            return false;</span>
+        }
+<span class="fc bfc" id="L410" title="All 2 branches covered.">        if (this.horizontalAlignment != that.horizontalAlignment) {</span>
+<span class="fc" id="L411">            return false;</span>
+        }
+<span class="fc bfc" id="L413" title="All 2 branches covered.">        if (this.verticalAlignment != that.verticalAlignment) {</span>
+<span class="fc" id="L414">            return false;</span>
+        }
+<span class="pc bpc" id="L416" title="1 of 2 branches missed.">        if (this.notify != that.notify) {</span>
+<span class="nc" id="L417">            return false;</span>
+        }
+<span class="fc" id="L419">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Returns a hashcode for the title.
+     *
+     * @return The hashcode.
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L429">        int result = 193;</span>
+<span class="fc" id="L430">        result = 37 * result + ObjectUtilities.hashCode(this.position);</span>
+<span class="fc" id="L431">        result = 37 * result</span>
+                + ObjectUtilities.hashCode(this.horizontalAlignment);
+<span class="fc" id="L433">        result = 37 * result + ObjectUtilities.hashCode(this.verticalAlignment);</span>
+<span class="fc" id="L434">        return result;</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L445">        stream.defaultWriteObject();</span>
+<span class="fc" id="L446">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+        throws IOException, ClassNotFoundException {
+<span class="fc" id="L458">        stream.defaultReadObject();</span>
+<span class="fc" id="L459">        this.listenerList = new EventListenerList();</span>
+<span class="fc" id="L460">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

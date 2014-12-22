@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ServerImpl.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">netweaver</a> &gt; <a href="index.source.html" class="el_package">com.sap.netweaver.porta.core.nw7</a> &gt; <span class="el_source">ServerImpl.java</span></div><h1>ServerImpl.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2009, 2010 SAP AG.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *    Kaloyan Raev (SAP AG) - initial API and implementation
+ *******************************************************************************/
+package com.sap.netweaver.porta.core.nw7;
+
+import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.rmi.RemoteException;
+
+import javax.xml.rpc.ServiceException;
+
+import com.sap.managementconsole.soap.axis.sapcontrol.AccessPoint;
+import com.sap.managementconsole.soap.axis.sapcontrol.SAPControlPortType;
+import com.sap.netweaver.porta.core.CoreException;
+import com.sap.netweaver.porta.core.DeployManager;
+import com.sap.netweaver.porta.core.LifecycleManager;
+import com.sap.netweaver.porta.core.Server;
+
+public class ServerImpl implements Server {
+	
+	private String host;
+	private int instNr;
+	
+	private final LMUtils utils;
+	
+	private LifecycleManager lm;
+	private DeployManager dm;
+
+	public ServerImpl(String host, int instNr) {
+<span class="fc" id="L38">		this(host, instNr, new LMUtilsImpl());</span>
+<span class="fc" id="L39">	}</span>
+
+<span class="fc" id="L41">	ServerImpl(String host, int instNr, LMUtils utils) {</span>
+<span class="fc" id="L42">		this.host = host;</span>
+<span class="fc" id="L43">		this.instNr = instNr;</span>
+<span class="fc" id="L44">		this.utils = utils;</span>
+<span class="fc" id="L45">	}</span>
+
+	public DeployManager getDeployManager() throws CoreException {
+<span class="pc bpc" id="L48" title="6 of 10 branches missed.">		if (dm == null) {</span>
+<span class="fc" id="L49">			dm = new DeployManagerImpl(host, instNr);</span>
+		}
+<span class="fc" id="L51">		return dm;</span>
+	}
+
+	public LifecycleManager getLifecycleManager() {
+<span class="pc bpc" id="L55" title="6 of 10 branches missed.">		if (lm == null) {</span>
+<span class="fc" id="L56">			lm = new LifecycleManagerImpl(host, instNr);</span>
+		}
+<span class="fc" id="L58">		return lm;</span>
+	}
+	
+	public void ping() throws CoreException {
+<span class="pc bpc" id="L62" title="4 of 6 branches missed.">		getSystemName();</span>
+<span class="fc" id="L63">	}</span>
+	
+	public String getSystemName() throws CoreException {
+		try {
+<span class="fc" id="L67">			URL url = utils.getSAPControlWSUrlByInstance(host, instNr);</span>
+<span class="fc" id="L68">			SAPControlPortType control = utils.getSAPControlWSProxy(url);</span>
+<span class="fc" id="L69">			return control.parameterValue(&quot;SAPSYSTEMNAME&quot;);</span>
+<span class="fc" id="L70">		} catch (MalformedURLException e) {</span>
+<span class="fc" id="L71">			throw new CoreException(e);</span>
+<span class="fc" id="L72">		} catch (ServiceException e) {</span>
+<span class="fc" id="L73">			throw new CoreException(e);</span>
+<span class="fc" id="L74">		} catch (RemoteException e) {</span>
+<span class="fc" id="L75">			throw new CoreException(e);</span>
+		}
+	}
+	
+	public InetSocketAddress getHttpAccessPoint() throws CoreException {
+		try {
+			// establish ws proxy to the SAPControl of the first J2EE instance
+<span class="fc" id="L82">			URL url = utils.getSAPControlWSUrlByInstance(host, instNr);</span>
+<span class="fc" id="L83">			SAPControlPortType control = utils.getSAPControlWSProxy(url);</span>
+<span class="fc" id="L84">			SAPControlPortType j2ee = utils.getSAPControlWSProxyToFirstJ2EEInstance(control);</span>
+<span class="pc bpc" id="L85" title="6 of 10 branches missed.">			if (j2ee == null)</span>
+<span class="fc" id="L86">				throw new IllegalStateException(&quot;cannot determine the J2EE instance&quot;);</span>
+			
+			// determine the HTTP access point
+<span class="fc" id="L89">			AccessPoint icmHttp = utils.findIcmHttpAccessPoint(j2ee);</span>
+<span class="fc" id="L90">			return new InetSocketAddress(icmHttp.getAddress(), icmHttp.getPort());</span>
+<span class="fc" id="L91">		} catch (MalformedURLException e) {</span>
+<span class="fc" id="L92">			throw new CoreException(e);</span>
+<span class="fc" id="L93">		} catch (ServiceException e) {</span>
+<span class="fc" id="L94">			throw new CoreException(e);</span>
+<span class="fc" id="L95">		} catch (RemoteException e) {</span>
+<span class="fc" id="L96">			throw new CoreException(e);</span>
+		}
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

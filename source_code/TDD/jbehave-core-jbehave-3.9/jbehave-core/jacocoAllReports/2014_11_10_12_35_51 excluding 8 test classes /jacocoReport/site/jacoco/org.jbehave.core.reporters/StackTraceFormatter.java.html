@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StackTraceFormatter.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.reporters</a> &gt; <span class="el_source">StackTraceFormatter.java</span></div><h1>StackTraceFormatter.java</h1><pre class="source lang-java linenums">package org.jbehave.core.reporters;
+
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.util.regex.Pattern;
+
+import org.jbehave.core.failures.UUIDExceptionWrapper;
+
+public class StackTraceFormatter {
+    
+    private boolean compressFailureTrace;
+    
+<span class="fc" id="L13">    public StackTraceFormatter(boolean compressFailureTrace) {</span>
+<span class="fc" id="L14">        this.compressFailureTrace = compressFailureTrace;</span>
+<span class="fc" id="L15">    }</span>
+
+    public String stackTrace(Throwable cause) {
+<span class="pc bpc" id="L18" title="1 of 2 branches missed.">        if (cause.getClass().getName().equals(UUIDExceptionWrapper.class.getName())) {</span>
+<span class="nc" id="L19">            cause = cause.getCause();</span>
+        }
+<span class="fc" id="L21">        ByteArrayOutputStream out = new ByteArrayOutputStream();</span>
+<span class="fc" id="L22">        cause.printStackTrace(new PrintStream(out));</span>
+<span class="fc" id="L23">        return stackTrace(out.toString().replaceAll(&quot;\r&quot;,&quot;&quot;));</span>
+    }
+
+    protected String stackTrace(String stackTrace) {
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">        if (!compressFailureTrace) {</span>
+<span class="fc" id="L28">            return stackTrace;</span>
+        }
+        // don't print past certain parts of the stack. Try them even though
+        // they may be redundant.
+<span class="nc" id="L32">        stackTrace = cutOff(stackTrace, &quot;org.jbehave.core.embedder.&quot;);</span>
+<span class="nc" id="L33">        stackTrace = cutOff(stackTrace, &quot;org.junit.runners.&quot;);</span>
+<span class="nc" id="L34">        stackTrace = cutOff(stackTrace, &quot;org.apache.maven.surefire.&quot;);</span>
+
+        // System.out.println(&quot;=====before&gt;&quot; + stackTrace + &quot;&lt;==========&quot;);
+
+        // replace whole series of lines with '\t(summary)' The end-user
+        // will thank us.
+<span class="nc bnc" id="L40" title="All 2 branches missed.">        for (Replacement replacement : REPLACEMENTS) {</span>
+<span class="nc" id="L41">            stackTrace = replacement.from.matcher(stackTrace).replaceAll(replacement.to);</span>
+        }
+<span class="nc" id="L43">        return stackTrace;</span>
+    }
+
+    private String cutOff(String stackTrace, String at) {
+<span class="nc bnc" id="L47" title="All 2 branches missed.">        if (stackTrace.indexOf(at) &gt; -1) {</span>
+<span class="nc" id="L48">            int ix = stackTrace.indexOf(at);</span>
+<span class="nc" id="L49">            ix = stackTrace.indexOf(&quot;\n&quot;, ix);</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">            if (ix != -1) {</span>
+<span class="nc" id="L51">                stackTrace = stackTrace.substring(0, ix) + &quot;\n...&quot;;</span>
+            }
+        }
+<span class="nc" id="L54">        return stackTrace;</span>
+    }
+
+    private static class Replacement {
+        private final Pattern from;
+        private final String to;
+
+<span class="fc" id="L61">        private Replacement(Pattern from, String to) {</span>
+<span class="fc" id="L62">            this.from = from;</span>
+<span class="fc" id="L63">            this.to = to;</span>
+<span class="fc" id="L64">        }</span>
+    }
+
+<span class="fc" id="L67">    private static Replacement[] REPLACEMENTS = new Replacement[] {</span>
+            new Replacement(
+                    Pattern.compile(&quot;\\tat sun.reflect.NativeMethodAccessorImpl.invoke0\\(Native Method\\)\\n&quot;
+                            + &quot;\\tat sun.reflect.NativeMethodAccessorImpl.invoke\\(NativeMethodAccessorImpl.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat sun.reflect.DelegatingMethodAccessorImpl.invoke\\(DelegatingMethodAccessorImpl.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat java.lang.reflect.Method.invoke\\(Method.java:\\d+\\)&quot;),
+                    &quot;\t(reflection-invoke)&quot;),
+            new Replacement(
+                    Pattern.compile(&quot;\\tat org.codehaus.groovy.reflection.CachedMethod.invoke\\(CachedMethod.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.metaclass.ClosureMetaMethod.invoke\\(ClosureMetaMethod.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.callsite.PojoMetaMethodSite\\$PojoMetaMethodSiteNoUnwrapNoCoerce.invoke\\(PojoMetaMethodSite.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.callsite.PojoMetaMethodSite.call\\(PojoMetaMethodSite.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.callsite.CallSiteArray.defaultCall\\(CallSiteArray.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.callsite.AbstractCallSite.call\\(AbstractCallSite.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.callsite.AbstractCallSite.call\\(AbstractCallSite.java:\\d+\\)&quot;),
+                    &quot;\t(groovy-closure-invoke)&quot;),
+            new Replacement(
+                    Pattern.compile(&quot;\\tat org.codehaus.groovy.reflection.CachedMethod.invoke\\(CachedMethod.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat groovy.lang.MetaMethod.doMethodInvoke\\(MetaMethod.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod\\(ClosureMetaClass.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.ScriptBytecodeAdapter.invokeMethodOnCurrentN\\(ScriptBytecodeAdapter.java:\\d+\\)&quot;),
+                    &quot;\t(groovy-instance-method-invoke)&quot;),
+            new Replacement(
+                    Pattern.compile(&quot;\\tat org.codehaus.groovy.reflection.CachedMethod.invoke\\(CachedMethod.java:\\d+\\)\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.metaclass.ClosureMetaMethod.invoke\\(ClosureMetaMethod.java:\\d+\\)\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.callsite.PojoMetaMethodSite\\$PojoMetaMethodSiteNoUnwrapNoCoerce.invoke\\(PojoMetaMethodSite.java:\\d+\\)\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.callsite.PojoMetaMethodSite.call\\(PojoMetaMethodSite.java:\\d+\\)\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.callsite.AbstractCallSite.call\\(AbstractCallSite.java:\\d+\\)&quot;),
+                    &quot;\t(groovy-abstract-method-invoke)&quot;),
+            new Replacement(
+                    Pattern.compile(&quot;\\tat org.codehaus.groovy.reflection.CachedMethod.invoke\\(CachedMethod.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat groovy.lang.MetaMethod.doMethodInvoke\\(MetaMethod.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat groovy.lang.MetaClassImpl.invokeStaticMethod\\(MetaClassImpl.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.InvokerHelper.invokeStaticMethod\\(InvokerHelper.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.ScriptBytecodeAdapter.invokeStaticMethodN\\(ScriptBytecodeAdapter.java:\\d+\\)&quot;),
+                    &quot;\t(groovy-static-method-invoke)&quot;),
+            new Replacement(
+                    Pattern.compile(&quot;\\tat sun.reflect.NativeConstructorAccessorImpl.newInstance0\\(Native Method\\)\\n&quot;
+                            + &quot;\\tat sun.reflect.NativeConstructorAccessorImpl.newInstance\\(NativeConstructorAccessorImpl.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat sun.reflect.DelegatingConstructorAccessorImpl.newInstance\\(DelegatingConstructorAccessorImpl.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat java.lang.reflect.Constructor.newInstance\\(Constructor.java:\\d+\\)&quot;),
+                    &quot;\t(reflection-construct)&quot;),
+            new Replacement(
+                    Pattern.compile(&quot;\\tat org.codehaus.groovy.runtime.callsite.CallSiteArray.defaultCall(Current|)\\(CallSiteArray.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.callsite.AbstractCallSite.call(Current|)\\(AbstractCallSite.java:\\d+\\)\\n&quot;
+                            + &quot;\\tat org.codehaus.groovy.runtime.callsite.AbstractCallSite.call(Current|)\\(AbstractCallSite.java:\\d+\\)&quot;
+
+                    ), &quot;\t(groovy-call)&quot;),
+            // This one last.
+            new Replacement(Pattern.compile(&quot;\\t\\(reflection\\-invoke\\)\\n&quot; + &quot;\\t\\(groovy\\-&quot;), &quot;\t(groovy-&quot;) };
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>BackgroundInitializer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-lang3</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.concurrent</a> &gt; <span class="el_source">BackgroundInitializer.java</span></div><h1>BackgroundInitializer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.concurrent;
+
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+/**
+ * &lt;p&gt;
+ * A class that allows complex initialization operations in a background task.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Applications often have to do some expensive initialization steps when they
+ * are started, e.g. constructing a connection to a database, reading a
+ * configuration file, etc. Doing these things in parallel can enhance
+ * performance as the CPU load can be improved. However, when access to the
+ * resources initialized in a background thread is actually required,
+ * synchronization has to be performed to ensure that their initialization is
+ * complete.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This abstract base class provides support for this use case. A concrete
+ * subclass must implement the {@link #initialize()} method. Here an arbitrary
+ * initialization can be implemented, and a result object can be returned. With
+ * this method in place the basic usage of this class is as follows (where
+ * {@code MyBackgroundInitializer} is a concrete subclass):
+ *
+ * &lt;pre&gt;
+ * MyBackgroundInitializer initializer = new MyBackgroundInitializer();
+ * initializer.start();
+ * // Now do some other things. Initialization runs in a parallel thread
+ * ...
+ * // Wait for the end of initialization and access the result object
+ * Object result = initializer.get();
+ * &lt;/pre&gt;
+ *
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * After the construction of a {@code BackgroundInitializer} object its
+ * {@link #start()} method has to be called. This starts the background
+ * processing. The application can now continue to do other things. When it
+ * needs access to the object produced by the {@code BackgroundInitializer} it
+ * calls its {@link #get()} method. If initialization is already complete,
+ * {@link #get()} returns the result object immediately. Otherwise it blocks
+ * until the result object is fully constructed.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * {@code BackgroundInitializer} is a thin wrapper around a {@code Future}
+ * object and uses an {@code ExecutorService} for running the background
+ * initialization task. It is possible to pass in an {@code ExecutorService} at
+ * construction time or set one using {@code setExternalExecutor()} before
+ * {@code start()} was called. Then this object is used to spawn the background
+ * task. If no {@code ExecutorService} has been provided, {@code
+ * BackgroundInitializer} creates a temporary {@code ExecutorService} and
+ * destroys it when initialization is complete.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The methods provided by {@code BackgroundInitializer} provide for minimal
+ * interaction with the wrapped {@code Future} object. It is also possible to
+ * obtain the {@code Future} object directly. Then the enhanced functionality
+ * offered by {@code Future} can be used, e.g. to check whether the background
+ * operation is complete or to cancel the operation.
+ * &lt;/p&gt;
+ *
+ * @since 3.0
+ * @version $Id: BackgroundInitializer.java 1436770 2013-01-22 07:09:45Z ggregory $
+ * @param &lt;T&gt; the type of the object managed by this initializer class
+ */
+public abstract class BackgroundInitializer&lt;T&gt; implements
+        ConcurrentInitializer&lt;T&gt; {
+    /** The external executor service for executing tasks. */
+    private ExecutorService externalExecutor; // @GuardedBy(&quot;this&quot;)
+
+    /** A reference to the executor service that is actually used. */
+    private ExecutorService executor; // @GuardedBy(&quot;this&quot;)
+
+    /** Stores the handle to the background task. */
+    private Future&lt;T&gt; future;  // @GuardedBy(&quot;this&quot;)
+
+    /**
+     * Creates a new instance of {@code BackgroundInitializer}. No external
+     * {@code ExecutorService} is used.
+     */
+    protected BackgroundInitializer() {
+<span class="fc" id="L102">        this(null);</span>
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * Creates a new instance of {@code BackgroundInitializer} and initializes
+     * it with the given {@code ExecutorService}. If the {@code ExecutorService}
+     * is not null, the background task for initializing this object will be
+     * scheduled at this service. Otherwise a new temporary {@code
+     * ExecutorService} is created.
+     *
+     * @param exec an external {@code ExecutorService} to be used for task
+     * execution
+     */
+<span class="fc" id="L115">    protected BackgroundInitializer(final ExecutorService exec) {</span>
+<span class="fc" id="L116">        setExternalExecutor(exec);</span>
+<span class="fc" id="L117">    }</span>
+
+    /**
+     * Returns the external {@code ExecutorService} to be used by this class.
+     *
+     * @return the {@code ExecutorService}
+     */
+    public final synchronized ExecutorService getExternalExecutor() {
+<span class="fc" id="L125">        return externalExecutor;</span>
+    }
+
+    /**
+     * Returns a flag whether this {@code BackgroundInitializer} has already
+     * been started.
+     *
+     * @return a flag whether the {@link #start()} method has already been
+     * called
+     */
+    public synchronized boolean isStarted() {
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        return future != null;</span>
+    }
+
+    /**
+     * Sets an {@code ExecutorService} to be used by this class. The {@code
+     * ExecutorService} passed to this method is used for executing the
+     * background task. Thus it is possible to re-use an already existing
+     * {@code ExecutorService} or to use a specially configured one. If no
+     * {@code ExecutorService} is set, this instance creates a temporary one and
+     * destroys it after background initialization is complete. Note that this
+     * method must be called before {@link #start()}; otherwise an exception is
+     * thrown.
+     *
+     * @param externalExecutor the {@code ExecutorService} to be used
+     * @throws IllegalStateException if this initializer has already been
+     * started
+     */
+    public final synchronized void setExternalExecutor(
+            final ExecutorService externalExecutor) {
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (isStarted()) {</span>
+<span class="fc" id="L156">            throw new IllegalStateException(</span>
+                    &quot;Cannot set ExecutorService after start()!&quot;);
+        }
+
+<span class="fc" id="L160">        this.externalExecutor = externalExecutor;</span>
+<span class="fc" id="L161">    }</span>
+
+    /**
+     * Starts the background initialization. With this method the initializer
+     * becomes active and invokes the {@link #initialize()} method in a
+     * background task. A {@code BackgroundInitializer} can be started exactly
+     * once. The return value of this method determines whether the start was
+     * successful: only the first invocation of this method returns &lt;b&gt;true&lt;/b&gt;,
+     * following invocations will return &lt;b&gt;false&lt;/b&gt;.
+     *
+     * @return a flag whether the initializer could be started successfully
+     */
+    public synchronized boolean start() {
+        // Not yet started?
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        if (!isStarted()) {</span>
+
+            // Determine the executor to use and whether a temporary one has to
+            // be created
+            ExecutorService tempExec;
+<span class="fc" id="L180">            executor = getExternalExecutor();</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            if (executor == null) {</span>
+<span class="fc" id="L182">                executor = tempExec = createExecutor();</span>
+            } else {
+<span class="fc" id="L184">                tempExec = null;</span>
+            }
+
+<span class="fc" id="L187">            future = executor.submit(createTask(tempExec));</span>
+
+<span class="fc" id="L189">            return true;</span>
+        }
+
+<span class="fc" id="L192">        return false;</span>
+    }
+
+    /**
+     * Returns the result of the background initialization. This method blocks
+     * until initialization is complete. If the background processing caused a
+     * runtime exception, it is directly thrown by this method. Checked
+     * exceptions, including {@code InterruptedException} are wrapped in a
+     * {@link ConcurrentException}. Calling this method before {@link #start()}
+     * was called causes an {@code IllegalStateException} exception to be
+     * thrown.
+     *
+     * @return the object produced by this initializer
+     * @throws ConcurrentException if a checked exception occurred during
+     * background processing
+     * @throws IllegalStateException if {@link #start()} has not been called
+     */
+    @Override
+    public T get() throws ConcurrentException {
+        try {
+<span class="fc" id="L212">            return getFuture().get();</span>
+<span class="nc" id="L213">        } catch (final ExecutionException execex) {</span>
+<span class="nc" id="L214">            ConcurrentUtils.handleCause(execex);</span>
+<span class="nc" id="L215">            return null; // should not be reached</span>
+<span class="fc" id="L216">        } catch (final InterruptedException iex) {</span>
+            // reset interrupted state
+<span class="fc" id="L218">            Thread.currentThread().interrupt();</span>
+<span class="fc" id="L219">            throw new ConcurrentException(iex);</span>
+        }
+    }
+
+    /**
+     * Returns the {@code Future} object that was created when {@link #start()}
+     * was called. Therefore this method can only be called after {@code
+     * start()}.
+     *
+     * @return the {@code Future} object wrapped by this initializer
+     * @throws IllegalStateException if {@link #start()} has not been called
+     */
+    public synchronized Future&lt;T&gt; getFuture() {
+<span class="fc bfc" id="L232" title="All 2 branches covered.">        if (future == null) {</span>
+<span class="fc" id="L233">            throw new IllegalStateException(&quot;start() must be called first!&quot;);</span>
+        }
+
+<span class="fc" id="L236">        return future;</span>
+    }
+
+    /**
+     * Returns the {@code ExecutorService} that is actually used for executing
+     * the background task. This method can be called after {@link #start()}
+     * (before {@code start()} it returns &lt;b&gt;null&lt;/b&gt;). If an external executor
+     * was set, this is also the active executor. Otherwise this method returns
+     * the temporary executor that was created by this object.
+     *
+     * @return the {@code ExecutorService} for executing the background task
+     */
+    protected synchronized final ExecutorService getActiveExecutor() {
+<span class="fc" id="L249">        return executor;</span>
+    }
+
+    /**
+     * Returns the number of background tasks to be created for this
+     * initializer. This information is evaluated when a temporary {@code
+     * ExecutorService} is created. This base implementation returns 1. Derived
+     * classes that do more complex background processing can override it. This
+     * method is called from a synchronized block by the {@link #start()}
+     * method. Therefore overriding methods should be careful with obtaining
+     * other locks and return as fast as possible.
+     *
+     * @return the number of background tasks required by this initializer
+     */
+    protected int getTaskCount() {
+<span class="fc" id="L264">        return 1;</span>
+    }
+
+    /**
+     * Performs the initialization. This method is called in a background task
+     * when this {@code BackgroundInitializer} is started. It must be
+     * implemented by a concrete subclass. An implementation is free to perform
+     * arbitrary initialization. The object returned by this method can be
+     * queried using the {@link #get()} method.
+     *
+     * @return a result object
+     * @throws Exception if an error occurs
+     */
+    protected abstract T initialize() throws Exception;
+
+    /**
+     * Creates a task for the background initialization. The {@code Callable}
+     * object returned by this method is passed to the {@code ExecutorService}.
+     * This implementation returns a task that invokes the {@link #initialize()}
+     * method. If a temporary {@code ExecutorService} is used, it is destroyed
+     * at the end of the task.
+     *
+     * @param execDestroy the {@code ExecutorService} to be destroyed by the
+     * task
+     * @return a task for the background initialization
+     */
+    private Callable&lt;T&gt; createTask(final ExecutorService execDestroy) {
+<span class="fc" id="L291">        return new InitializationTask(execDestroy);</span>
+    }
+
+    /**
+     * Creates the {@code ExecutorService} to be used. This method is called if
+     * no {@code ExecutorService} was provided at construction time.
+     *
+     * @return the {@code ExecutorService} to be used
+     */
+    private ExecutorService createExecutor() {
+<span class="fc" id="L301">        return Executors.newFixedThreadPool(getTaskCount());</span>
+    }
+
+    private class InitializationTask implements Callable&lt;T&gt; {
+        /** Stores the executor service to be destroyed at the end. */
+        private final ExecutorService execFinally;
+
+        /**
+         * Creates a new instance of {@code InitializationTask} and initializes
+         * it with the {@code ExecutorService} to be destroyed at the end.
+         *
+         * @param exec the {@code ExecutorService}
+         */
+<span class="fc" id="L314">        public InitializationTask(final ExecutorService exec) {</span>
+<span class="fc" id="L315">            execFinally = exec;</span>
+<span class="fc" id="L316">        }</span>
+
+        /**
+         * Initiates initialization and returns the result.
+         *
+         * @return the result object
+         * @throws Exception if an error occurs
+         */
+        @Override
+        public T call() throws Exception {
+            try {
+<span class="fc" id="L327">                return initialize();</span>
+            } finally {
+<span class="fc bfc" id="L329" title="All 4 branches covered.">                if (execFinally != null) {</span>
+<span class="fc" id="L330">                    execFinally.shutdown();</span>
+                }
+            }
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

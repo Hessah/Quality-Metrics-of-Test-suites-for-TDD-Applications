@@ -1,0 +1,593 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>CrosshairOverlay.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.panel</a> &gt; <span class="el_source">CrosshairOverlay.java</span></div><h1>CrosshairOverlay.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ---------------------
+ * CrosshairOverlay.java
+ * ---------------------
+ * (C) Copyright 2011-2013, by Object Refinery Limited.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   -;
+ *
+ * Changes:
+ * --------
+ * 09-Apr-2009 : Version 1 (DG);
+ * 19-May-2009 : Fixed FindBugs warnings, patch by Michal Wozniak (DG);
+ * 02-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.chart.panel;
+
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Rectangle;
+import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.geom.Line2D;
+import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import org.jfree.chart.ChartPanel;
+import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.event.OverlayChangeEvent;
+import org.jfree.chart.plot.Crosshair;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.text.TextUtilities;
+import org.jfree.ui.RectangleAnchor;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.ui.TextAnchor;
+import org.jfree.util.ObjectUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * An overlay for a {@link ChartPanel} that draws crosshairs on a plot.
+ *
+ * @since 1.0.13
+ */
+public class CrosshairOverlay extends AbstractOverlay implements Overlay,
+        PropertyChangeListener, PublicCloneable, Cloneable, Serializable {
+
+    /** Storage for the crosshairs along the x-axis. */
+    private List xCrosshairs;
+
+    /** Storage for the crosshairs along the y-axis. */
+    private List yCrosshairs;
+
+    /**
+     * Default constructor.
+     */
+    public CrosshairOverlay() {
+<span class="fc" id="L92">        super();</span>
+<span class="fc" id="L93">        this.xCrosshairs = new java.util.ArrayList();</span>
+<span class="fc" id="L94">        this.yCrosshairs = new java.util.ArrayList();</span>
+<span class="fc" id="L95">    }</span>
+
+    /**
+     * Adds a crosshair against the domain axis and sends an
+     * {@link OverlayChangeEvent} to all registered listeners.
+     *
+     * @param crosshair  the crosshair (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #removeDomainCrosshair(org.jfree.chart.plot.Crosshair)
+     * @see #addRangeCrosshair(org.jfree.chart.plot.Crosshair)
+     */
+    public void addDomainCrosshair(Crosshair crosshair) {
+<span class="fc" id="L107">        ParamChecks.nullNotPermitted(crosshair, &quot;crosshair&quot;);</span>
+<span class="fc" id="L108">        this.xCrosshairs.add(crosshair);</span>
+<span class="fc" id="L109">        crosshair.addPropertyChangeListener(this);</span>
+<span class="fc" id="L110">        fireOverlayChanged();</span>
+<span class="fc" id="L111">    }</span>
+
+    /**
+     * Removes a domain axis crosshair and sends an {@link OverlayChangeEvent}
+     * to all registered listeners.
+     *
+     * @param crosshair  the crosshair (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #addDomainCrosshair(org.jfree.chart.plot.Crosshair)
+     */
+    public void removeDomainCrosshair(Crosshair crosshair) {
+<span class="nc" id="L122">        ParamChecks.nullNotPermitted(crosshair, &quot;crosshair&quot;);</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">        if (this.xCrosshairs.remove(crosshair)) {</span>
+<span class="nc" id="L124">            crosshair.removePropertyChangeListener(this);</span>
+<span class="nc" id="L125">            fireOverlayChanged();</span>
+        }
+<span class="nc" id="L127">    }</span>
+
+    /**
+     * Clears all the domain crosshairs from the overlay and sends an
+     * {@link OverlayChangeEvent} to all registered listeners.
+     */
+    public void clearDomainCrosshairs() {
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        if (this.xCrosshairs.isEmpty()) {</span>
+<span class="nc" id="L135">            return;  // nothing to do</span>
+        }
+<span class="nc" id="L137">        List crosshairs = getDomainCrosshairs();</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        for (int i = 0; i &lt; crosshairs.size(); i++) {</span>
+<span class="nc" id="L139">            Crosshair c = (Crosshair) crosshairs.get(i);</span>
+<span class="nc" id="L140">            this.xCrosshairs.remove(c);</span>
+<span class="nc" id="L141">            c.removePropertyChangeListener(this);</span>
+        }
+<span class="nc" id="L143">        fireOverlayChanged();</span>
+<span class="nc" id="L144">    }</span>
+
+    /**
+     * Returns a new list containing the domain crosshairs for this overlay.
+     *
+     * @return A list of crosshairs.
+     */
+    public List getDomainCrosshairs() {
+<span class="nc" id="L152">        return new ArrayList(this.xCrosshairs);</span>
+    }
+
+    /**
+     * Adds a crosshair against the range axis and sends an
+     * {@link OverlayChangeEvent} to all registered listeners.
+     *
+     * @param crosshair  the crosshair (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void addRangeCrosshair(Crosshair crosshair) {
+<span class="fc" id="L162">        ParamChecks.nullNotPermitted(crosshair, &quot;crosshair&quot;);</span>
+<span class="fc" id="L163">        this.yCrosshairs.add(crosshair);</span>
+<span class="fc" id="L164">        crosshair.addPropertyChangeListener(this);</span>
+<span class="fc" id="L165">        fireOverlayChanged();</span>
+<span class="fc" id="L166">    }</span>
+
+    /**
+     * Removes a range axis crosshair and sends an {@link OverlayChangeEvent}
+     * to all registered listeners.
+     *
+     * @param crosshair  the crosshair (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #addRangeCrosshair(org.jfree.chart.plot.Crosshair)
+     */
+    public void removeRangeCrosshair(Crosshair crosshair) {
+<span class="nc" id="L177">        ParamChecks.nullNotPermitted(crosshair, &quot;crosshair&quot;);</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">        if (this.yCrosshairs.remove(crosshair)) {</span>
+<span class="nc" id="L179">            crosshair.removePropertyChangeListener(this);</span>
+<span class="nc" id="L180">            fireOverlayChanged();</span>
+        }
+<span class="nc" id="L182">    }</span>
+
+    /**
+     * Clears all the range crosshairs from the overlay and sends an
+     * {@link OverlayChangeEvent} to all registered listeners.
+     */
+    public void clearRangeCrosshairs() {
+<span class="nc bnc" id="L189" title="All 2 branches missed.">        if (this.yCrosshairs.isEmpty()) {</span>
+<span class="nc" id="L190">            return;  // nothing to do</span>
+        }
+<span class="nc" id="L192">        List crosshairs = getRangeCrosshairs();</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">        for (int i = 0; i &lt; crosshairs.size(); i++) {</span>
+<span class="nc" id="L194">            Crosshair c = (Crosshair) crosshairs.get(i);</span>
+<span class="nc" id="L195">            this.yCrosshairs.remove(c);</span>
+<span class="nc" id="L196">            c.removePropertyChangeListener(this);</span>
+        }
+<span class="nc" id="L198">        fireOverlayChanged();</span>
+<span class="nc" id="L199">    }</span>
+
+    /**
+     * Returns a new list containing the range crosshairs for this overlay.
+     *
+     * @return A list of crosshairs.
+     */
+    public List getRangeCrosshairs() {
+<span class="nc" id="L207">        return new ArrayList(this.yCrosshairs);</span>
+    }
+
+    /**
+     * Receives a property change event (typically a change in one of the
+     * crosshairs).
+     *
+     * @param e  the event.
+     */
+    @Override
+    public void propertyChange(PropertyChangeEvent e) {
+<span class="nc" id="L218">        fireOverlayChanged();</span>
+<span class="nc" id="L219">    }</span>
+
+    /**
+     * Paints the crosshairs in the layer.
+     *
+     * @param g2  the graphics target.
+     * @param chartPanel  the chart panel.
+     */
+    @Override
+    public void paintOverlay(Graphics2D g2, ChartPanel chartPanel) {
+<span class="nc" id="L229">        Shape savedClip = g2.getClip();</span>
+<span class="nc" id="L230">        Rectangle2D dataArea = chartPanel.getScreenDataArea();</span>
+<span class="nc" id="L231">        g2.clip(dataArea);</span>
+<span class="nc" id="L232">        JFreeChart chart = chartPanel.getChart();</span>
+<span class="nc" id="L233">        XYPlot plot = (XYPlot) chart.getPlot();</span>
+<span class="nc" id="L234">        ValueAxis xAxis = plot.getDomainAxis();</span>
+<span class="nc" id="L235">        RectangleEdge xAxisEdge = plot.getDomainAxisEdge();</span>
+<span class="nc" id="L236">        Iterator iterator = this.xCrosshairs.iterator();</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">        while (iterator.hasNext()) {</span>
+<span class="nc" id="L238">            Crosshair ch = (Crosshair) iterator.next();</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">            if (ch.isVisible()) {</span>
+<span class="nc" id="L240">                double x = ch.getValue();</span>
+<span class="nc" id="L241">                double xx = xAxis.valueToJava2D(x, dataArea, xAxisEdge);</span>
+<span class="nc bnc" id="L242" title="All 2 branches missed.">                if (plot.getOrientation() == PlotOrientation.VERTICAL) {</span>
+<span class="nc" id="L243">                    drawVerticalCrosshair(g2, dataArea, xx, ch);</span>
+                }
+                else {
+<span class="nc" id="L246">                    drawHorizontalCrosshair(g2, dataArea, xx, ch);</span>
+                }
+            }
+<span class="nc" id="L249">        }</span>
+<span class="nc" id="L250">        ValueAxis yAxis = plot.getRangeAxis();</span>
+<span class="nc" id="L251">        RectangleEdge yAxisEdge = plot.getRangeAxisEdge();</span>
+<span class="nc" id="L252">        iterator = this.yCrosshairs.iterator();</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">        while (iterator.hasNext()) {</span>
+<span class="nc" id="L254">            Crosshair ch = (Crosshair) iterator.next();</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">            if (ch.isVisible()) {</span>
+<span class="nc" id="L256">                double y = ch.getValue();</span>
+<span class="nc" id="L257">                double yy = yAxis.valueToJava2D(y, dataArea, yAxisEdge);</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">                if (plot.getOrientation() == PlotOrientation.VERTICAL) {</span>
+<span class="nc" id="L259">                    drawHorizontalCrosshair(g2, dataArea, yy, ch);</span>
+                }
+                else {
+<span class="nc" id="L262">                    drawVerticalCrosshair(g2, dataArea, yy, ch);</span>
+                }
+            }
+<span class="nc" id="L265">        }</span>
+<span class="nc" id="L266">        g2.setClip(savedClip);</span>
+<span class="nc" id="L267">    }</span>
+
+    /**
+     * Draws a crosshair horizontally across the plot.
+     *
+     * @param g2  the graphics target.
+     * @param dataArea  the data area.
+     * @param y  the y-value in Java2D space.
+     * @param crosshair  the crosshair.
+     */
+    protected void drawHorizontalCrosshair(Graphics2D g2, Rectangle2D dataArea,
+            double y, Crosshair crosshair) {
+
+<span class="nc bnc" id="L280" title="All 4 branches missed.">        if (y &gt;= dataArea.getMinY() &amp;&amp; y &lt;= dataArea.getMaxY()) {</span>
+<span class="nc" id="L281">            Line2D line = new Line2D.Double(dataArea.getMinX(), y,</span>
+                    dataArea.getMaxX(), y);
+<span class="nc" id="L283">            Paint savedPaint = g2.getPaint();</span>
+<span class="nc" id="L284">            Stroke savedStroke = g2.getStroke();</span>
+<span class="nc" id="L285">            g2.setPaint(crosshair.getPaint());</span>
+<span class="nc" id="L286">            g2.setStroke(crosshair.getStroke());</span>
+<span class="nc" id="L287">            g2.draw(line);</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">            if (crosshair.isLabelVisible()) {</span>
+<span class="nc" id="L289">                String label = crosshair.getLabelGenerator().generateLabel(</span>
+                        crosshair);
+<span class="nc" id="L291">                RectangleAnchor anchor = crosshair.getLabelAnchor();</span>
+<span class="nc" id="L292">                Point2D pt = calculateLabelPoint(line, anchor, 5, 5);</span>
+<span class="nc" id="L293">                float xx = (float) pt.getX();</span>
+<span class="nc" id="L294">                float yy = (float) pt.getY();</span>
+<span class="nc" id="L295">                TextAnchor alignPt = textAlignPtForLabelAnchorH(anchor);</span>
+<span class="nc" id="L296">                Shape hotspot = TextUtilities.calculateRotatedStringBounds(</span>
+                        label, g2, xx, yy, alignPt, 0.0, TextAnchor.CENTER);
+<span class="nc bnc" id="L298" title="All 2 branches missed.">                if (!dataArea.contains(hotspot.getBounds2D())) {</span>
+<span class="nc" id="L299">                    anchor = flipAnchorV(anchor);</span>
+<span class="nc" id="L300">                    pt = calculateLabelPoint(line, anchor, 5, 5);</span>
+<span class="nc" id="L301">                    xx = (float) pt.getX();</span>
+<span class="nc" id="L302">                    yy = (float) pt.getY();</span>
+<span class="nc" id="L303">                    alignPt = textAlignPtForLabelAnchorH(anchor);</span>
+<span class="nc" id="L304">                    hotspot = TextUtilities.calculateRotatedStringBounds(</span>
+                           label, g2, xx, yy, alignPt, 0.0, TextAnchor.CENTER);
+                }
+
+<span class="nc" id="L308">                g2.setPaint(crosshair.getLabelBackgroundPaint());</span>
+<span class="nc" id="L309">                g2.fill(hotspot);</span>
+<span class="nc" id="L310">                g2.setPaint(crosshair.getLabelOutlinePaint());</span>
+<span class="nc" id="L311">                g2.draw(hotspot);</span>
+<span class="nc" id="L312">                TextUtilities.drawAlignedString(label, g2, xx, yy, alignPt);</span>
+            }
+<span class="nc" id="L314">            g2.setPaint(savedPaint);</span>
+<span class="nc" id="L315">            g2.setStroke(savedStroke);</span>
+        }
+<span class="nc" id="L317">    }</span>
+
+    /**
+     * Draws a crosshair vertically on the plot.
+     *
+     * @param g2  the graphics target.
+     * @param dataArea  the data area.
+     * @param x  the x-value in Java2D space.
+     * @param crosshair  the crosshair.
+     */
+    protected void drawVerticalCrosshair(Graphics2D g2, Rectangle2D dataArea,
+            double x, Crosshair crosshair) {
+
+<span class="nc bnc" id="L330" title="All 4 branches missed.">        if (x &gt;= dataArea.getMinX() &amp;&amp; x &lt;= dataArea.getMaxX()) {</span>
+<span class="nc" id="L331">            Line2D line = new Line2D.Double(x, dataArea.getMinY(), x,</span>
+                    dataArea.getMaxY());
+<span class="nc" id="L333">            Paint savedPaint = g2.getPaint();</span>
+<span class="nc" id="L334">            Stroke savedStroke = g2.getStroke();</span>
+<span class="nc" id="L335">            g2.setPaint(crosshair.getPaint());</span>
+<span class="nc" id="L336">            g2.setStroke(crosshair.getStroke());</span>
+<span class="nc" id="L337">            g2.draw(line);</span>
+<span class="nc bnc" id="L338" title="All 2 branches missed.">            if (crosshair.isLabelVisible()) {</span>
+<span class="nc" id="L339">                String label = crosshair.getLabelGenerator().generateLabel(</span>
+                        crosshair);
+<span class="nc" id="L341">                RectangleAnchor anchor = crosshair.getLabelAnchor();</span>
+<span class="nc" id="L342">                Point2D pt = calculateLabelPoint(line, anchor, 5, 5);</span>
+<span class="nc" id="L343">                float xx = (float) pt.getX();</span>
+<span class="nc" id="L344">                float yy = (float) pt.getY();</span>
+<span class="nc" id="L345">                TextAnchor alignPt = textAlignPtForLabelAnchorV(anchor);</span>
+<span class="nc" id="L346">                Shape hotspot = TextUtilities.calculateRotatedStringBounds(</span>
+                        label, g2, xx, yy, alignPt, 0.0, TextAnchor.CENTER);
+<span class="nc bnc" id="L348" title="All 2 branches missed.">                if (!dataArea.contains(hotspot.getBounds2D())) {</span>
+<span class="nc" id="L349">                    anchor = flipAnchorH(anchor);</span>
+<span class="nc" id="L350">                    pt = calculateLabelPoint(line, anchor, 5, 5);</span>
+<span class="nc" id="L351">                    xx = (float) pt.getX();</span>
+<span class="nc" id="L352">                    yy = (float) pt.getY();</span>
+<span class="nc" id="L353">                    alignPt = textAlignPtForLabelAnchorV(anchor);</span>
+<span class="nc" id="L354">                    hotspot = TextUtilities.calculateRotatedStringBounds(</span>
+                           label, g2, xx, yy, alignPt, 0.0, TextAnchor.CENTER);
+                }
+<span class="nc" id="L357">                g2.setPaint(crosshair.getLabelBackgroundPaint());</span>
+<span class="nc" id="L358">                g2.fill(hotspot);</span>
+<span class="nc" id="L359">                g2.setPaint(crosshair.getLabelOutlinePaint());</span>
+<span class="nc" id="L360">                g2.draw(hotspot);</span>
+<span class="nc" id="L361">                TextUtilities.drawAlignedString(label, g2, xx, yy, alignPt);</span>
+            }
+<span class="nc" id="L363">            g2.setPaint(savedPaint);</span>
+<span class="nc" id="L364">            g2.setStroke(savedStroke);</span>
+        }
+<span class="nc" id="L366">    }</span>
+
+    /**
+     * Calculates the anchor point for a label.
+     *
+     * @param line  the line for the crosshair.
+     * @param anchor  the anchor point.
+     * @param deltaX  the x-offset.
+     * @param deltaY  the y-offset.
+     *
+     * @return The anchor point.
+     */
+    private Point2D calculateLabelPoint(Line2D line, RectangleAnchor anchor,
+            double deltaX, double deltaY) {
+        double x, y;
+<span class="nc bnc" id="L381" title="All 6 branches missed.">        boolean left = (anchor == RectangleAnchor.BOTTOM_LEFT </span>
+                || anchor == RectangleAnchor.LEFT 
+                || anchor == RectangleAnchor.TOP_LEFT);
+<span class="nc bnc" id="L384" title="All 6 branches missed.">        boolean right = (anchor == RectangleAnchor.BOTTOM_RIGHT </span>
+                || anchor == RectangleAnchor.RIGHT 
+                || anchor == RectangleAnchor.TOP_RIGHT);
+<span class="nc bnc" id="L387" title="All 6 branches missed.">        boolean top = (anchor == RectangleAnchor.TOP_LEFT </span>
+                || anchor == RectangleAnchor.TOP 
+                || anchor == RectangleAnchor.TOP_RIGHT);
+<span class="nc bnc" id="L390" title="All 6 branches missed.">        boolean bottom = (anchor == RectangleAnchor.BOTTOM_LEFT</span>
+                || anchor == RectangleAnchor.BOTTOM
+                || anchor == RectangleAnchor.BOTTOM_RIGHT);
+<span class="nc" id="L393">        Rectangle rect = line.getBounds();</span>
+        
+        // we expect the line to be vertical or horizontal
+<span class="nc bnc" id="L396" title="All 2 branches missed.">        if (line.getX1() == line.getX2()) {  // vertical</span>
+<span class="nc" id="L397">            x = line.getX1();</span>
+<span class="nc" id="L398">            y = (line.getY1() + line.getY2()) / 2.0;</span>
+<span class="nc bnc" id="L399" title="All 2 branches missed.">            if (left) {</span>
+<span class="nc" id="L400">                x = x - deltaX;</span>
+            }
+<span class="nc bnc" id="L402" title="All 2 branches missed.">            if (right) {</span>
+<span class="nc" id="L403">                x = x + deltaX;</span>
+            }
+<span class="nc bnc" id="L405" title="All 2 branches missed.">            if (top) {</span>
+<span class="nc" id="L406">                y = Math.min(line.getY1(), line.getY2()) + deltaY;</span>
+            }
+<span class="nc bnc" id="L408" title="All 2 branches missed.">            if (bottom) {</span>
+<span class="nc" id="L409">                y = Math.max(line.getY1(), line.getY2()) - deltaY;</span>
+            }
+        }
+        else {  // horizontal
+<span class="nc" id="L413">            x = (line.getX1() + line.getX2()) / 2.0;</span>
+<span class="nc" id="L414">            y = line.getY1();</span>
+<span class="nc bnc" id="L415" title="All 2 branches missed.">            if (left) {</span>
+<span class="nc" id="L416">                x = Math.min(line.getX1(), line.getX2()) + deltaX;</span>
+            }
+<span class="nc bnc" id="L418" title="All 2 branches missed.">            if (right) {</span>
+<span class="nc" id="L419">                x = Math.max(line.getX1(), line.getX2()) - deltaX;</span>
+            }
+<span class="nc bnc" id="L421" title="All 2 branches missed.">            if (top) {</span>
+<span class="nc" id="L422">                y = y - deltaY;</span>
+            }
+<span class="nc bnc" id="L424" title="All 2 branches missed.">            if (bottom) {</span>
+<span class="nc" id="L425">                y = y + deltaY;</span>
+            }
+        }
+<span class="nc" id="L428">        return new Point2D.Double(x, y);</span>
+    }
+
+    /**
+     * Returns the text anchor that is used to align a label to its anchor 
+     * point.
+     * 
+     * @param anchor  the anchor.
+     * 
+     * @return The text alignment point.
+     */
+    private TextAnchor textAlignPtForLabelAnchorV(RectangleAnchor anchor) {
+<span class="nc" id="L440">        TextAnchor result = TextAnchor.CENTER;</span>
+<span class="nc bnc" id="L441" title="All 2 branches missed.">        if (anchor.equals(RectangleAnchor.TOP_LEFT)) {</span>
+<span class="nc" id="L442">            result = TextAnchor.TOP_RIGHT;</span>
+        }
+<span class="nc bnc" id="L444" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.TOP)) {</span>
+<span class="nc" id="L445">            result = TextAnchor.TOP_CENTER;</span>
+        }
+<span class="nc bnc" id="L447" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.TOP_RIGHT)) {</span>
+<span class="nc" id="L448">            result = TextAnchor.TOP_LEFT;</span>
+        }
+<span class="nc bnc" id="L450" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.LEFT)) {</span>
+<span class="nc" id="L451">            result = TextAnchor.HALF_ASCENT_RIGHT;</span>
+        }
+<span class="nc bnc" id="L453" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.RIGHT)) {</span>
+<span class="nc" id="L454">            result = TextAnchor.HALF_ASCENT_LEFT;</span>
+        }
+<span class="nc bnc" id="L456" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.BOTTOM_LEFT)) {</span>
+<span class="nc" id="L457">            result = TextAnchor.BOTTOM_RIGHT;</span>
+        }
+<span class="nc bnc" id="L459" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.BOTTOM)) {</span>
+<span class="nc" id="L460">            result = TextAnchor.BOTTOM_CENTER;</span>
+        }
+<span class="nc bnc" id="L462" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.BOTTOM_RIGHT)) {</span>
+<span class="nc" id="L463">            result = TextAnchor.BOTTOM_LEFT;</span>
+        }
+<span class="nc" id="L465">        return result;</span>
+    }
+
+    /**
+     * Returns the text anchor that is used to align a label to its anchor
+     * point.
+     *
+     * @param anchor  the anchor.
+     *
+     * @return The text alignment point.
+     */
+    private TextAnchor textAlignPtForLabelAnchorH(RectangleAnchor anchor) {
+<span class="nc" id="L477">        TextAnchor result = TextAnchor.CENTER;</span>
+<span class="nc bnc" id="L478" title="All 2 branches missed.">        if (anchor.equals(RectangleAnchor.TOP_LEFT)) {</span>
+<span class="nc" id="L479">            result = TextAnchor.BOTTOM_LEFT;</span>
+        }
+<span class="nc bnc" id="L481" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.TOP)) {</span>
+<span class="nc" id="L482">            result = TextAnchor.BOTTOM_CENTER;</span>
+        }
+<span class="nc bnc" id="L484" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.TOP_RIGHT)) {</span>
+<span class="nc" id="L485">            result = TextAnchor.BOTTOM_RIGHT;</span>
+        }
+<span class="nc bnc" id="L487" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.LEFT)) {</span>
+<span class="nc" id="L488">            result = TextAnchor.HALF_ASCENT_LEFT;</span>
+        }
+<span class="nc bnc" id="L490" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.RIGHT)) {</span>
+<span class="nc" id="L491">            result = TextAnchor.HALF_ASCENT_RIGHT;</span>
+        }
+<span class="nc bnc" id="L493" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.BOTTOM_LEFT)) {</span>
+<span class="nc" id="L494">            result = TextAnchor.TOP_LEFT;</span>
+        }
+<span class="nc bnc" id="L496" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.BOTTOM)) {</span>
+<span class="nc" id="L497">            result = TextAnchor.TOP_CENTER;</span>
+        }
+<span class="nc bnc" id="L499" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.BOTTOM_RIGHT)) {</span>
+<span class="nc" id="L500">            result = TextAnchor.TOP_RIGHT;</span>
+        }
+<span class="nc" id="L502">        return result;</span>
+    }
+
+    private RectangleAnchor flipAnchorH(RectangleAnchor anchor) {
+<span class="nc" id="L506">        RectangleAnchor result = anchor;</span>
+<span class="nc bnc" id="L507" title="All 2 branches missed.">        if (anchor.equals(RectangleAnchor.TOP_LEFT)) {</span>
+<span class="nc" id="L508">            result = RectangleAnchor.TOP_RIGHT;</span>
+        }
+<span class="nc bnc" id="L510" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.TOP_RIGHT)) {</span>
+<span class="nc" id="L511">            result = RectangleAnchor.TOP_LEFT;</span>
+        }
+<span class="nc bnc" id="L513" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.LEFT)) {</span>
+<span class="nc" id="L514">            result = RectangleAnchor.RIGHT;</span>
+        }
+<span class="nc bnc" id="L516" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.RIGHT)) {</span>
+<span class="nc" id="L517">            result = RectangleAnchor.LEFT;</span>
+        }
+<span class="nc bnc" id="L519" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.BOTTOM_LEFT)) {</span>
+<span class="nc" id="L520">            result = RectangleAnchor.BOTTOM_RIGHT;</span>
+        }
+<span class="nc bnc" id="L522" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.BOTTOM_RIGHT)) {</span>
+<span class="nc" id="L523">            result = RectangleAnchor.BOTTOM_LEFT;</span>
+        }
+<span class="nc" id="L525">        return result;</span>
+    }
+
+    private RectangleAnchor flipAnchorV(RectangleAnchor anchor) {
+<span class="nc" id="L529">        RectangleAnchor result = anchor;</span>
+<span class="nc bnc" id="L530" title="All 2 branches missed.">        if (anchor.equals(RectangleAnchor.TOP_LEFT)) {</span>
+<span class="nc" id="L531">            result = RectangleAnchor.BOTTOM_LEFT;</span>
+        }
+<span class="nc bnc" id="L533" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.TOP_RIGHT)) {</span>
+<span class="nc" id="L534">            result = RectangleAnchor.BOTTOM_RIGHT;</span>
+        }
+<span class="nc bnc" id="L536" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.TOP)) {</span>
+<span class="nc" id="L537">            result = RectangleAnchor.BOTTOM;</span>
+        }
+<span class="nc bnc" id="L539" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.BOTTOM)) {</span>
+<span class="nc" id="L540">            result = RectangleAnchor.TOP;</span>
+        }
+<span class="nc bnc" id="L542" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.BOTTOM_LEFT)) {</span>
+<span class="nc" id="L543">            result = RectangleAnchor.TOP_LEFT;</span>
+        }
+<span class="nc bnc" id="L545" title="All 2 branches missed.">        else if (anchor.equals(RectangleAnchor.BOTTOM_RIGHT)) {</span>
+<span class="nc" id="L546">            result = RectangleAnchor.TOP_RIGHT;</span>
+        }
+<span class="nc" id="L548">        return result;</span>
+    }
+
+    /**
+     * Tests this overlay for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L560" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L561">            return true;</span>
+        }
+<span class="pc bpc" id="L563" title="1 of 2 branches missed.">        if (!(obj instanceof CrosshairOverlay)) {</span>
+<span class="nc" id="L564">            return false;</span>
+        }
+<span class="fc" id="L566">        CrosshairOverlay that = (CrosshairOverlay) obj;</span>
+<span class="fc bfc" id="L567" title="All 2 branches covered.">        if (!this.xCrosshairs.equals(that.xCrosshairs)) {</span>
+<span class="fc" id="L568">            return false;</span>
+        }
+<span class="pc bpc" id="L570" title="1 of 2 branches missed.">        if (!this.yCrosshairs.equals(that.yCrosshairs)) {</span>
+<span class="nc" id="L571">            return false;</span>
+        }
+<span class="fc" id="L573">        return true;</span>
+    }
+
+    /**
+     * Returns a clone of this instance.
+     *
+     * @return A clone of this instance.
+     *
+     * @throws java.lang.CloneNotSupportedException if there is some problem
+     *     with the cloning.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L586">        CrosshairOverlay clone = (CrosshairOverlay) super.clone();</span>
+<span class="fc" id="L587">        clone.xCrosshairs = (List) ObjectUtilities.deepClone(this.xCrosshairs);</span>
+<span class="fc" id="L588">        clone.yCrosshairs = (List) ObjectUtilities.deepClone(this.yCrosshairs);</span>
+<span class="fc" id="L589">        return clone;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

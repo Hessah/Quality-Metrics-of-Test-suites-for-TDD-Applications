@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>SnippetShutdownInstanceAuthCallback.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">netweaver</a> &gt; <a href="index.source.html" class="el_package">com.sap.netweaver.porta.core.snippets</a> &gt; <span class="el_source">SnippetShutdownInstanceAuthCallback.java</span></div><h1>SnippetShutdownInstanceAuthCallback.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2009, 2010 SAP AG.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *    Kaloyan Raev (SAP AG) - initial API and implementation
+ *******************************************************************************/
+package com.sap.netweaver.porta.core.snippets;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.MalformedURLException;
+import java.net.URL;
+
+import javax.xml.rpc.Stub;
+
+import org.apache.axis.AxisFault;
+
+import com.sap.managementconsole.soap.axis.sapcontrol.J2EEPSTATE;
+import com.sap.managementconsole.soap.axis.sapcontrol.J2EEProcess;
+import com.sap.managementconsole.soap.axis.sapcontrol.SAPControlPortType;
+import com.sap.managementconsole.soap.axis.sapcontrol.SAPControl_ServiceLocator;
+import com.sap.netweaver.porta.core.AuthenticationCallback;
+import com.sap.netweaver.porta.core.AuthenticationReason;
+import com.sap.netweaver.porta.core.CoreException;
+import com.sap.netweaver.porta.core.Credentials;
+
+<span class="nc" id="L32">public class SnippetShutdownInstanceAuthCallback {</span>
+	
+	public static final String HOST = &quot;localhost&quot;;
+	public static final int INST_NR = 1; // J2EE instance
+	
+	public static final String FAULT_UNAUTHORIZED = &quot;(401)Unauthorized&quot;;
+	public static final String FAULT_INVALID_CREDENTIALS = &quot;Invalid Credentials&quot;;
+	
+<span class="nc" id="L40">	public static AuthenticationCallback callback = new AuthCallback();</span>
+	
+	public static void main(String[] args) throws Exception {
+<span class="nc" id="L43">		SAPControlPortType control = new SAPControl_ServiceLocator().getSAPControl(getWsUrl());</span>
+<span class="nc" id="L44">		J2EEProcess[] processes = control.j2EEGetProcessList();</span>
+		
+<span class="nc" id="L46">		J2EEProcess p = getFirstServerNode(processes);</span>
+<span class="nc bnc" id="L47" title="All 10 branches missed.">		if (p == null) {</span>
+<span class="nc bnc" id="L48" title="All 6 branches missed.">			System.out.println(&quot;There is no server process found. &quot;);</span>
+<span class="nc" id="L49">			return;</span>
+		}
+		
+<span class="nc bnc" id="L52" title="All 2 branches missed.">		if (!p.getState().equals(J2EEPSTATE.value4)) { // RUNNING</span>
+<span class="nc bnc" id="L53" title="All 6 branches missed.">			System.out.println(p.getName() + &quot; node is not in Running state: &quot; + p.getStatetext());</span>
+<span class="nc" id="L54">			return;</span>
+		} 
+		
+<span class="nc bnc" id="L57" title="All 6 branches missed.">		System.out.println(p.getName() + &quot; is in &quot; + p.getStatetext() + &quot; state. Will now stop it. &quot;);</span>
+
+		// Shutdown the instance
+		boolean repeat;
+		do {
+<span class="nc bnc" id="L62" title="All 6 branches missed.">			repeat = false;</span>
+			try {
+<span class="nc bnc" id="L64" title="All 14 branches missed.">				control.shutdown(0);</span>
+<span class="nc" id="L65">			} catch (AxisFault fault) {</span>
+<span class="nc bnc" id="L66" title="All 12 branches missed.">				if (FAULT_UNAUTHORIZED.equals(fault.getFaultReason())) {</span>
+<span class="nc" id="L67">					Credentials credentials = callback.getCredentials(AuthenticationReason.AUTHORIZATION_REQUIRED);</span>
+<span class="nc bnc" id="L68" title="All 6 branches missed.">					addAuthentication(control, credentials.getUser(), credentials.getPassword());</span>
+<span class="nc bnc" id="L69" title="All 6 branches missed.">					repeat = true;</span>
+<span class="nc bnc" id="L70" title="All 12 branches missed.">				} else if (FAULT_INVALID_CREDENTIALS.equals(fault.getFaultReason())) {</span>
+<span class="nc" id="L71">					Credentials credentials = callback.getCredentials(AuthenticationReason.INVALID_CREDENTIALS);</span>
+<span class="nc bnc" id="L72" title="All 6 branches missed.">					addAuthentication(control, credentials.getUser(), credentials.getPassword());</span>
+<span class="nc bnc" id="L73" title="All 6 branches missed.">					repeat = true;</span>
+<span class="nc" id="L74">				} else {</span>
+<span class="nc" id="L75">					throw fault;</span>
+				}
+<span class="nc" id="L77">			}</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">		} while (repeat);</span>
+<span class="nc" id="L79">	}</span>
+	
+	private static URL getWsUrl() throws MalformedURLException {
+<span class="nc bnc" id="L82" title="All 40 branches missed.">		int port = 50013 + INST_NR * 100;</span>
+<span class="nc" id="L83">		return new URL(&quot;http&quot;, HOST, port, &quot;/SAPControl.cgi&quot;);</span>
+	}
+	
+	private static J2EEProcess getFirstServerNode(J2EEProcess[] processes) {
+<span class="nc bnc" id="L87" title="All 2 branches missed.">		for (J2EEProcess p : processes) {</span>
+<span class="nc bnc" id="L88" title="All 12 branches missed.">			if (&quot;J2EE Server&quot;.equals(p.getType())) {</span>
+<span class="nc" id="L89">				return p;</span>
+			}
+		}
+<span class="nc" id="L92">		return null;</span>
+	}
+	
+	private static void addAuthentication(SAPControlPortType control, String user, String pass) throws IOException {
+<span class="nc" id="L96">		Stub stub = (Stub) control;</span>
+<span class="nc bnc" id="L97" title="All 6 branches missed.">		stub._setProperty(Stub.USERNAME_PROPERTY, user);</span>
+<span class="nc bnc" id="L98" title="All 6 branches missed.">		stub._setProperty(Stub.PASSWORD_PROPERTY, pass);</span>
+<span class="nc" id="L99">	}</span>
+	
+<span class="nc" id="L101">	private static class AuthCallback implements AuthenticationCallback {</span>
+
+		public Credentials getCredentials(AuthenticationReason reason) throws CoreException {
+<span class="nc bnc" id="L104" title="All 3 branches missed.">			switch (reason) {</span>
+				case AUTHORIZATION_REQUIRED:
+<span class="nc bnc" id="L106" title="All 6 branches missed.">					System.out.println(&quot;User and password have not been given yet. Please, give user and password.&quot;);</span>
+					break;
+	
+				case INVALID_CREDENTIALS:
+<span class="nc bnc" id="L110" title="All 6 branches missed.">					System.out.println(&quot;Invalid user and password. Try again.&quot;);</span>
+					break;
+			}
+			
+<span class="nc" id="L114">			BufferedReader in = new BufferedReader(new InputStreamReader(System.in));</span>
+			
+			try {
+<span class="nc bnc" id="L117" title="All 6 branches missed.">				System.out.print(&quot;User: &quot;);</span>
+<span class="nc" id="L118">				String user = in.readLine();</span>
+<span class="nc bnc" id="L119" title="All 6 branches missed.">				System.out.print(&quot;Pass: &quot;);</span>
+<span class="nc" id="L120">				String pass = in.readLine();</span>
+<span class="nc" id="L121">				return new Credentials(user, pass);</span>
+<span class="nc" id="L122">			} catch (IOException e) {</span>
+<span class="nc" id="L123">				throw new CoreException(e);</span>
+			}
+		}
+		
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

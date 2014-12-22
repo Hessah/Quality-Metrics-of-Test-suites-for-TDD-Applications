@@ -1,0 +1,855 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>XYBoxAndWhiskerRenderer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.renderer.xy</a> &gt; <span class="el_source">XYBoxAndWhiskerRenderer.java</span></div><h1>XYBoxAndWhiskerRenderer.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ----------------------------
+ * XYBoxAndWhiskerRenderer.java
+ * ----------------------------
+ * (C) Copyright 2003-2013, by David Browning and Contributors.
+ *
+ * Original Author:  David Browning (for Australian Institute of Marine
+ *                   Science);
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *
+ * Changes
+ * -------
+ * 05-Aug-2003 : Version 1, contributed by David Browning.  Based on code in the
+ *               CandlestickRenderer class.  Additional modifications by David
+ *               Gilbert to make the code work with 0.9.10 changes (DG);
+ * 08-Aug-2003 : Updated some of the Javadoc
+ *               Allowed BoxAndwhiskerDataset Average value to be null - the
+ *               average value is an AIMS requirement
+ *               Allow the outlier and farout coefficients to be set - though
+ *               at the moment this only affects the calculation of farouts.
+ *               Added artifactPaint variable and setter/getter
+ * 12-Aug-2003   Rewrote code to sort out and process outliers to take
+ *               advantage of changes in DefaultBoxAndWhiskerDataset
+ *               Added a limit of 10% for width of box should no width be
+ *               specified...maybe this should be setable???
+ * 20-Aug-2003 : Implemented Cloneable and PublicCloneable (DG);
+ * 08-Sep-2003 : Changed ValueAxis API (DG);
+ * 16-Sep-2003 : Changed ChartRenderingInfo --&gt; PlotRenderingInfo (DG);
+ * 25-Feb-2004 : Replaced CrosshairInfo with CrosshairState (DG);
+ * 23-Apr-2004 : Added fillBox attribute, extended equals() method and fixed
+ *               serialization issue (DG);
+ * 29-Apr-2004 : Fixed problem with drawing upper and lower shadows - bug id
+ *               944011 (DG);
+ * 15-Jul-2004 : Switched getX() with getXValue() and getY() with
+ *               getYValue() (DG);
+ * 01-Oct-2004 : Renamed 'paint' --&gt; 'boxPaint' to avoid conflict with
+ *               inherited attribute (DG);
+ * 10-Jun-2005 : Updated equals() to handle GradientPaint (DG);
+ * 06-Oct-2005 : Removed setPaint() call in drawItem(), it is causing a
+ *               loop (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 02-Feb-2007 : Removed author tags from all over JFreeChart sources (DG);
+ * 05-Feb-2007 : Added event notifications and fixed drawing for horizontal
+ *               plot orientation (DG);
+ * 13-Jun-2007 : Replaced deprecated method call (DG);
+ * 03-Jan-2008 : Check visibility of average marker before drawing it (DG);
+ * 27-Mar-2008 : If boxPaint is null, revert to itemPaint (DG);
+ * 27-Mar-2009 : Added findRangeBounds() method override (DG);
+ * 08-Dec-2009 : Fix for bug 2909215, NullPointerException for null
+ *               outliers (DG);
+ *
+ */
+
+package org.jfree.chart.renderer.xy;
+
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Line2D;
+import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.entity.EntityCollection;
+import org.jfree.chart.event.RendererChangeEvent;
+import org.jfree.chart.labels.BoxAndWhiskerXYToolTipGenerator;
+import org.jfree.chart.plot.CrosshairState;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.plot.PlotRenderingInfo;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.renderer.Outlier;
+import org.jfree.chart.renderer.OutlierList;
+import org.jfree.chart.renderer.OutlierListCollection;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.data.Range;
+import org.jfree.data.statistics.BoxAndWhiskerXYDataset;
+import org.jfree.data.xy.XYDataset;
+import org.jfree.io.SerialUtilities;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.util.PaintUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A renderer that draws box-and-whisker items on an {@link XYPlot}.  This
+ * renderer requires a {@link BoxAndWhiskerXYDataset}).  The example shown here
+ * is generated by the &lt;code&gt;BoxAndWhiskerChartDemo2.java&lt;/code&gt; program
+ * included in the JFreeChart demo collection:
+ * &lt;br&gt;&lt;br&gt;
+ * &lt;img src=&quot;../../../../../images/XYBoxAndWhiskerRendererSample.png&quot;
+ * alt=&quot;XYBoxAndWhiskerRendererSample.png&quot; /&gt;
+ * &lt;P&gt;
+ * This renderer does not include any code to calculate the crosshair point.
+ */
+public class XYBoxAndWhiskerRenderer extends AbstractXYItemRenderer
+        implements XYItemRenderer, Cloneable, PublicCloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = -8020170108532232324L;
+
+    /** The box width. */
+    private double boxWidth;
+
+    /** The paint used to fill the box. */
+    private transient Paint boxPaint;
+
+    /** A flag that controls whether or not the box is filled. */
+    private boolean fillBox;
+
+    /**
+     * The paint used to draw various artifacts such as outliers, farout
+     * symbol, average ellipse and median line.
+     */
+<span class="fc" id="L149">    private transient Paint artifactPaint = Color.black;</span>
+
+    /**
+     * Creates a new renderer for box and whisker charts.
+     */
+    public XYBoxAndWhiskerRenderer() {
+<span class="fc" id="L155">        this(-1.0);</span>
+<span class="fc" id="L156">    }</span>
+
+    /**
+     * Creates a new renderer for box and whisker charts.
+     * &lt;P&gt;
+     * Use -1 for the box width if you prefer the width to be calculated
+     * automatically.
+     *
+     * @param boxWidth  the box width.
+     */
+    public XYBoxAndWhiskerRenderer(double boxWidth) {
+<span class="fc" id="L167">        super();</span>
+<span class="fc" id="L168">        this.boxWidth = boxWidth;</span>
+<span class="fc" id="L169">        this.boxPaint = Color.green;</span>
+<span class="fc" id="L170">        this.fillBox = true;</span>
+<span class="fc" id="L171">        setBaseToolTipGenerator(new BoxAndWhiskerXYToolTipGenerator());</span>
+<span class="fc" id="L172">    }</span>
+
+    /**
+     * Returns the width of each box.
+     *
+     * @return The box width.
+     *
+     * @see #setBoxWidth(double)
+     */
+    public double getBoxWidth() {
+<span class="fc" id="L182">        return this.boxWidth;</span>
+    }
+
+    /**
+     * Sets the box width and sends a {@link RendererChangeEvent} to all
+     * registered listeners.
+     * &lt;P&gt;
+     * If you set the width to a negative value, the renderer will calculate
+     * the box width automatically based on the space available on the chart.
+     *
+     * @param width  the width.
+     *
+     * @see #getBoxWidth()
+     */
+    public void setBoxWidth(double width) {
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">        if (width != this.boxWidth) {</span>
+<span class="fc" id="L198">            this.boxWidth = width;</span>
+<span class="fc" id="L199">            fireChangeEvent();</span>
+        }
+<span class="fc" id="L201">    }</span>
+
+    /**
+     * Returns the paint used to fill boxes.
+     *
+     * @return The paint (possibly &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setBoxPaint(Paint)
+     */
+    public Paint getBoxPaint() {
+<span class="fc" id="L211">        return this.boxPaint;</span>
+    }
+
+    /**
+     * Sets the paint used to fill boxes and sends a {@link RendererChangeEvent}
+     * to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @see #getBoxPaint()
+     */
+    public void setBoxPaint(Paint paint) {
+<span class="fc" id="L223">        this.boxPaint = paint;</span>
+<span class="fc" id="L224">        fireChangeEvent();</span>
+<span class="fc" id="L225">    }</span>
+
+    /**
+     * Returns the flag that controls whether or not the box is filled.
+     *
+     * @return A boolean.
+     *
+     * @see #setFillBox(boolean)
+     */
+    public boolean getFillBox() {
+<span class="fc" id="L235">        return this.fillBox;</span>
+    }
+
+    /**
+     * Sets the flag that controls whether or not the box is filled and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param flag  the flag.
+     *
+     * @see #setFillBox(boolean)
+     */
+    public void setFillBox(boolean flag) {
+<span class="fc" id="L247">        this.fillBox = flag;</span>
+<span class="fc" id="L248">        fireChangeEvent();</span>
+<span class="fc" id="L249">    }</span>
+
+    /**
+     * Returns the paint used to paint the various artifacts such as outliers,
+     * farout symbol, median line and the averages ellipse.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setArtifactPaint(Paint)
+     */
+    public Paint getArtifactPaint() {
+<span class="fc" id="L260">        return this.artifactPaint;</span>
+    }
+
+    /**
+     * Sets the paint used to paint the various artifacts such as outliers,
+     * farout symbol, median line and the averages ellipse, and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getArtifactPaint()
+     */
+    public void setArtifactPaint(Paint paint) {
+<span class="fc" id="L273">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L274">        this.artifactPaint = paint;</span>
+<span class="fc" id="L275">        fireChangeEvent();</span>
+<span class="fc" id="L276">    }</span>
+
+    /**
+     * Returns the range of values the renderer requires to display all the
+     * items from the specified dataset.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return The range (&lt;code&gt;null&lt;/code&gt; if the dataset is &lt;code&gt;null&lt;/code&gt;
+     *         or empty).
+     *
+     * @see #findDomainBounds(XYDataset)
+     */
+    @Override
+    public Range findRangeBounds(XYDataset dataset) {
+<span class="fc" id="L291">        return findRangeBounds(dataset, true);</span>
+    }
+
+    /**
+     * Returns the box paint or, if this is &lt;code&gt;null&lt;/code&gt;, the item
+     * paint.
+     *
+     * @param series  the series index.
+     * @param item  the item index.
+     *
+     * @return The paint used to fill the box for the specified item (never
+     *         &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @since 1.0.10
+     */
+    protected Paint lookupBoxPaint(int series, int item) {
+<span class="fc" id="L307">        Paint p = getBoxPaint();</span>
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">        if (p != null) {</span>
+<span class="fc" id="L309">            return p;</span>
+        }
+        else {
+            // TODO: could change this to itemFillPaint().  For backwards
+            // compatibility, it might require a useFillPaint flag.
+<span class="nc" id="L314">            return getItemPaint(series, item);</span>
+        }
+    }
+
+    /**
+     * Draws the visual representation of a single data item.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the area within which the plot is being drawn.
+     * @param info  collects info about the drawing.
+     * @param plot  the plot (can be used to obtain standard color
+     *              information etc).
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the dataset (must be an instance of
+     *                 {@link BoxAndWhiskerXYDataset}).
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     * @param crosshairState  crosshair information for the plot
+     *                        (&lt;code&gt;null&lt;/code&gt; permitted).
+     * @param pass  the pass index.
+     */
+    @Override
+    public void drawItem(Graphics2D g2, XYItemRendererState state,
+            Rectangle2D dataArea, PlotRenderingInfo info, XYPlot plot,
+            ValueAxis domainAxis, ValueAxis rangeAxis, XYDataset dataset,
+            int series, int item, CrosshairState crosshairState, int pass) {
+
+<span class="fc" id="L343">        PlotOrientation orientation = plot.getOrientation();</span>
+
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">        if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L346">            drawHorizontalItem(g2, dataArea, info, plot, domainAxis, rangeAxis,</span>
+                    dataset, series, item, crosshairState, pass);
+        }
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">        else if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="fc" id="L350">            drawVerticalItem(g2, dataArea, info, plot, domainAxis, rangeAxis,</span>
+                    dataset, series, item, crosshairState, pass);
+        }
+
+<span class="fc" id="L354">    }</span>
+
+    /**
+     * Draws the visual representation of a single data item.
+     *
+     * @param g2  the graphics device.
+     * @param dataArea  the area within which the plot is being drawn.
+     * @param info  collects info about the drawing.
+     * @param plot  the plot (can be used to obtain standard color
+     *              information etc).
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the dataset (must be an instance of
+     *                 {@link BoxAndWhiskerXYDataset}).
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     * @param crosshairState  crosshair information for the plot
+     *                        (&lt;code&gt;null&lt;/code&gt; permitted).
+     * @param pass  the pass index.
+     */
+    public void drawHorizontalItem(Graphics2D g2, Rectangle2D dataArea,
+            PlotRenderingInfo info, XYPlot plot, ValueAxis domainAxis,
+            ValueAxis rangeAxis, XYDataset dataset, int series,
+            int item, CrosshairState crosshairState, int pass) {
+
+        // setup for collecting optional entity info...
+<span class="nc" id="L380">        EntityCollection entities = null;</span>
+<span class="nc bnc" id="L381" title="All 2 branches missed.">        if (info != null) {</span>
+<span class="nc" id="L382">            entities = info.getOwner().getEntityCollection();</span>
+        }
+
+<span class="nc" id="L385">        BoxAndWhiskerXYDataset boxAndWhiskerData</span>
+                = (BoxAndWhiskerXYDataset) dataset;
+
+<span class="nc" id="L388">        Number x = boxAndWhiskerData.getX(series, item);</span>
+<span class="nc" id="L389">        Number yMax = boxAndWhiskerData.getMaxRegularValue(series, item);</span>
+<span class="nc" id="L390">        Number yMin = boxAndWhiskerData.getMinRegularValue(series, item);</span>
+<span class="nc" id="L391">        Number yMedian = boxAndWhiskerData.getMedianValue(series, item);</span>
+<span class="nc" id="L392">        Number yAverage = boxAndWhiskerData.getMeanValue(series, item);</span>
+<span class="nc" id="L393">        Number yQ1Median = boxAndWhiskerData.getQ1Value(series, item);</span>
+<span class="nc" id="L394">        Number yQ3Median = boxAndWhiskerData.getQ3Value(series, item);</span>
+
+<span class="nc" id="L396">        double xx = domainAxis.valueToJava2D(x.doubleValue(), dataArea,</span>
+                plot.getDomainAxisEdge());
+
+<span class="nc" id="L399">        RectangleEdge location = plot.getRangeAxisEdge();</span>
+<span class="nc" id="L400">        double yyMax = rangeAxis.valueToJava2D(yMax.doubleValue(), dataArea,</span>
+                location);
+<span class="nc" id="L402">        double yyMin = rangeAxis.valueToJava2D(yMin.doubleValue(), dataArea,</span>
+                location);
+<span class="nc" id="L404">        double yyMedian = rangeAxis.valueToJava2D(yMedian.doubleValue(),</span>
+                dataArea, location);
+<span class="nc" id="L406">        double yyAverage = 0.0;</span>
+<span class="nc bnc" id="L407" title="All 2 branches missed.">        if (yAverage != null) {</span>
+<span class="nc" id="L408">            yyAverage = rangeAxis.valueToJava2D(yAverage.doubleValue(),</span>
+                    dataArea, location);
+        }
+<span class="nc" id="L411">        double yyQ1Median = rangeAxis.valueToJava2D(yQ1Median.doubleValue(),</span>
+                dataArea, location);
+<span class="nc" id="L413">        double yyQ3Median = rangeAxis.valueToJava2D(yQ3Median.doubleValue(),</span>
+                dataArea, location);
+
+<span class="nc" id="L416">        double exactBoxWidth = getBoxWidth();</span>
+<span class="nc" id="L417">        double width = exactBoxWidth;</span>
+<span class="nc" id="L418">        double dataAreaX = dataArea.getHeight();</span>
+<span class="nc" id="L419">        double maxBoxPercent = 0.1;</span>
+<span class="nc" id="L420">        double maxBoxWidth = dataAreaX * maxBoxPercent;</span>
+<span class="nc bnc" id="L421" title="All 2 branches missed.">        if (exactBoxWidth &lt;= 0.0) {</span>
+<span class="nc" id="L422">            int itemCount = boxAndWhiskerData.getItemCount(series);</span>
+<span class="nc" id="L423">            exactBoxWidth = dataAreaX / itemCount * 4.5 / 7;</span>
+<span class="nc bnc" id="L424" title="All 2 branches missed.">            if (exactBoxWidth &lt; 3) {</span>
+<span class="nc" id="L425">                width = 3;</span>
+            }
+<span class="nc bnc" id="L427" title="All 2 branches missed.">            else if (exactBoxWidth &gt; maxBoxWidth) {</span>
+<span class="nc" id="L428">                width = maxBoxWidth;</span>
+            }
+            else {
+<span class="nc" id="L431">                width = exactBoxWidth;</span>
+            }
+        }
+
+<span class="nc" id="L435">        g2.setPaint(getItemPaint(series, item));</span>
+<span class="nc" id="L436">        Stroke s = getItemStroke(series, item);</span>
+<span class="nc" id="L437">        g2.setStroke(s);</span>
+
+        // draw the upper shadow
+<span class="nc" id="L440">        g2.draw(new Line2D.Double(yyMax, xx, yyQ3Median, xx));</span>
+<span class="nc" id="L441">        g2.draw(new Line2D.Double(yyMax, xx - width / 2, yyMax,</span>
+                xx + width / 2));
+
+        // draw the lower shadow
+<span class="nc" id="L445">        g2.draw(new Line2D.Double(yyMin, xx, yyQ1Median, xx));</span>
+<span class="nc" id="L446">        g2.draw(new Line2D.Double(yyMin, xx - width / 2, yyMin,</span>
+                xx + width / 2));
+
+        // draw the body
+        Shape box;
+<span class="nc bnc" id="L451" title="All 2 branches missed.">        if (yyQ1Median &lt; yyQ3Median) {</span>
+<span class="nc" id="L452">            box = new Rectangle2D.Double(yyQ1Median, xx - width / 2,</span>
+                    yyQ3Median - yyQ1Median, width);
+        }
+        else {
+<span class="nc" id="L456">            box = new Rectangle2D.Double(yyQ3Median, xx - width / 2,</span>
+                    yyQ1Median - yyQ3Median, width);
+        }
+<span class="nc bnc" id="L459" title="All 2 branches missed.">        if (this.fillBox) {</span>
+<span class="nc" id="L460">            g2.setPaint(lookupBoxPaint(series, item));</span>
+<span class="nc" id="L461">            g2.fill(box);</span>
+        }
+<span class="nc" id="L463">        g2.setStroke(getItemOutlineStroke(series, item));</span>
+<span class="nc" id="L464">        g2.setPaint(getItemOutlinePaint(series, item));</span>
+<span class="nc" id="L465">        g2.draw(box);</span>
+
+        // draw median
+<span class="nc" id="L468">        g2.setPaint(getArtifactPaint());</span>
+<span class="nc" id="L469">        g2.draw(new Line2D.Double(yyMedian,</span>
+                xx - width / 2, yyMedian, xx + width / 2));
+
+        // draw average - SPECIAL AIMS REQUIREMENT
+<span class="nc bnc" id="L473" title="All 2 branches missed.">        if (yAverage != null) {</span>
+<span class="nc" id="L474">            double aRadius = width / 4;</span>
+            // here we check that the average marker will in fact be visible
+            // before drawing it...
+<span class="nc bnc" id="L477" title="All 4 branches missed.">            if ((yyAverage &gt; (dataArea.getMinX() - aRadius))</span>
+                    &amp;&amp; (yyAverage &lt; (dataArea.getMaxX() + aRadius))) {
+<span class="nc" id="L479">                Ellipse2D.Double avgEllipse = new Ellipse2D.Double(</span>
+                        yyAverage - aRadius, xx - aRadius, aRadius * 2,
+                        aRadius * 2);
+<span class="nc" id="L482">                g2.fill(avgEllipse);</span>
+<span class="nc" id="L483">                g2.draw(avgEllipse);</span>
+            }
+        }
+
+        // FIXME: draw outliers
+
+        // add an entity for the item...
+<span class="nc bnc" id="L490" title="All 4 branches missed.">        if (entities != null &amp;&amp; box.intersects(dataArea)) {</span>
+<span class="nc" id="L491">            addEntity(entities, box, dataset, series, item, yyAverage, xx);</span>
+        }
+
+<span class="nc" id="L494">    }</span>
+
+    /**
+     * Draws the visual representation of a single data item.
+     *
+     * @param g2  the graphics device.
+     * @param dataArea  the area within which the plot is being drawn.
+     * @param info  collects info about the drawing.
+     * @param plot  the plot (can be used to obtain standard color
+     *              information etc).
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the dataset (must be an instance of
+     *                 {@link BoxAndWhiskerXYDataset}).
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     * @param crosshairState  crosshair information for the plot
+     *                        (&lt;code&gt;null&lt;/code&gt; permitted).
+     * @param pass  the pass index.
+     */
+    public void drawVerticalItem(Graphics2D g2, Rectangle2D dataArea,
+            PlotRenderingInfo info, XYPlot plot, ValueAxis domainAxis,
+            ValueAxis rangeAxis, XYDataset dataset, int series,
+            int item, CrosshairState crosshairState, int pass) {
+
+        // setup for collecting optional entity info...
+<span class="fc" id="L520">        EntityCollection entities = null;</span>
+<span class="pc bpc" id="L521" title="1 of 2 branches missed.">        if (info != null) {</span>
+<span class="nc" id="L522">            entities = info.getOwner().getEntityCollection();</span>
+        }
+
+<span class="fc" id="L525">        BoxAndWhiskerXYDataset boxAndWhiskerData</span>
+            = (BoxAndWhiskerXYDataset) dataset;
+
+<span class="fc" id="L528">        Number x = boxAndWhiskerData.getX(series, item);</span>
+<span class="fc" id="L529">        Number yMax = boxAndWhiskerData.getMaxRegularValue(series, item);</span>
+<span class="fc" id="L530">        Number yMin = boxAndWhiskerData.getMinRegularValue(series, item);</span>
+<span class="fc" id="L531">        Number yMedian = boxAndWhiskerData.getMedianValue(series, item);</span>
+<span class="fc" id="L532">        Number yAverage = boxAndWhiskerData.getMeanValue(series, item);</span>
+<span class="fc" id="L533">        Number yQ1Median = boxAndWhiskerData.getQ1Value(series, item);</span>
+<span class="fc" id="L534">        Number yQ3Median = boxAndWhiskerData.getQ3Value(series, item);</span>
+<span class="fc" id="L535">        List yOutliers = boxAndWhiskerData.getOutliers(series, item);</span>
+        // yOutliers can be null, but we'd prefer it to be an empty list in
+        // that case...
+<span class="pc bpc" id="L538" title="1 of 2 branches missed.">        if (yOutliers == null) {</span>
+<span class="fc" id="L539">            yOutliers = Collections.EMPTY_LIST;</span>
+        }
+
+<span class="fc" id="L542">        double xx = domainAxis.valueToJava2D(x.doubleValue(), dataArea,</span>
+                plot.getDomainAxisEdge());
+
+<span class="fc" id="L545">        RectangleEdge location = plot.getRangeAxisEdge();</span>
+<span class="fc" id="L546">        double yyMax = rangeAxis.valueToJava2D(yMax.doubleValue(), dataArea,</span>
+                location);
+<span class="fc" id="L548">        double yyMin = rangeAxis.valueToJava2D(yMin.doubleValue(), dataArea,</span>
+                location);
+<span class="fc" id="L550">        double yyMedian = rangeAxis.valueToJava2D(yMedian.doubleValue(),</span>
+                dataArea, location);
+<span class="fc" id="L552">        double yyAverage = 0.0;</span>
+<span class="pc bpc" id="L553" title="1 of 2 branches missed.">        if (yAverage != null) {</span>
+<span class="fc" id="L554">            yyAverage = rangeAxis.valueToJava2D(yAverage.doubleValue(),</span>
+                    dataArea, location);
+        }
+<span class="fc" id="L557">        double yyQ1Median = rangeAxis.valueToJava2D(yQ1Median.doubleValue(),</span>
+                dataArea, location);
+<span class="fc" id="L559">        double yyQ3Median = rangeAxis.valueToJava2D(yQ3Median.doubleValue(),</span>
+                dataArea, location);
+        double yyOutlier;
+
+<span class="fc" id="L563">        double exactBoxWidth = getBoxWidth();</span>
+<span class="fc" id="L564">        double width = exactBoxWidth;</span>
+<span class="fc" id="L565">        double dataAreaX = dataArea.getMaxX() - dataArea.getMinX();</span>
+<span class="fc" id="L566">        double maxBoxPercent = 0.1;</span>
+<span class="fc" id="L567">        double maxBoxWidth = dataAreaX * maxBoxPercent;</span>
+<span class="pc bpc" id="L568" title="1 of 2 branches missed.">        if (exactBoxWidth &lt;= 0.0) {</span>
+<span class="nc" id="L569">            int itemCount = boxAndWhiskerData.getItemCount(series);</span>
+<span class="nc" id="L570">            exactBoxWidth = dataAreaX / itemCount * 4.5 / 7;</span>
+<span class="nc bnc" id="L571" title="All 2 branches missed.">            if (exactBoxWidth &lt; 3) {</span>
+<span class="nc" id="L572">                width = 3;</span>
+            }
+<span class="nc bnc" id="L574" title="All 2 branches missed.">            else if (exactBoxWidth &gt; maxBoxWidth) {</span>
+<span class="nc" id="L575">                width = maxBoxWidth;</span>
+            }
+            else {
+<span class="nc" id="L578">                width = exactBoxWidth;</span>
+            }
+        }
+
+<span class="fc" id="L582">        g2.setPaint(getItemPaint(series, item));</span>
+<span class="fc" id="L583">        Stroke s = getItemStroke(series, item);</span>
+<span class="fc" id="L584">        g2.setStroke(s);</span>
+
+        // draw the upper shadow
+<span class="fc" id="L587">        g2.draw(new Line2D.Double(xx, yyMax, xx, yyQ3Median));</span>
+<span class="fc" id="L588">        g2.draw(new Line2D.Double(xx - width / 2, yyMax, xx + width / 2,</span>
+                yyMax));
+
+        // draw the lower shadow
+<span class="fc" id="L592">        g2.draw(new Line2D.Double(xx, yyMin, xx, yyQ1Median));</span>
+<span class="fc" id="L593">        g2.draw(new Line2D.Double(xx - width / 2, yyMin, xx + width / 2,</span>
+                yyMin));
+
+        // draw the body
+        Shape box;
+<span class="pc bpc" id="L598" title="1 of 2 branches missed.">        if (yyQ1Median &gt; yyQ3Median) {</span>
+<span class="fc" id="L599">            box = new Rectangle2D.Double(xx - width / 2, yyQ3Median, width,</span>
+                    yyQ1Median - yyQ3Median);
+        }
+        else {
+<span class="nc" id="L603">            box = new Rectangle2D.Double(xx - width / 2, yyQ1Median, width,</span>
+                    yyQ3Median - yyQ1Median);
+        }
+<span class="pc bpc" id="L606" title="1 of 2 branches missed.">        if (this.fillBox) {</span>
+<span class="fc" id="L607">            g2.setPaint(lookupBoxPaint(series, item));</span>
+<span class="fc" id="L608">            g2.fill(box);</span>
+        }
+<span class="fc" id="L610">        g2.setStroke(getItemOutlineStroke(series, item));</span>
+<span class="fc" id="L611">        g2.setPaint(getItemOutlinePaint(series, item));</span>
+<span class="fc" id="L612">        g2.draw(box);</span>
+
+        // draw median
+<span class="fc" id="L615">        g2.setPaint(getArtifactPaint());</span>
+<span class="fc" id="L616">        g2.draw(new Line2D.Double(xx - width / 2, yyMedian, xx + width / 2,</span>
+                yyMedian));
+
+<span class="fc" id="L619">        double aRadius = 0;                 // average radius</span>
+<span class="fc" id="L620">        double oRadius = width / 3;    // outlier radius</span>
+
+        // draw average - SPECIAL AIMS REQUIREMENT
+<span class="pc bpc" id="L623" title="1 of 2 branches missed.">        if (yAverage != null) {</span>
+<span class="fc" id="L624">            aRadius = width / 4;</span>
+            // here we check that the average marker will in fact be visible
+            // before drawing it...
+<span class="pc bpc" id="L627" title="2 of 4 branches missed.">            if ((yyAverage &gt; (dataArea.getMinY() - aRadius))</span>
+                    &amp;&amp; (yyAverage &lt; (dataArea.getMaxY() + aRadius))) {
+<span class="nc" id="L629">                Ellipse2D.Double avgEllipse = new Ellipse2D.Double(xx - aRadius,</span>
+                        yyAverage - aRadius, aRadius * 2, aRadius * 2);
+<span class="nc" id="L631">                g2.fill(avgEllipse);</span>
+<span class="nc" id="L632">                g2.draw(avgEllipse);</span>
+            }
+        }
+
+<span class="fc" id="L636">        List outliers = new ArrayList();</span>
+<span class="fc" id="L637">        OutlierListCollection outlierListCollection</span>
+                = new OutlierListCollection();
+
+        /* From outlier array sort out which are outliers and put these into
+         * an arraylist. If there are any farouts, set the flag on the
+         * OutlierListCollection
+         */
+<span class="pc bpc" id="L644" title="1 of 2 branches missed.">        for (int i = 0; i &lt; yOutliers.size(); i++) {</span>
+<span class="nc" id="L645">            double outlier = ((Number) yOutliers.get(i)).doubleValue();</span>
+<span class="nc bnc" id="L646" title="All 2 branches missed.">            if (outlier &gt; boxAndWhiskerData.getMaxOutlier(series,</span>
+                    item).doubleValue()) {
+<span class="nc" id="L648">                outlierListCollection.setHighFarOut(true);</span>
+            }
+<span class="nc bnc" id="L650" title="All 2 branches missed.">            else if (outlier &lt; boxAndWhiskerData.getMinOutlier(series,</span>
+                    item).doubleValue()) {
+<span class="nc" id="L652">                outlierListCollection.setLowFarOut(true);</span>
+            }
+<span class="nc bnc" id="L654" title="All 2 branches missed.">            else if (outlier &gt; boxAndWhiskerData.getMaxRegularValue(series,</span>
+                    item).doubleValue()) {
+<span class="nc" id="L656">                yyOutlier = rangeAxis.valueToJava2D(outlier, dataArea,</span>
+                        location);
+<span class="nc" id="L658">                outliers.add(new Outlier(xx, yyOutlier, oRadius));</span>
+            }
+<span class="nc bnc" id="L660" title="All 2 branches missed.">            else if (outlier &lt; boxAndWhiskerData.getMinRegularValue(series,</span>
+                    item).doubleValue()) {
+<span class="nc" id="L662">                yyOutlier = rangeAxis.valueToJava2D(outlier, dataArea,</span>
+                        location);
+<span class="nc" id="L664">                outliers.add(new Outlier(xx, yyOutlier, oRadius));</span>
+            }
+<span class="nc" id="L666">            Collections.sort(outliers);</span>
+        }
+
+        // Process outliers. Each outlier is either added to the appropriate
+        // outlier list or a new outlier list is made
+<span class="pc bpc" id="L671" title="1 of 2 branches missed.">        for (Iterator iterator = outliers.iterator(); iterator.hasNext();) {</span>
+<span class="nc" id="L672">            Outlier outlier = (Outlier) iterator.next();</span>
+<span class="nc" id="L673">            outlierListCollection.add(outlier);</span>
+<span class="nc" id="L674">        }</span>
+
+        // draw yOutliers
+<span class="fc" id="L677">        double maxAxisValue = rangeAxis.valueToJava2D(rangeAxis.getUpperBound(),</span>
+                dataArea, location) + aRadius;
+<span class="fc" id="L679">        double minAxisValue = rangeAxis.valueToJava2D(rangeAxis.getLowerBound(),</span>
+                dataArea, location) - aRadius;
+
+        // draw outliers
+<span class="fc" id="L683">        for (Iterator iterator = outlierListCollection.iterator();</span>
+<span class="pc bpc" id="L684" title="1 of 2 branches missed.">                iterator.hasNext();) {</span>
+<span class="nc" id="L685">            OutlierList list = (OutlierList) iterator.next();</span>
+<span class="nc" id="L686">            Outlier outlier = list.getAveragedOutlier();</span>
+<span class="nc" id="L687">            Point2D point = outlier.getPoint();</span>
+
+<span class="nc bnc" id="L689" title="All 2 branches missed.">            if (list.isMultiple()) {</span>
+<span class="nc" id="L690">                drawMultipleEllipse(point, width, oRadius, g2);</span>
+            }
+            else {
+<span class="nc" id="L693">                drawEllipse(point, oRadius, g2);</span>
+            }
+<span class="nc" id="L695">        }</span>
+
+        // draw farout
+<span class="pc bpc" id="L698" title="1 of 2 branches missed.">        if (outlierListCollection.isHighFarOut()) {</span>
+<span class="nc" id="L699">            drawHighFarOut(aRadius, g2, xx, maxAxisValue);</span>
+        }
+
+<span class="pc bpc" id="L702" title="1 of 2 branches missed.">        if (outlierListCollection.isLowFarOut()) {</span>
+<span class="nc" id="L703">            drawLowFarOut(aRadius, g2, xx, minAxisValue);</span>
+        }
+
+        // add an entity for the item...
+<span class="pc bpc" id="L707" title="3 of 4 branches missed.">        if (entities != null &amp;&amp; box.intersects(dataArea)) {</span>
+<span class="nc" id="L708">            addEntity(entities, box, dataset, series, item, xx, yyAverage);</span>
+        }
+
+<span class="fc" id="L711">    }</span>
+
+    /**
+     * Draws an ellipse to represent an outlier.
+     *
+     * @param point  the location.
+     * @param oRadius  the radius.
+     * @param g2  the graphics device.
+     */
+    protected void drawEllipse(Point2D point, double oRadius, Graphics2D g2) {
+<span class="nc" id="L721">        Ellipse2D.Double dot = new Ellipse2D.Double(point.getX() + oRadius / 2,</span>
+                point.getY(), oRadius, oRadius);
+<span class="nc" id="L723">        g2.draw(dot);</span>
+<span class="nc" id="L724">    }</span>
+
+    /**
+     * Draws two ellipses to represent overlapping outliers.
+     *
+     * @param point  the location.
+     * @param boxWidth  the box width.
+     * @param oRadius  the radius.
+     * @param g2  the graphics device.
+     */
+    protected void drawMultipleEllipse(Point2D point, double boxWidth,
+                                       double oRadius, Graphics2D g2) {
+
+<span class="nc" id="L737">        Ellipse2D.Double dot1 = new Ellipse2D.Double(point.getX()</span>
+                - (boxWidth / 2) + oRadius, point.getY(), oRadius, oRadius);
+<span class="nc" id="L739">        Ellipse2D.Double dot2 = new Ellipse2D.Double(point.getX()</span>
+                + (boxWidth / 2), point.getY(), oRadius, oRadius);
+<span class="nc" id="L741">        g2.draw(dot1);</span>
+<span class="nc" id="L742">        g2.draw(dot2);</span>
+
+<span class="nc" id="L744">    }</span>
+
+    /**
+     * Draws a triangle to indicate the presence of far out values.
+     *
+     * @param aRadius  the radius.
+     * @param g2  the graphics device.
+     * @param xx  the x value.
+     * @param m  the max y value.
+     */
+    protected void drawHighFarOut(double aRadius, Graphics2D g2, double xx,
+            double m) {
+<span class="nc" id="L756">        double side = aRadius * 2;</span>
+<span class="nc" id="L757">        g2.draw(new Line2D.Double(xx - side, m + side, xx + side, m + side));</span>
+<span class="nc" id="L758">        g2.draw(new Line2D.Double(xx - side, m + side, xx, m));</span>
+<span class="nc" id="L759">        g2.draw(new Line2D.Double(xx + side, m + side, xx, m));</span>
+<span class="nc" id="L760">    }</span>
+
+    /**
+     * Draws a triangle to indicate the presence of far out values.
+     *
+     * @param aRadius  the radius.
+     * @param g2  the graphics device.
+     * @param xx  the x value.
+     * @param m  the min y value.
+     */
+    protected void drawLowFarOut(double aRadius, Graphics2D g2, double xx,
+            double m) {
+<span class="nc" id="L772">        double side = aRadius * 2;</span>
+<span class="nc" id="L773">        g2.draw(new Line2D.Double(xx - side, m - side, xx + side, m - side));</span>
+<span class="nc" id="L774">        g2.draw(new Line2D.Double(xx - side, m - side, xx, m));</span>
+<span class="nc" id="L775">        g2.draw(new Line2D.Double(xx + side, m - side, xx, m));</span>
+<span class="nc" id="L776">    }</span>
+
+    /**
+     * Tests this renderer for equality with another object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L787" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L788">            return true;</span>
+        }
+<span class="pc bpc" id="L790" title="1 of 2 branches missed.">        if (!(obj instanceof XYBoxAndWhiskerRenderer)) {</span>
+<span class="nc" id="L791">            return false;</span>
+        }
+<span class="fc bfc" id="L793" title="All 2 branches covered.">        if (!super.equals(obj)) {</span>
+<span class="fc" id="L794">            return false;</span>
+        }
+<span class="fc" id="L796">        XYBoxAndWhiskerRenderer that = (XYBoxAndWhiskerRenderer) obj;</span>
+<span class="fc bfc" id="L797" title="All 2 branches covered.">        if (this.boxWidth != that.getBoxWidth()) {</span>
+<span class="fc" id="L798">            return false;</span>
+        }
+<span class="fc bfc" id="L800" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.boxPaint, that.boxPaint)) {</span>
+<span class="fc" id="L801">            return false;</span>
+        }
+<span class="fc bfc" id="L803" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.artifactPaint, that.artifactPaint)) {</span>
+<span class="fc" id="L804">            return false;</span>
+        }
+<span class="fc bfc" id="L806" title="All 2 branches covered.">        if (this.fillBox != that.fillBox) {</span>
+<span class="fc" id="L807">            return false;</span>
+        }
+<span class="fc" id="L809">        return true;</span>
+
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L821">        stream.defaultWriteObject();</span>
+<span class="fc" id="L822">        SerialUtilities.writePaint(this.boxPaint, stream);</span>
+<span class="fc" id="L823">        SerialUtilities.writePaint(this.artifactPaint, stream);</span>
+<span class="fc" id="L824">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+        throws IOException, ClassNotFoundException {
+
+<span class="fc" id="L837">        stream.defaultReadObject();</span>
+<span class="fc" id="L838">        this.boxPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L839">        this.artifactPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L840">    }</span>
+
+    /**
+     * Returns a clone of the renderer.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException  if the renderer cannot be cloned.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L851">        return super.clone();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,988 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>DynamicTimeSeriesCollection.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.data.time</a> &gt; <span class="el_source">DynamicTimeSeriesCollection.java</span></div><h1>DynamicTimeSeriesCollection.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * --------------------------------
+ * DynamicTimeSeriesCollection.java
+ * --------------------------------
+ * (C) Copyright 2002-2008, by I. H. Thomae and Contributors.
+ *
+ * Original Author:  I. H. Thomae (ithomae@ists.dartmouth.edu);
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *
+ * Changes
+ * -------
+ * 22-Nov-2002 : Initial version completed
+ *    Jan 2003 : Optimized advanceTime(), added implemnt'n of RangeInfo intfc
+ *               (using cached values for min, max, and range); also added
+ *               getOldestIndex() and getNewestIndex() ftns so client classes
+ *               can use this class as the master &quot;index authority&quot;.
+ * 22-Jan-2003 : Made this class stand on its own, rather than extending
+ *               class FastTimeSeriesCollection
+ * 31-Jan-2003 : Changed TimePeriod --&gt; RegularTimePeriod (DG);
+ * 13-Mar-2003 : Moved to com.jrefinery.data.time package (DG);
+ * 29-Apr-2003 : Added small change to appendData method, from Irv Thomae (DG);
+ * 19-Sep-2003 : Added new appendData method, from Irv Thomae (DG);
+ * 05-May-2004 : Now extends AbstractIntervalXYDataset.  This also required a
+ *               change to the return type of the getY() method - I'm slightly
+ *               unsure of the implications of this, so it might require some
+ *               further amendment (DG);
+ * 15-Jul-2004 : Switched getX() with getXValue() and getY() with
+ *               getYValue() (DG);
+ * 11-Jan-2004 : Removed deprecated code in preparation for the 1.0.0
+ *               release (DG);
+ * 02-Feb-2007 : Removed author tags all over JFreeChart sources (DG);
+ *
+ */
+
+package org.jfree.data.time;
+
+import java.util.Calendar;
+import java.util.TimeZone;
+
+import org.jfree.data.DomainInfo;
+import org.jfree.data.Range;
+import org.jfree.data.RangeInfo;
+import org.jfree.data.general.SeriesChangeEvent;
+import org.jfree.data.xy.AbstractIntervalXYDataset;
+import org.jfree.data.xy.IntervalXYDataset;
+
+/**
+ * A dynamic dataset.
+ * &lt;p&gt;
+ * Like FastTimeSeriesCollection, this class is a functional replacement
+ * for JFreeChart's TimeSeriesCollection _and_ TimeSeries classes.
+ * FastTimeSeriesCollection is appropriate for a fixed time range; for
+ * real-time applications this subclass adds the ability to append new
+ * data and discard the oldest.
+ * In this class, the arrays used in FastTimeSeriesCollection become FIFO's.
+ * NOTE:As presented here, all data is assumed &gt;= 0, an assumption which is
+ * embodied only in methods associated with interface RangeInfo.
+ */
+public class DynamicTimeSeriesCollection extends AbstractIntervalXYDataset
+                                         implements IntervalXYDataset,
+                                                    DomainInfo,
+                                                    RangeInfo {
+
+    /**
+     * Useful constant for controlling the x-value returned for a time
+     * period.
+     */
+    public static final int START = 0;
+
+    /**
+     * Useful constant for controlling the x-value returned for a time period.
+     */
+    public static final int MIDDLE = 1;
+
+    /**
+     * Useful constant for controlling the x-value returned for a time period.
+     */
+    public static final int END = 2;
+
+    /** The maximum number of items for each series (can be overridden). */
+<span class="nc" id="L106">    private int maximumItemCount = 2000;  // an arbitrary safe default value</span>
+
+    /** The history count. */
+    protected int historyCount;
+
+    /** Storage for the series keys. */
+    private Comparable[] seriesKeys;
+
+    /** The time period class - barely used, and could be removed (DG). */
+<span class="nc" id="L115">    private Class timePeriodClass = Minute.class;   // default value;</span>
+
+    /** Storage for the x-values. */
+    protected RegularTimePeriod[] pointsInTime;
+
+    /** The number of series. */
+    private int seriesCount;
+
+    /**
+     * A wrapper for a fixed array of float values.
+     */
+    protected class ValueSequence {
+
+        /** Storage for the float values. */
+        float[] dataPoints;
+
+        /**
+         * Default constructor:
+         */
+        public ValueSequence() {
+<span class="nc" id="L135">            this(DynamicTimeSeriesCollection.this.maximumItemCount);</span>
+<span class="nc" id="L136">        }</span>
+
+        /**
+         * Creates a sequence with the specified length.
+         *
+         * @param length  the length.
+         */
+<span class="nc" id="L143">        public ValueSequence(int length) {</span>
+<span class="nc" id="L144">            this.dataPoints = new float[length];</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">            for (int i = 0; i &lt; length; i++) {</span>
+<span class="nc" id="L146">                this.dataPoints[i] = 0.0f;</span>
+            }
+<span class="nc" id="L148">        }</span>
+
+        /**
+         * Enters data into the storage array.
+         *
+         * @param index  the index.
+         * @param value  the value.
+         */
+        public void enterData(int index, float value) {
+<span class="nc" id="L157">            this.dataPoints[index] = value;</span>
+<span class="nc" id="L158">        }</span>
+
+        /**
+         * Returns a value from the storage array.
+         *
+         * @param index  the index.
+         *
+         * @return The value.
+         */
+        public float getData(int index) {
+<span class="nc" id="L168">            return this.dataPoints[index];</span>
+        }
+    }
+
+    /** An array for storing the objects that represent each series. */
+    protected ValueSequence[] valueHistory;
+
+    /** A working calendar (to recycle) */
+    protected Calendar workingCalendar;
+
+    /**
+     * The position within a time period to return as the x-value (START,
+     * MIDDLE or END).
+     */
+    private int position;
+
+    /**
+     * A flag that indicates that the domain is 'points in time'.  If this flag
+     * is true, only the x-value is used to determine the range of values in
+     * the domain, the start and end x-values are ignored.
+     */
+    private boolean domainIsPointsInTime;
+
+    /** index for mapping: points to the oldest valid time &amp; data. */
+    private int oldestAt;  // as a class variable, initializes == 0
+
+    /** Index of the newest data item. */
+    private int newestAt;
+
+    // cached values used for interface DomainInfo:
+
+    /** the # of msec by which time advances. */
+    private long deltaTime;
+
+    /** Cached domain start (for use by DomainInfo). */
+    private Long domainStart;
+
+    /** Cached domain end (for use by DomainInfo). */
+    private Long domainEnd;
+
+    /** Cached domain range (for use by DomainInfo). */
+    private Range domainRange;
+
+    // Cached values used for interface RangeInfo: (note minValue pinned at 0)
+    //   A single set of extrema covers the entire SeriesCollection
+
+    /** The minimum value. */
+<span class="nc" id="L215">    private Float minValue = new Float(0.0f);</span>
+
+    /** The maximum value. */
+<span class="nc" id="L218">    private Float maxValue = null;</span>
+
+    /** The value range. */
+    private Range valueRange;  // autoinit's to null.
+
+    /**
+     * Constructs a dataset with capacity for N series, tied to default
+     * timezone.
+     *
+     * @param nSeries the number of series to be accommodated.
+     * @param nMoments the number of TimePeriods to be spanned.
+     */
+    public DynamicTimeSeriesCollection(int nSeries, int nMoments) {
+
+<span class="nc" id="L232">        this(nSeries, nMoments, new Millisecond(), TimeZone.getDefault());</span>
+<span class="nc" id="L233">        this.newestAt = nMoments - 1;</span>
+
+<span class="nc" id="L235">    }</span>
+
+    /**
+     * Constructs an empty dataset, tied to a specific timezone.
+     *
+     * @param nSeries the number of series to be accommodated
+     * @param nMoments the number of TimePeriods to be spanned
+     * @param zone the timezone.
+     */
+    public DynamicTimeSeriesCollection(int nSeries, int nMoments,
+                                       TimeZone zone) {
+<span class="nc" id="L246">        this(nSeries, nMoments, new Millisecond(), zone);</span>
+<span class="nc" id="L247">        this.newestAt = nMoments - 1;</span>
+<span class="nc" id="L248">    }</span>
+
+    /**
+     * Creates a new dataset.
+     *
+     * @param nSeries  the number of series.
+     * @param nMoments  the number of items per series.
+     * @param timeSample  a time period sample.
+     */
+    public DynamicTimeSeriesCollection(int nSeries,
+                                       int nMoments,
+                                       RegularTimePeriod timeSample) {
+<span class="nc" id="L260">        this(nSeries, nMoments, timeSample, TimeZone.getDefault());</span>
+<span class="nc" id="L261">    }</span>
+
+    /**
+     * Creates a new dataset.
+     *
+     * @param nSeries  the number of series.
+     * @param nMoments  the number of items per series.
+     * @param timeSample  a time period sample.
+     * @param zone  the time zone.
+     */
+    public DynamicTimeSeriesCollection(int nSeries,
+                                       int nMoments,
+                                       RegularTimePeriod timeSample,
+<span class="nc" id="L274">                                       TimeZone zone) {</span>
+
+        // the first initialization must precede creation of the ValueSet array:
+<span class="nc" id="L277">        this.maximumItemCount = nMoments;  // establishes length of each array</span>
+<span class="nc" id="L278">        this.historyCount = nMoments;</span>
+<span class="nc" id="L279">        this.seriesKeys = new Comparable[nSeries];</span>
+        // initialize the members of &quot;seriesNames&quot; array so they won't be null:
+<span class="nc bnc" id="L281" title="All 2 branches missed.">        for (int i = 0; i &lt; nSeries; i++) {</span>
+<span class="nc" id="L282">            this.seriesKeys[i] = &quot;&quot;;</span>
+        }
+<span class="nc" id="L284">        this.newestAt = nMoments - 1;</span>
+<span class="nc" id="L285">        this.valueHistory = new ValueSequence[nSeries];</span>
+<span class="nc" id="L286">        this.timePeriodClass = timeSample.getClass();</span>
+
+        /// Expand the following for all defined TimePeriods:
+<span class="nc bnc" id="L289" title="All 2 branches missed.">        if (this.timePeriodClass == Second.class) {</span>
+<span class="nc" id="L290">            this.pointsInTime = new Second[nMoments];</span>
+        }
+<span class="nc bnc" id="L292" title="All 2 branches missed.">        else if (this.timePeriodClass == Minute.class) {</span>
+<span class="nc" id="L293">            this.pointsInTime = new Minute[nMoments];</span>
+        }
+<span class="nc bnc" id="L295" title="All 2 branches missed.">        else if (this.timePeriodClass == Hour.class) {</span>
+<span class="nc" id="L296">            this.pointsInTime = new Hour[nMoments];</span>
+        }
+        ///  .. etc....
+<span class="nc" id="L299">        this.workingCalendar = Calendar.getInstance(zone);</span>
+<span class="nc" id="L300">        this.position = START;</span>
+<span class="nc" id="L301">        this.domainIsPointsInTime = true;</span>
+<span class="nc" id="L302">    }</span>
+
+    /**
+     * Fill the pointsInTime with times using TimePeriod.next():
+     * Will silently return if the time array was already populated.
+     *
+     * Also computes the data cached for later use by
+     * methods implementing the DomainInfo interface:
+     *
+     * @param start  the start.
+     *
+     * @return ??.
+     */
+    public synchronized long setTimeBase(RegularTimePeriod start) {
+
+<span class="nc bnc" id="L317" title="All 2 branches missed.">        if (this.pointsInTime[0] == null) {</span>
+<span class="nc" id="L318">            this.pointsInTime[0] = start;</span>
+<span class="nc bnc" id="L319" title="All 2 branches missed.">            for (int i = 1; i &lt; this.historyCount; i++) {</span>
+<span class="nc" id="L320">                this.pointsInTime[i] = this.pointsInTime[i - 1].next();</span>
+            }
+        }
+<span class="nc" id="L323">        long oldestL = this.pointsInTime[0].getFirstMillisecond(</span>
+            this.workingCalendar
+        );
+<span class="nc" id="L326">        long nextL = this.pointsInTime[1].getFirstMillisecond(</span>
+            this.workingCalendar
+        );
+<span class="nc" id="L329">        this.deltaTime = nextL - oldestL;</span>
+<span class="nc" id="L330">        this.oldestAt = 0;</span>
+<span class="nc" id="L331">        this.newestAt = this.historyCount - 1;</span>
+<span class="nc" id="L332">        findDomainLimits();</span>
+<span class="nc" id="L333">        return this.deltaTime;</span>
+
+    }
+
+    /**
+     * Finds the domain limits.  Note: this doesn't need to be synchronized
+     * because it's called from within another method that already is.
+     */
+    protected void findDomainLimits() {
+
+<span class="nc" id="L343">        long startL = getOldestTime().getFirstMillisecond(this.workingCalendar);</span>
+        long endL;
+<span class="nc bnc" id="L345" title="All 2 branches missed.">        if (this.domainIsPointsInTime) {</span>
+<span class="nc" id="L346">            endL = getNewestTime().getFirstMillisecond(this.workingCalendar);</span>
+        }
+        else {
+<span class="nc" id="L349">            endL = getNewestTime().getLastMillisecond(this.workingCalendar);</span>
+        }
+<span class="nc" id="L351">        this.domainStart = new Long(startL);</span>
+<span class="nc" id="L352">        this.domainEnd = new Long(endL);</span>
+<span class="nc" id="L353">        this.domainRange = new Range(startL, endL);</span>
+
+<span class="nc" id="L355">    }</span>
+
+    /**
+     * Returns the x position type (START, MIDDLE or END).
+     *
+     * @return The x position type.
+     */
+    public int getPosition() {
+<span class="nc" id="L363">        return this.position;</span>
+    }
+
+    /**
+     * Sets the x position type (START, MIDDLE or END).
+     *
+     * @param position The x position type.
+     */
+    public void setPosition(int position) {
+<span class="nc" id="L372">        this.position = position;</span>
+<span class="nc" id="L373">    }</span>
+
+    /**
+     * Adds a series to the dataset.  Only the y-values are supplied, the
+     * x-values are specified elsewhere.
+     *
+     * @param values  the y-values.
+     * @param seriesNumber  the series index (zero-based).
+     * @param seriesKey  the series key.
+     *
+     * Use this as-is during setup only, or add the synchronized keyword around
+     * the copy loop.
+     */
+    public void addSeries(float[] values,
+                          int seriesNumber, Comparable seriesKey) {
+
+<span class="nc" id="L389">        invalidateRangeInfo();</span>
+        int i;
+<span class="nc bnc" id="L391" title="All 2 branches missed.">        if (values == null) {</span>
+<span class="nc" id="L392">            throw new IllegalArgumentException(&quot;TimeSeriesDataset.addSeries(): &quot;</span>
+                + &quot;cannot add null array of values.&quot;);
+        }
+<span class="nc bnc" id="L395" title="All 2 branches missed.">        if (seriesNumber &gt;= this.valueHistory.length) {</span>
+<span class="nc" id="L396">            throw new IllegalArgumentException(&quot;TimeSeriesDataset.addSeries(): &quot;</span>
+                + &quot;cannot add more series than specified in c'tor&quot;);
+        }
+<span class="nc bnc" id="L399" title="All 2 branches missed.">        if (this.valueHistory[seriesNumber] == null) {</span>
+<span class="nc" id="L400">            this.valueHistory[seriesNumber]</span>
+                = new ValueSequence(this.historyCount);
+<span class="nc" id="L402">            this.seriesCount++;</span>
+        }
+        // But if that series array already exists, just overwrite its contents
+
+        // Avoid IndexOutOfBoundsException:
+<span class="nc" id="L407">        int srcLength = values.length;</span>
+<span class="nc" id="L408">        int copyLength = this.historyCount;</span>
+<span class="nc" id="L409">        boolean fillNeeded = false;</span>
+<span class="nc bnc" id="L410" title="All 2 branches missed.">        if (srcLength &lt; this.historyCount) {</span>
+<span class="nc" id="L411">            fillNeeded = true;</span>
+<span class="nc" id="L412">            copyLength = srcLength;</span>
+        }
+        //{
+<span class="nc bnc" id="L415" title="All 2 branches missed.">        for (i = 0; i &lt; copyLength; i++) { // deep copy from values[], caller</span>
+                                           // can safely discard that array
+<span class="nc" id="L417">            this.valueHistory[seriesNumber].enterData(i, values[i]);</span>
+        }
+<span class="nc bnc" id="L419" title="All 2 branches missed.">        if (fillNeeded) {</span>
+<span class="nc bnc" id="L420" title="All 2 branches missed.">            for (i = copyLength; i &lt; this.historyCount; i++) {</span>
+<span class="nc" id="L421">                this.valueHistory[seriesNumber].enterData(i, 0.0f);</span>
+            }
+        }
+      //}
+<span class="nc bnc" id="L425" title="All 2 branches missed.">        if (seriesKey != null) {</span>
+<span class="nc" id="L426">            this.seriesKeys[seriesNumber] = seriesKey;</span>
+        }
+<span class="nc" id="L428">        fireSeriesChanged();</span>
+
+<span class="nc" id="L430">    }</span>
+
+    /**
+     * Sets the name of a series.  If planning to add values individually.
+     *
+     * @param seriesNumber  the series.
+     * @param key  the new key.
+     */
+    public void setSeriesKey(int seriesNumber, Comparable key) {
+<span class="nc" id="L439">        this.seriesKeys[seriesNumber] = key;</span>
+<span class="nc" id="L440">    }</span>
+
+    /**
+     * Adds a value to a series.
+     *
+     * @param seriesNumber  the series index.
+     * @param index  ??.
+     * @param value  the value.
+     */
+    public void addValue(int seriesNumber, int index, float value) {
+
+<span class="nc" id="L451">        invalidateRangeInfo();</span>
+<span class="nc bnc" id="L452" title="All 2 branches missed.">        if (seriesNumber &gt;= this.valueHistory.length) {</span>
+<span class="nc" id="L453">            throw new IllegalArgumentException(</span>
+                &quot;TimeSeriesDataset.addValue(): series #&quot;
+                + seriesNumber + &quot;unspecified in c'tor&quot;
+            );
+        }
+<span class="nc bnc" id="L458" title="All 2 branches missed.">        if (this.valueHistory[seriesNumber] == null) {</span>
+<span class="nc" id="L459">            this.valueHistory[seriesNumber]</span>
+                = new ValueSequence(this.historyCount);
+<span class="nc" id="L461">            this.seriesCount++;</span>
+        }
+        // But if that series array already exists, just overwrite its contents
+        //synchronized(this)
+        //{
+<span class="nc" id="L466">            this.valueHistory[seriesNumber].enterData(index, value);</span>
+        //}
+<span class="nc" id="L468">        fireSeriesChanged();</span>
+<span class="nc" id="L469">    }</span>
+
+    /**
+     * Returns the number of series in the collection.
+     *
+     * @return The series count.
+     */
+    @Override
+    public int getSeriesCount() {
+<span class="nc" id="L478">        return this.seriesCount;</span>
+    }
+
+    /**
+     * Returns the number of items in a series.
+     * &lt;p&gt;
+     * For this implementation, all series have the same number of items.
+     *
+     * @param series  the series index (zero-based).
+     *
+     * @return The item count.
+     */
+    @Override
+    public int getItemCount(int series) {  // all arrays equal length,
+                                           // so ignore argument:
+<span class="nc" id="L493">        return this.historyCount;</span>
+    }
+
+    // Methods for managing the FIFO's:
+
+    /**
+     * Re-map an index, for use in retrieving data.
+     *
+     * @param toFetch  the index.
+     *
+     * @return The translated index.
+     */
+    protected int translateGet(int toFetch) {
+<span class="nc bnc" id="L506" title="All 2 branches missed.">        if (this.oldestAt == 0) {</span>
+<span class="nc" id="L507">            return toFetch;  // no translation needed</span>
+        }
+        // else  [implicit here]
+<span class="nc" id="L510">        int newIndex = toFetch + this.oldestAt;</span>
+<span class="nc bnc" id="L511" title="All 2 branches missed.">        if (newIndex &gt;= this.historyCount) {</span>
+<span class="nc" id="L512">            newIndex -= this.historyCount;</span>
+        }
+<span class="nc" id="L514">        return newIndex;</span>
+    }
+
+    /**
+     * Returns the actual index to a time offset by &quot;delta&quot; from newestAt.
+     *
+     * @param delta  the delta.
+     *
+     * @return The offset.
+     */
+    public int offsetFromNewest(int delta) {
+<span class="nc" id="L525">        return wrapOffset(this.newestAt + delta);</span>
+    }
+
+    /**
+     * ??
+     *
+     * @param delta ??
+     *
+     * @return The offset.
+     */
+    public int offsetFromOldest(int delta) {
+<span class="nc" id="L536">        return wrapOffset(this.oldestAt + delta);</span>
+    }
+
+    /**
+     * ??
+     *
+     * @param protoIndex  the index.
+     *
+     * @return The offset.
+     */
+    protected int wrapOffset(int protoIndex) {
+<span class="nc" id="L547">        int tmp = protoIndex;</span>
+<span class="nc bnc" id="L548" title="All 2 branches missed.">        if (tmp &gt;= this.historyCount) {</span>
+<span class="nc" id="L549">            tmp -= this.historyCount;</span>
+        }
+<span class="nc bnc" id="L551" title="All 2 branches missed.">        else if (tmp &lt; 0) {</span>
+<span class="nc" id="L552">            tmp += this.historyCount;</span>
+        }
+<span class="nc" id="L554">        return tmp;</span>
+    }
+
+    /**
+     * Adjust the array offset as needed when a new time-period is added:
+     * Increments the indices &quot;oldestAt&quot; and &quot;newestAt&quot;, mod(array length),
+     * zeroes the series values at newestAt, returns the new TimePeriod.
+     *
+     * @return The new time period.
+     */
+    public synchronized RegularTimePeriod advanceTime() {
+<span class="nc" id="L565">        RegularTimePeriod nextInstant = this.pointsInTime[this.newestAt].next();</span>
+<span class="nc" id="L566">        this.newestAt = this.oldestAt;  // newestAt takes value previously held</span>
+                                        // by oldestAT
+        /***
+         * The next 10 lines or so should be expanded if data can be negative
+         ***/
+        // if the oldest data contained a maximum Y-value, invalidate the stored
+        //   Y-max and Y-range data:
+<span class="nc" id="L573">        boolean extremaChanged = false;</span>
+<span class="nc" id="L574">        float oldMax = 0.0f;</span>
+<span class="nc bnc" id="L575" title="All 2 branches missed.">        if (this.maxValue != null) {</span>
+<span class="nc" id="L576">            oldMax = this.maxValue.floatValue();</span>
+        }
+<span class="nc bnc" id="L578" title="All 2 branches missed.">        for (int s = 0; s &lt; getSeriesCount(); s++) {</span>
+<span class="nc bnc" id="L579" title="All 2 branches missed.">            if (this.valueHistory[s].getData(this.oldestAt) == oldMax) {</span>
+<span class="nc" id="L580">                extremaChanged = true;</span>
+            }
+<span class="nc bnc" id="L582" title="All 2 branches missed.">            if (extremaChanged) {</span>
+<span class="nc" id="L583">                break;</span>
+            }
+        }  /*** If data can be &lt; 0, add code here to check the minimum    **/
+<span class="nc bnc" id="L586" title="All 2 branches missed.">        if (extremaChanged) {</span>
+<span class="nc" id="L587">            invalidateRangeInfo();</span>
+        }
+        //  wipe the next (about to be used) set of data slots
+<span class="nc" id="L590">        float wiper = (float) 0.0;</span>
+<span class="nc bnc" id="L591" title="All 2 branches missed.">        for (int s = 0; s &lt; getSeriesCount(); s++) {</span>
+<span class="nc" id="L592">            this.valueHistory[s].enterData(this.newestAt, wiper);</span>
+        }
+        // Update the array of TimePeriods:
+<span class="nc" id="L595">        this.pointsInTime[this.newestAt] = nextInstant;</span>
+        // Now advance &quot;oldestAt&quot;, wrapping at end of the array
+<span class="nc" id="L597">        this.oldestAt++;</span>
+<span class="nc bnc" id="L598" title="All 2 branches missed.">        if (this.oldestAt &gt;= this.historyCount) {</span>
+<span class="nc" id="L599">            this.oldestAt = 0;</span>
+        }
+        // Update the domain limits:
+<span class="nc" id="L602">        long startL = this.domainStart.longValue();  //(time is kept in msec)</span>
+<span class="nc" id="L603">        this.domainStart = new Long(startL + this.deltaTime);</span>
+<span class="nc" id="L604">        long endL = this.domainEnd.longValue();</span>
+<span class="nc" id="L605">        this.domainEnd = new Long(endL + this.deltaTime);</span>
+<span class="nc" id="L606">        this.domainRange = new Range(startL, endL);</span>
+<span class="nc" id="L607">        fireSeriesChanged();</span>
+<span class="nc" id="L608">        return nextInstant;</span>
+    }
+
+    //  If data can be &lt; 0, the next 2 methods should be modified
+
+    /**
+     * Invalidates the range info.
+     */
+    public void invalidateRangeInfo() {
+<span class="nc" id="L617">        this.maxValue = null;</span>
+<span class="nc" id="L618">        this.valueRange = null;</span>
+<span class="nc" id="L619">    }</span>
+
+    /**
+     * Returns the maximum value.
+     *
+     * @return The maximum value.
+     */
+    protected double findMaxValue() {
+<span class="nc" id="L627">        double max = 0.0f;</span>
+<span class="nc bnc" id="L628" title="All 2 branches missed.">        for (int s = 0; s &lt; getSeriesCount(); s++) {</span>
+<span class="nc bnc" id="L629" title="All 2 branches missed.">            for (int i = 0; i &lt; this.historyCount; i++) {</span>
+<span class="nc" id="L630">                double tmp = getYValue(s, i);</span>
+<span class="nc bnc" id="L631" title="All 2 branches missed.">                if (tmp &gt; max) {</span>
+<span class="nc" id="L632">                    max = tmp;</span>
+                }
+            }
+        }
+<span class="nc" id="L636">        return max;</span>
+    }
+
+    /** End, positive-data-only code  **/
+
+    /**
+     * Returns the index of the oldest data item.
+     *
+     * @return The index.
+     */
+    public int getOldestIndex() {
+<span class="nc" id="L647">        return this.oldestAt;</span>
+    }
+
+    /**
+     * Returns the index of the newest data item.
+     *
+     * @return The index.
+     */
+    public int getNewestIndex() {
+<span class="nc" id="L656">        return this.newestAt;</span>
+    }
+
+    // appendData() writes new data at the index position given by newestAt/
+    // When adding new data dynamically, use advanceTime(), followed by this:
+    /**
+     * Appends new data.
+     *
+     * @param newData  the data.
+     */
+    public void appendData(float[] newData) {
+<span class="nc" id="L667">        int nDataPoints = newData.length;</span>
+<span class="nc bnc" id="L668" title="All 2 branches missed.">        if (nDataPoints &gt; this.valueHistory.length) {</span>
+<span class="nc" id="L669">            throw new IllegalArgumentException(</span>
+               &quot;More data than series to put them in&quot;
+            );
+        }
+        int s;   // index to select the &quot;series&quot;
+<span class="nc bnc" id="L674" title="All 2 branches missed.">        for (s = 0; s &lt; nDataPoints; s++) {</span>
+            // check whether the &quot;valueHistory&quot; array member exists; if not,
+            // create them:
+<span class="nc bnc" id="L677" title="All 2 branches missed.">            if (this.valueHistory[s] == null) {</span>
+<span class="nc" id="L678">                this.valueHistory[s] = new ValueSequence(this.historyCount);</span>
+            }
+<span class="nc" id="L680">            this.valueHistory[s].enterData(this.newestAt, newData[s]);</span>
+        }
+<span class="nc" id="L682">        fireSeriesChanged();</span>
+<span class="nc" id="L683">    }</span>
+
+    /**
+     * Appends data at specified index, for loading up with data from file(s).
+     *
+     * @param  newData  the data
+     * @param  insertionIndex  the index value at which to put it
+     * @param  refresh  value of n in &quot;refresh the display on every nth call&quot;
+     *                 (ignored if &lt;= 0 )
+     */
+     public void appendData(float[] newData, int insertionIndex, int refresh) {
+<span class="nc" id="L694">         int nDataPoints = newData.length;</span>
+<span class="nc bnc" id="L695" title="All 2 branches missed.">         if (nDataPoints &gt; this.valueHistory.length) {</span>
+<span class="nc" id="L696">             throw new IllegalArgumentException(</span>
+                 &quot;More data than series to put them &quot; + &quot;in&quot;
+             );
+         }
+<span class="nc bnc" id="L700" title="All 2 branches missed.">         for (int s = 0; s &lt; nDataPoints; s++) {</span>
+<span class="nc bnc" id="L701" title="All 2 branches missed.">             if (this.valueHistory[s] == null) {</span>
+<span class="nc" id="L702">                this.valueHistory[s] = new ValueSequence(this.historyCount);</span>
+             }
+<span class="nc" id="L704">             this.valueHistory[s].enterData(insertionIndex, newData[s]);</span>
+         }
+<span class="nc bnc" id="L706" title="All 2 branches missed.">         if (refresh &gt; 0) {</span>
+<span class="nc" id="L707">             insertionIndex++;</span>
+<span class="nc bnc" id="L708" title="All 2 branches missed.">             if (insertionIndex % refresh == 0) {</span>
+<span class="nc" id="L709">                 fireSeriesChanged();</span>
+             }
+         }
+<span class="nc" id="L712">    }</span>
+
+    /**
+     * Returns the newest time.
+     *
+     * @return The newest time.
+     */
+    public RegularTimePeriod getNewestTime() {
+<span class="nc" id="L720">        return this.pointsInTime[this.newestAt];</span>
+    }
+
+    /**
+     * Returns the oldest time.
+     *
+     * @return The oldest time.
+     */
+    public RegularTimePeriod getOldestTime() {
+<span class="nc" id="L729">        return this.pointsInTime[this.oldestAt];</span>
+    }
+
+    /**
+     * Returns the x-value.
+     *
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     *
+     * @return The value.
+     */
+    // getXxx() ftns can ignore the &quot;series&quot; argument:
+    // Don't synchronize this!! Instead, synchronize the loop that calls it.
+    @Override
+    public Number getX(int series, int item) {
+<span class="nc" id="L744">        RegularTimePeriod tp = this.pointsInTime[translateGet(item)];</span>
+<span class="nc" id="L745">        return new Long(getX(tp));</span>
+    }
+
+    /**
+     * Returns the y-value.
+     *
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     *
+     * @return The value.
+     */
+    @Override
+    public double getYValue(int series, int item) {
+        // Don't synchronize this!!
+        // Instead, synchronize the loop that calls it.
+<span class="nc" id="L760">        ValueSequence values = this.valueHistory[series];</span>
+<span class="nc" id="L761">        return values.getData(translateGet(item));</span>
+    }
+
+    /**
+     * Returns the y-value.
+     *
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     *
+     * @return The value.
+     */
+    @Override
+    public Number getY(int series, int item) {
+<span class="nc" id="L774">        return new Float(getYValue(series, item));</span>
+    }
+
+    /**
+     * Returns the start x-value.
+     *
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     *
+     * @return The value.
+     */
+    @Override
+    public Number getStartX(int series, int item) {
+<span class="nc" id="L787">        RegularTimePeriod tp = this.pointsInTime[translateGet(item)];</span>
+<span class="nc" id="L788">        return new Long(tp.getFirstMillisecond(this.workingCalendar));</span>
+    }
+
+    /**
+     * Returns the end x-value.
+     *
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     *
+     * @return The value.
+     */
+    @Override
+    public Number getEndX(int series, int item) {
+<span class="nc" id="L801">        RegularTimePeriod tp = this.pointsInTime[translateGet(item)];</span>
+<span class="nc" id="L802">        return new Long(tp.getLastMillisecond(this.workingCalendar));</span>
+    }
+
+    /**
+     * Returns the start y-value.
+     *
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     *
+     * @return The value.
+     */
+    @Override
+    public Number getStartY(int series, int item) {
+<span class="nc" id="L815">        return getY(series, item);</span>
+    }
+
+    /**
+     * Returns the end y-value.
+     *
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     *
+     * @return The value.
+     */
+    @Override
+    public Number getEndY(int series, int item) {
+<span class="nc" id="L828">        return getY(series, item);</span>
+    }
+
+    /* // &quot;Extras&quot; found useful when analyzing/verifying class behavior:
+    public Number getUntranslatedXValue(int series, int item)
+    {
+      return super.getXValue(series, item);
+    }
+
+    public float getUntranslatedY(int series, int item)
+    {
+      return super.getY(series, item);
+    }  */
+
+    /**
+     * Returns the key for a series.
+     *
+     * @param series  the series index (zero-based).
+     *
+     * @return The key.
+     */
+    @Override
+    public Comparable getSeriesKey(int series) {
+<span class="nc" id="L851">        return this.seriesKeys[series];</span>
+    }
+
+    /**
+     * Sends a {@link SeriesChangeEvent} to all registered listeners.
+     */
+    protected void fireSeriesChanged() {
+<span class="nc" id="L858">        seriesChanged(new SeriesChangeEvent(this));</span>
+<span class="nc" id="L859">    }</span>
+
+    // The next 3 functions override the base-class implementation of
+    // the DomainInfo interface.  Using saved limits (updated by
+    // each updateTime() call), improves performance.
+    //
+
+    /**
+     * Returns the minimum x-value in the dataset.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         x-interval is taken into account.
+     *
+     * @return The minimum value.
+     */
+    @Override
+    public double getDomainLowerBound(boolean includeInterval) {
+<span class="nc" id="L876">        return this.domainStart.doubleValue();</span>
+        // a Long kept updated by advanceTime()
+    }
+
+    /**
+     * Returns the maximum x-value in the dataset.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         x-interval is taken into account.
+     *
+     * @return The maximum value.
+     */
+    @Override
+    public double getDomainUpperBound(boolean includeInterval) {
+<span class="nc" id="L890">        return this.domainEnd.doubleValue();</span>
+        // a Long kept updated by advanceTime()
+    }
+
+    /**
+     * Returns the range of the values in this dataset's domain.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         x-interval is taken into account.
+     *
+     * @return The range.
+     */
+    @Override
+    public Range getDomainBounds(boolean includeInterval) {
+<span class="nc bnc" id="L904" title="All 2 branches missed.">        if (this.domainRange == null) {</span>
+<span class="nc" id="L905">            findDomainLimits();</span>
+        }
+<span class="nc" id="L907">        return this.domainRange;</span>
+    }
+
+    /**
+     * Returns the x-value for a time period.
+     *
+     * @param period  the period.
+     *
+     * @return The x-value.
+     */
+    private long getX(RegularTimePeriod period) {
+<span class="nc bnc" id="L918" title="All 4 branches missed.">        switch (this.position) {</span>
+            case (START) :
+<span class="nc" id="L920">                return period.getFirstMillisecond(this.workingCalendar);</span>
+            case (MIDDLE) :
+<span class="nc" id="L922">                return period.getMiddleMillisecond(this.workingCalendar);</span>
+            case (END) :
+<span class="nc" id="L924">                return period.getLastMillisecond(this.workingCalendar);</span>
+            default:
+<span class="nc" id="L926">                return period.getMiddleMillisecond(this.workingCalendar);</span>
+        }
+     }
+
+    // The next 3 functions implement the RangeInfo interface.
+    // Using saved limits (updated by each updateTime() call) significantly
+    // improves performance.  WARNING: this code makes the simplifying
+    // assumption that data is never negative.  Expand as needed for the
+    // general case.
+
+    /**
+     * Returns the minimum range value.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         y-interval is taken into account.
+     *
+     * @return The minimum range value.
+     */
+    @Override
+    public double getRangeLowerBound(boolean includeInterval) {
+<span class="nc" id="L946">        double result = Double.NaN;</span>
+<span class="nc bnc" id="L947" title="All 2 branches missed.">        if (this.minValue != null) {</span>
+<span class="nc" id="L948">            result = this.minValue.doubleValue();</span>
+        }
+<span class="nc" id="L950">        return result;</span>
+    }
+
+    /**
+     * Returns the maximum range value.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         y-interval is taken into account.
+     *
+     * @return The maximum range value.
+     */
+    @Override
+    public double getRangeUpperBound(boolean includeInterval) {
+<span class="nc" id="L963">        double result = Double.NaN;</span>
+<span class="nc bnc" id="L964" title="All 2 branches missed.">        if (this.maxValue != null) {</span>
+<span class="nc" id="L965">            result = this.maxValue.doubleValue();</span>
+        }
+<span class="nc" id="L967">        return result;</span>
+    }
+
+    /**
+     * Returns the value range.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         y-interval is taken into account.
+     *
+     * @return The range.
+     */
+    @Override
+    public Range getRangeBounds(boolean includeInterval) {
+<span class="nc bnc" id="L980" title="All 2 branches missed.">        if (this.valueRange == null) {</span>
+<span class="nc" id="L981">            double max = getRangeUpperBound(includeInterval);</span>
+<span class="nc" id="L982">            this.valueRange = new Range(0.0, max);</span>
+        }
+<span class="nc" id="L984">        return this.valueRange;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

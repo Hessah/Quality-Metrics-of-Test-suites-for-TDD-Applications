@@ -1,0 +1,1025 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StandardDialScale.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.plot.dial</a> &gt; <span class="el_source">StandardDialScale.java</span></div><h1>StandardDialScale.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ----------------------
+ * StandardDialScale.java
+ * ----------------------
+ * (C) Copyright 2006-2013, by Object Refinery Limited.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   -;
+ *
+ * Changes
+ * -------
+ * 03-Nov-2006 : Version 1 (DG);
+ * 17-Nov-2006 : Added flags for tick label visibility (DG);
+ * 24-Oct-2007 : Added tick label formatter (DG);
+ * 19-Nov-2007 : Added some missing accessor methods (DG);
+ * 27-Feb-2009 : Fixed bug 2617557: tickLabelPaint ignored (DG);
+ * 09-Feb-2010 : Fixed bug 2946521 (DG);
+ * 08-Jan-2012 : Added missing angleToValue() implementation (DG);
+ * 03-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.chart.plot.dial;
+
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Stroke;
+import java.awt.geom.Arc2D;
+import java.awt.geom.Line2D;
+import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
+import org.jfree.chart.util.ParamChecks;
+
+import org.jfree.io.SerialUtilities;
+import org.jfree.text.TextUtilities;
+import org.jfree.ui.TextAnchor;
+import org.jfree.util.PaintUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A scale for a {@link DialPlot}.
+ *
+ * @since 1.0.7
+ */
+public class StandardDialScale extends AbstractDialLayer implements DialScale,
+        Cloneable, PublicCloneable, Serializable {
+
+    /** For serialization. */
+    static final long serialVersionUID = 3715644629665918516L;
+
+    /** The minimum data value for the scale. */
+    private double lowerBound;
+
+    /** The maximum data value for the scale. */
+    private double upperBound;
+
+    /**
+     * The start angle for the scale display, in degrees (using the same
+     * encoding as Arc2D).
+     */
+    private double startAngle;
+
+    /** The extent of the scale display. */
+    private double extent;
+
+    /**
+     * The factor (in the range 0.0 to 1.0) that determines the outside limit
+     * of the tick marks.
+     */
+    private double tickRadius;
+
+    /**
+     * The increment (in data units) between major tick marks.
+     */
+    private double majorTickIncrement;
+
+    /**
+     * The factor that is subtracted from the tickRadius to determine the
+     * inner point of the major ticks.
+     */
+    private double majorTickLength;
+
+    /**
+     * The paint to use for major tick marks.  This field is transient because
+     * it requires special handling for serialization.
+     */
+    private transient Paint majorTickPaint;
+
+    /**
+     * The stroke to use for major tick marks.  This field is transient because
+     * it requires special handling for serialization.
+     */
+    private transient Stroke majorTickStroke;
+
+    /**
+     * The number of minor ticks between each major tick.
+     */
+    private int minorTickCount;
+
+    /**
+     * The factor that is subtracted from the tickRadius to determine the
+     * inner point of the minor ticks.
+     */
+    private double minorTickLength;
+
+    /**
+     * The paint to use for minor tick marks.  This field is transient because
+     * it requires special handling for serialization.
+     */
+    private transient Paint minorTickPaint;
+
+    /**
+     * The stroke to use for minor tick marks.  This field is transient because
+     * it requires special handling for serialization.
+     */
+    private transient Stroke minorTickStroke;
+
+    /**
+     * The tick label offset.
+     */
+    private double tickLabelOffset;
+
+    /**
+     * The tick label font.
+     */
+    private Font tickLabelFont;
+
+    /**
+     * A flag that controls whether or not the tick labels are
+     * displayed.
+     */
+    private boolean tickLabelsVisible;
+
+    /**
+     * The number formatter for the tick labels.
+     */
+    private NumberFormat tickLabelFormatter;
+
+    /**
+     * A flag that controls whether or not the first tick label is
+     * displayed.
+     */
+    private boolean firstTickLabelVisible;
+
+    /**
+     * The tick label paint.  This field is transient because it requires
+     * special handling for serialization.
+     */
+    private transient Paint tickLabelPaint;
+
+    /**
+     * Creates a new instance of DialScale.
+     */
+    public StandardDialScale() {
+<span class="fc" id="L189">        this(0.0, 100.0, 175, -170, 10.0, 4);</span>
+<span class="fc" id="L190">    }</span>
+
+    /**
+     * Creates a new instance.
+     *
+     * @param lowerBound  the lower bound of the scale.
+     * @param upperBound  the upper bound of the scale.
+     * @param startAngle  the start angle (in degrees, using the same
+     *     orientation as Java's &lt;code&gt;Arc2D&lt;/code&gt; class).
+     * @param extent  the extent (in degrees, counter-clockwise).
+     * @param majorTickIncrement  the interval between major tick marks (must
+     *     be &gt; 0).
+     * @param minorTickCount  the number of minor ticks between major tick
+     *          marks.
+     */
+    public StandardDialScale(double lowerBound, double upperBound,
+            double startAngle, double extent, double majorTickIncrement,
+<span class="fc" id="L207">            int minorTickCount) {</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">        if (majorTickIncrement &lt;= 0.0) {</span>
+<span class="nc" id="L209">            throw new IllegalArgumentException(</span>
+                    &quot;Requires 'majorTickIncrement' &gt; 0.&quot;);
+        }
+<span class="fc" id="L212">        this.startAngle = startAngle;</span>
+<span class="fc" id="L213">        this.extent = extent;</span>
+<span class="fc" id="L214">        this.lowerBound = lowerBound;</span>
+<span class="fc" id="L215">        this.upperBound = upperBound;</span>
+<span class="fc" id="L216">        this.tickRadius = 0.70;</span>
+<span class="fc" id="L217">        this.tickLabelsVisible = true;</span>
+<span class="fc" id="L218">        this.tickLabelFormatter = new DecimalFormat(&quot;0.0&quot;);</span>
+<span class="fc" id="L219">        this.firstTickLabelVisible = true;</span>
+<span class="fc" id="L220">        this.tickLabelFont = new Font(&quot;Dialog&quot;, Font.BOLD, 16);</span>
+<span class="fc" id="L221">        this.tickLabelPaint = Color.blue;</span>
+<span class="fc" id="L222">        this.tickLabelOffset = 0.10;</span>
+<span class="fc" id="L223">        this.majorTickIncrement = majorTickIncrement;</span>
+<span class="fc" id="L224">        this.majorTickLength = 0.04;</span>
+<span class="fc" id="L225">        this.majorTickPaint = Color.black;</span>
+<span class="fc" id="L226">        this.majorTickStroke = new BasicStroke(3.0f);</span>
+<span class="fc" id="L227">        this.minorTickCount = minorTickCount;</span>
+<span class="fc" id="L228">        this.minorTickLength = 0.02;</span>
+<span class="fc" id="L229">        this.minorTickPaint = Color.black;</span>
+<span class="fc" id="L230">        this.minorTickStroke = new BasicStroke(1.0f);</span>
+<span class="fc" id="L231">    }</span>
+
+    /**
+     * Returns the lower bound for the scale.
+     *
+     * @return The lower bound for the scale.
+     *
+     * @see #setLowerBound(double)
+     *
+     * @since 1.0.8
+     */
+    public double getLowerBound() {
+<span class="nc" id="L243">        return this.lowerBound;</span>
+    }
+
+    /**
+     * Sets the lower bound for the scale and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param lower  the lower bound.
+     *
+     * @see #getLowerBound()
+     *
+     * @since 1.0.8
+     */
+    public void setLowerBound(double lower) {
+<span class="nc" id="L257">        this.lowerBound = lower;</span>
+<span class="nc" id="L258">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="nc" id="L259">    }</span>
+
+    /**
+     * Returns the upper bound for the scale.
+     *
+     * @return The upper bound for the scale.
+     *
+     * @see #setUpperBound(double)
+     *
+     * @since 1.0.8
+     */
+    public double getUpperBound() {
+<span class="nc" id="L271">        return this.upperBound;</span>
+    }
+
+    /**
+     * Sets the upper bound for the scale and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param upper  the upper bound.
+     *
+     * @see #getUpperBound()
+     *
+     * @since 1.0.8
+     */
+    public void setUpperBound(double upper) {
+<span class="nc" id="L285">        this.upperBound = upper;</span>
+<span class="nc" id="L286">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="nc" id="L287">    }</span>
+
+    /**
+     * Returns the start angle for the scale (in degrees using the same
+     * orientation as Java's &lt;code&gt;Arc2D&lt;/code&gt; class).
+     *
+     * @return The start angle.
+     *
+     * @see #setStartAngle(double)
+     */
+    public double getStartAngle() {
+<span class="nc" id="L298">        return this.startAngle;</span>
+    }
+
+    /**
+     * Sets the start angle for the scale and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param angle  the angle (in degrees).
+     *
+     * @see #getStartAngle()
+     */
+    public void setStartAngle(double angle) {
+<span class="fc" id="L310">        this.startAngle = angle;</span>
+<span class="fc" id="L311">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L312">    }</span>
+
+    /**
+     * Returns the extent.
+     *
+     * @return The extent.
+     *
+     * @see #setExtent(double)
+     */
+    public double getExtent() {
+<span class="nc" id="L322">        return this.extent;</span>
+    }
+
+    /**
+     * Sets the extent and sends a {@link DialLayerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param extent  the extent.
+     *
+     * @see #getExtent()
+     */
+    public void setExtent(double extent) {
+<span class="fc" id="L334">        this.extent = extent;</span>
+<span class="fc" id="L335">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L336">    }</span>
+
+    /**
+     * Returns the radius (as a percentage of the maximum space available) of
+     * the outer limit of the tick marks.
+     *
+     * @return The tick radius.
+     *
+     * @see #setTickRadius(double)
+     */
+    public double getTickRadius() {
+<span class="nc" id="L347">        return this.tickRadius;</span>
+    }
+
+    /**
+     * Sets the tick radius and sends a {@link DialLayerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param radius  the radius.
+     *
+     * @see #getTickRadius()
+     */
+    public void setTickRadius(double radius) {
+<span class="pc bpc" id="L359" title="1 of 2 branches missed.">        if (radius &lt;= 0.0) {</span>
+<span class="nc" id="L360">            throw new IllegalArgumentException(</span>
+                    &quot;The 'radius' must be positive.&quot;);
+        }
+<span class="fc" id="L363">        this.tickRadius = radius;</span>
+<span class="fc" id="L364">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L365">    }</span>
+
+    /**
+     * Returns the increment (in data units) between major tick labels.
+     *
+     * @return The increment between major tick labels.
+     *
+     * @see #setMajorTickIncrement(double)
+     */
+    public double getMajorTickIncrement() {
+<span class="nc" id="L375">        return this.majorTickIncrement;</span>
+    }
+
+    /**
+     * Sets the increment (in data units) between major tick labels and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param increment  the increment (must be &gt; 0).
+     *
+     * @see #getMajorTickIncrement()
+     */
+    public void setMajorTickIncrement(double increment) {
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">        if (increment &lt;= 0.0) {</span>
+<span class="nc" id="L388">            throw new IllegalArgumentException(</span>
+                    &quot;The 'increment' must be positive.&quot;);
+        }
+<span class="fc" id="L391">        this.majorTickIncrement = increment;</span>
+<span class="fc" id="L392">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L393">    }</span>
+
+    /**
+     * Returns the length factor for the major tick marks.  The value is
+     * subtracted from the tick radius to determine the inner starting point
+     * for the tick marks.
+     *
+     * @return The length factor.
+     *
+     * @see #setMajorTickLength(double)
+     */
+    public double getMajorTickLength() {
+<span class="nc" id="L405">        return this.majorTickLength;</span>
+    }
+
+    /**
+     * Sets the length factor for the major tick marks and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param length  the length.
+     *
+     * @see #getMajorTickLength()
+     */
+    public void setMajorTickLength(double length) {
+<span class="pc bpc" id="L417" title="1 of 2 branches missed.">        if (length &lt; 0.0) {</span>
+<span class="nc" id="L418">            throw new IllegalArgumentException(&quot;Negative 'length' argument.&quot;);</span>
+        }
+<span class="fc" id="L420">        this.majorTickLength = length;</span>
+<span class="fc" id="L421">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L422">    }</span>
+
+    /**
+     * Returns the major tick paint.
+     *
+     * @return The major tick paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setMajorTickPaint(Paint)
+     */
+    public Paint getMajorTickPaint() {
+<span class="nc" id="L432">        return this.majorTickPaint;</span>
+    }
+
+    /**
+     * Sets the major tick paint and sends a {@link DialLayerChangeEvent} to
+     * all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getMajorTickPaint()
+     */
+    public void setMajorTickPaint(Paint paint) {
+<span class="fc" id="L444">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L445">        this.majorTickPaint = paint;</span>
+<span class="fc" id="L446">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L447">    }</span>
+
+    /**
+     * Returns the stroke used to draw the major tick marks.
+     *
+     * @return The stroke (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setMajorTickStroke(Stroke)
+     */
+    public Stroke getMajorTickStroke() {
+<span class="nc" id="L457">        return this.majorTickStroke;</span>
+    }
+
+    /**
+     * Sets the stroke used to draw the major tick marks and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param stroke  the stroke (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getMajorTickStroke()
+     */
+    public void setMajorTickStroke(Stroke stroke) {
+<span class="fc" id="L469">        ParamChecks.nullNotPermitted(stroke, &quot;stroke&quot;);</span>
+<span class="fc" id="L470">        this.majorTickStroke = stroke;</span>
+<span class="fc" id="L471">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L472">    }</span>
+
+    /**
+     * Returns the number of minor tick marks between major tick marks.
+     *
+     * @return The number of minor tick marks between major tick marks.
+     *
+     * @see #setMinorTickCount(int)
+     */
+    public int getMinorTickCount() {
+<span class="nc" id="L482">        return this.minorTickCount;</span>
+    }
+
+    /**
+     * Sets the number of minor tick marks between major tick marks and sends
+     * a {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param count  the count.
+     *
+     * @see #getMinorTickCount()
+     */
+    public void setMinorTickCount(int count) {
+<span class="pc bpc" id="L494" title="1 of 2 branches missed.">        if (count &lt; 0) {</span>
+<span class="nc" id="L495">            throw new IllegalArgumentException(</span>
+                    &quot;The 'count' cannot be negative.&quot;);
+        }
+<span class="fc" id="L498">        this.minorTickCount = count;</span>
+<span class="fc" id="L499">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L500">    }</span>
+
+    /**
+     * Returns the length factor for the minor tick marks.  The value is
+     * subtracted from the tick radius to determine the inner starting point
+     * for the tick marks.
+     *
+     * @return The length factor.
+     *
+     * @see #setMinorTickLength(double)
+     */
+    public double getMinorTickLength() {
+<span class="nc" id="L512">        return this.minorTickLength;</span>
+    }
+
+    /**
+     * Sets the length factor for the minor tick marks and sends
+     * a {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param length  the length.
+     *
+     * @see #getMinorTickLength()
+     */
+    public void setMinorTickLength(double length) {
+<span class="pc bpc" id="L524" title="1 of 2 branches missed.">        if (length &lt; 0.0) {</span>
+<span class="nc" id="L525">            throw new IllegalArgumentException(&quot;Negative 'length' argument.&quot;);</span>
+        }
+<span class="fc" id="L527">        this.minorTickLength = length;</span>
+<span class="fc" id="L528">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L529">    }</span>
+
+    /**
+     * Returns the paint used to draw the minor tick marks.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setMinorTickPaint(Paint)
+     */
+    public Paint getMinorTickPaint() {
+<span class="nc" id="L539">        return this.minorTickPaint;</span>
+    }
+
+    /**
+     * Sets the paint used to draw the minor tick marks and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getMinorTickPaint()
+     */
+    public void setMinorTickPaint(Paint paint) {
+<span class="nc" id="L551">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="nc" id="L552">        this.minorTickPaint = paint;</span>
+<span class="nc" id="L553">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="nc" id="L554">    }</span>
+
+    /**
+     * Returns the stroke used to draw the minor tick marks.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setMinorTickStroke(Stroke)
+     *
+     * @since 1.0.8
+     */
+    public Stroke getMinorTickStroke() {
+<span class="nc" id="L566">        return this.minorTickStroke;</span>
+    }
+
+    /**
+     * Sets the stroke used to draw the minor tick marks and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param stroke  the stroke (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getMinorTickStroke()
+     *
+     * @since 1.0.8
+     */
+    public void setMinorTickStroke(Stroke stroke) {
+<span class="nc" id="L580">        ParamChecks.nullNotPermitted(stroke, &quot;stroke&quot;);</span>
+<span class="nc" id="L581">        this.minorTickStroke = stroke;</span>
+<span class="nc" id="L582">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="nc" id="L583">    }</span>
+
+    /**
+     * Returns the tick label offset.
+     *
+     * @return The tick label offset.
+     *
+     * @see #setTickLabelOffset(double)
+     */
+    public double getTickLabelOffset() {
+<span class="nc" id="L593">        return this.tickLabelOffset;</span>
+    }
+
+    /**
+     * Sets the tick label offset and sends a {@link DialLayerChangeEvent} to
+     * all registered listeners.
+     *
+     * @param offset  the offset.
+     *
+     * @see #getTickLabelOffset()
+     */
+    public void setTickLabelOffset(double offset) {
+<span class="fc" id="L605">        this.tickLabelOffset = offset;</span>
+<span class="fc" id="L606">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L607">    }</span>
+
+    /**
+     * Returns the font used to draw the tick labels.
+     *
+     * @return The font (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setTickLabelFont(Font)
+     */
+    public Font getTickLabelFont() {
+<span class="nc" id="L617">        return this.tickLabelFont;</span>
+    }
+
+    /**
+     * Sets the font used to display the tick labels and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param font  the font (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getTickLabelFont()
+     */
+    public void setTickLabelFont(Font font) {
+<span class="fc" id="L629">        ParamChecks.nullNotPermitted(font, &quot;font&quot;);</span>
+<span class="fc" id="L630">        this.tickLabelFont = font;</span>
+<span class="fc" id="L631">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L632">    }</span>
+
+    /**
+     * Returns the paint used to draw the tick labels.
+     *
+     * @return The paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #setTickLabelPaint(Paint)
+     */
+    public Paint getTickLabelPaint() {
+<span class="nc" id="L642">        return this.tickLabelPaint;</span>
+    }
+
+    /**
+     * Sets the paint used to draw the tick labels and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void setTickLabelPaint(Paint paint) {
+<span class="fc" id="L652">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L653">        this.tickLabelPaint = paint;</span>
+<span class="fc" id="L654">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L655">    }</span>
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; if the tick labels should be displayed,
+     * and &lt;code&gt;false&lt;/code&gt; otherwise.
+     *
+     * @return A boolean.
+     *
+     * @see #setTickLabelsVisible(boolean)
+     */
+    public boolean getTickLabelsVisible() {
+<span class="nc" id="L666">        return this.tickLabelsVisible;</span>
+    }
+
+    /**
+     * Sets the flag that controls whether or not the tick labels are
+     * displayed, and sends a {@link DialLayerChangeEvent} to all registered
+     * listeners.
+     *
+     * @param visible  the new flag value.
+     *
+     * @see #getTickLabelsVisible()
+     */
+    public void setTickLabelsVisible(boolean visible) {
+<span class="fc" id="L679">        this.tickLabelsVisible = visible;</span>
+<span class="fc" id="L680">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L681">    }</span>
+
+    /**
+     * Returns the number formatter used to convert the tick label values to
+     * strings.
+     *
+     * @return The formatter (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setTickLabelFormatter(NumberFormat)
+     */
+    public NumberFormat getTickLabelFormatter() {
+<span class="nc" id="L692">        return this.tickLabelFormatter;</span>
+    }
+
+    /**
+     * Sets the number formatter used to convert the tick label values to
+     * strings, and sends a {@link DialLayerChangeEvent} to all registered
+     * listeners.
+     *
+     * @param formatter  the formatter (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getTickLabelFormatter()
+     */
+    public void setTickLabelFormatter(NumberFormat formatter) {
+<span class="nc" id="L705">        ParamChecks.nullNotPermitted(formatter, &quot;formatter&quot;);</span>
+<span class="nc" id="L706">        this.tickLabelFormatter = formatter;</span>
+<span class="nc" id="L707">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="nc" id="L708">    }</span>
+
+    /**
+     * Returns a flag that controls whether or not the first tick label is
+     * visible.
+     *
+     * @return A boolean.
+     *
+     * @see #setFirstTickLabelVisible(boolean)
+     */
+    public boolean getFirstTickLabelVisible() {
+<span class="nc" id="L719">        return this.firstTickLabelVisible;</span>
+    }
+
+    /**
+     * Sets a flag that controls whether or not the first tick label is
+     * visible, and sends a {@link DialLayerChangeEvent} to all registered
+     * listeners.
+     *
+     * @param visible  the new flag value.
+     *
+     * @see #getFirstTickLabelVisible()
+     */
+    public void setFirstTickLabelVisible(boolean visible) {
+<span class="nc" id="L732">        this.firstTickLabelVisible = visible;</span>
+<span class="nc" id="L733">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="nc" id="L734">    }</span>
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; to indicate that this layer should be
+     * clipped within the dial window.
+     *
+     * @return &lt;code&gt;true&lt;/code&gt;.
+     */
+    @Override
+    public boolean isClippedToWindow() {
+<span class="nc" id="L744">        return true;</span>
+    }
+
+    /**
+     * Draws the scale on the dial plot.
+     *
+     * @param g2  the graphics target (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param plot  the dial plot (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param frame  the reference frame that is used to construct the
+     *     geometry of the plot (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param view  the visible part of the plot (&lt;code&gt;null&lt;/code&gt; not
+     *     permitted).
+     */
+    @Override
+    public void draw(Graphics2D g2, DialPlot plot, Rectangle2D frame,
+            Rectangle2D view) {
+
+<span class="nc" id="L761">        Rectangle2D arcRect = DialPlot.rectangleByRadius(frame,</span>
+                this.tickRadius, this.tickRadius);
+<span class="nc" id="L763">        Rectangle2D arcRectMajor = DialPlot.rectangleByRadius(frame,</span>
+                this.tickRadius - this.majorTickLength,
+                this.tickRadius - this.majorTickLength);
+<span class="nc" id="L766">        Rectangle2D arcRectMinor = arcRect;</span>
+<span class="nc bnc" id="L767" title="All 4 branches missed.">        if (this.minorTickCount &gt; 0 &amp;&amp; this.minorTickLength &gt; 0.0) {</span>
+<span class="nc" id="L768">            arcRectMinor = DialPlot.rectangleByRadius(frame,</span>
+                    this.tickRadius - this.minorTickLength,
+                    this.tickRadius - this.minorTickLength);
+        }
+<span class="nc" id="L772">        Rectangle2D arcRectForLabels = DialPlot.rectangleByRadius(frame,</span>
+                this.tickRadius - this.tickLabelOffset,
+                this.tickRadius - this.tickLabelOffset);
+
+<span class="nc" id="L776">        boolean firstLabel = true;</span>
+
+<span class="nc" id="L778">        Arc2D arc = new Arc2D.Double();</span>
+<span class="nc" id="L779">        Line2D workingLine = new Line2D.Double();</span>
+<span class="nc bnc" id="L780" title="All 2 branches missed.">        for (double v = this.lowerBound; v &lt;= this.upperBound;</span>
+<span class="nc" id="L781">                v += this.majorTickIncrement) {</span>
+<span class="nc" id="L782">            arc.setArc(arcRect, this.startAngle, valueToAngle(v)</span>
+                    - this.startAngle, Arc2D.OPEN);
+<span class="nc" id="L784">            Point2D pt0 = arc.getEndPoint();</span>
+<span class="nc" id="L785">            arc.setArc(arcRectMajor, this.startAngle, valueToAngle(v)</span>
+                    - this.startAngle, Arc2D.OPEN);
+<span class="nc" id="L787">            Point2D pt1 = arc.getEndPoint();</span>
+<span class="nc" id="L788">            g2.setPaint(this.majorTickPaint);</span>
+<span class="nc" id="L789">            g2.setStroke(this.majorTickStroke);</span>
+<span class="nc" id="L790">            workingLine.setLine(pt0, pt1);</span>
+<span class="nc" id="L791">            g2.draw(workingLine);</span>
+<span class="nc" id="L792">            arc.setArc(arcRectForLabels, this.startAngle, valueToAngle(v)</span>
+                    - this.startAngle, Arc2D.OPEN);
+<span class="nc" id="L794">            Point2D pt2 = arc.getEndPoint();</span>
+
+<span class="nc bnc" id="L796" title="All 2 branches missed.">            if (this.tickLabelsVisible) {</span>
+<span class="nc bnc" id="L797" title="All 4 branches missed.">                if (!firstLabel || this.firstTickLabelVisible) {</span>
+<span class="nc" id="L798">                    g2.setFont(this.tickLabelFont);</span>
+<span class="nc" id="L799">                    g2.setPaint(this.tickLabelPaint);</span>
+<span class="nc" id="L800">                    TextUtilities.drawAlignedString(</span>
+                            this.tickLabelFormatter.format(v), g2,
+                            (float) pt2.getX(), (float) pt2.getY(),
+                            TextAnchor.CENTER);
+                }
+            }
+<span class="nc" id="L806">            firstLabel = false;</span>
+
+            // now do the minor tick marks
+<span class="nc bnc" id="L809" title="All 4 branches missed.">            if (this.minorTickCount &gt; 0 &amp;&amp; this.minorTickLength &gt; 0.0) {</span>
+<span class="nc" id="L810">                double minorTickIncrement = this.majorTickIncrement</span>
+                        / (this.minorTickCount + 1);
+<span class="nc bnc" id="L812" title="All 2 branches missed.">                for (int i = 0; i &lt; this.minorTickCount; i++) {</span>
+<span class="nc" id="L813">                    double vv = v + ((i + 1) * minorTickIncrement);</span>
+<span class="nc bnc" id="L814" title="All 2 branches missed.">                    if (vv &gt;= this.upperBound) {</span>
+<span class="nc" id="L815">                        break;</span>
+                    }
+<span class="nc" id="L817">                    double angle = valueToAngle(vv);</span>
+
+<span class="nc" id="L819">                    arc.setArc(arcRect, this.startAngle, angle</span>
+                            - this.startAngle, Arc2D.OPEN);
+<span class="nc" id="L821">                    pt0 = arc.getEndPoint();</span>
+<span class="nc" id="L822">                    arc.setArc(arcRectMinor, this.startAngle, angle</span>
+                            - this.startAngle, Arc2D.OPEN);
+<span class="nc" id="L824">                    Point2D pt3 = arc.getEndPoint();</span>
+<span class="nc" id="L825">                    g2.setStroke(this.minorTickStroke);</span>
+<span class="nc" id="L826">                    g2.setPaint(this.minorTickPaint);</span>
+<span class="nc" id="L827">                    workingLine.setLine(pt0, pt3);</span>
+<span class="nc" id="L828">                    g2.draw(workingLine);</span>
+                }
+            }
+
+        }
+<span class="nc" id="L833">    }</span>
+
+    /**
+     * Converts a data value to an angle against this scale.
+     *
+     * @param value  the data value.
+     *
+     * @return The angle (in degrees, using the same specification as Java's
+     *     Arc2D class).
+     *
+     * @see #angleToValue(double)
+     */
+    @Override
+    public double valueToAngle(double value) {
+<span class="fc" id="L847">        double range = this.upperBound - this.lowerBound;</span>
+<span class="fc" id="L848">        double unit = this.extent / range;</span>
+<span class="fc" id="L849">        return this.startAngle + unit * (value - this.lowerBound);</span>
+    }
+
+    /**
+     * Converts the given angle to a data value, based on this scale.
+     *
+     * @param angle  the angle (in degrees).
+     *
+     * @return The data value.
+     *
+     * @see #valueToAngle(double)
+     */
+    @Override
+    public double angleToValue(double angle) {
+<span class="fc" id="L863">        double range = this.upperBound - this.lowerBound;</span>
+<span class="fc" id="L864">        double unit = range / this.extent;</span>
+<span class="fc" id="L865">        return (angle - this.startAngle) * unit;</span>
+    }
+
+    /**
+     * Tests this &lt;code&gt;StandardDialScale&lt;/code&gt; for equality with an arbitrary
+     * object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L878" title="All 2 branches covered.">        if (obj == this) {</span>
+<span class="fc" id="L879">            return true;</span>
+        }
+<span class="pc bpc" id="L881" title="1 of 2 branches missed.">        if (!(obj instanceof StandardDialScale)) {</span>
+<span class="nc" id="L882">            return false;</span>
+        }
+<span class="fc" id="L884">        StandardDialScale that = (StandardDialScale) obj;</span>
+<span class="fc bfc" id="L885" title="All 2 branches covered.">        if (this.lowerBound != that.lowerBound) {</span>
+<span class="fc" id="L886">            return false;</span>
+        }
+<span class="fc bfc" id="L888" title="All 2 branches covered.">        if (this.upperBound != that.upperBound) {</span>
+<span class="fc" id="L889">            return false;</span>
+        }
+<span class="fc bfc" id="L891" title="All 2 branches covered.">        if (this.startAngle != that.startAngle) {</span>
+<span class="fc" id="L892">            return false;</span>
+        }
+<span class="fc bfc" id="L894" title="All 2 branches covered.">        if (this.extent != that.extent) {</span>
+<span class="fc" id="L895">            return false;</span>
+        }
+<span class="fc bfc" id="L897" title="All 2 branches covered.">        if (this.tickRadius != that.tickRadius) {</span>
+<span class="fc" id="L898">            return false;</span>
+        }
+<span class="fc bfc" id="L900" title="All 2 branches covered.">        if (this.majorTickIncrement != that.majorTickIncrement) {</span>
+<span class="fc" id="L901">            return false;</span>
+        }
+<span class="fc bfc" id="L903" title="All 2 branches covered.">        if (this.majorTickLength != that.majorTickLength) {</span>
+<span class="fc" id="L904">            return false;</span>
+        }
+<span class="fc bfc" id="L906" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.majorTickPaint, that.majorTickPaint)) {</span>
+<span class="fc" id="L907">            return false;</span>
+        }
+<span class="fc bfc" id="L909" title="All 2 branches covered.">        if (!this.majorTickStroke.equals(that.majorTickStroke)) {</span>
+<span class="fc" id="L910">            return false;</span>
+        }
+<span class="fc bfc" id="L912" title="All 2 branches covered.">        if (this.minorTickCount != that.minorTickCount) {</span>
+<span class="fc" id="L913">            return false;</span>
+        }
+<span class="fc bfc" id="L915" title="All 2 branches covered.">        if (this.minorTickLength != that.minorTickLength) {</span>
+<span class="fc" id="L916">            return false;</span>
+        }
+<span class="pc bpc" id="L918" title="1 of 2 branches missed.">        if (!PaintUtilities.equal(this.minorTickPaint, that.minorTickPaint)) {</span>
+<span class="nc" id="L919">            return false;</span>
+        }
+<span class="pc bpc" id="L921" title="1 of 2 branches missed.">        if (!this.minorTickStroke.equals(that.minorTickStroke)) {</span>
+<span class="nc" id="L922">            return false;</span>
+        }
+<span class="fc bfc" id="L924" title="All 2 branches covered.">        if (this.tickLabelsVisible != that.tickLabelsVisible) {</span>
+<span class="fc" id="L925">            return false;</span>
+        }
+<span class="fc bfc" id="L927" title="All 2 branches covered.">        if (this.tickLabelOffset != that.tickLabelOffset) {</span>
+<span class="fc" id="L928">            return false;</span>
+        }
+<span class="fc bfc" id="L930" title="All 2 branches covered.">        if (!this.tickLabelFont.equals(that.tickLabelFont)) {</span>
+<span class="fc" id="L931">            return false;</span>
+        }
+<span class="fc bfc" id="L933" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.tickLabelPaint, that.tickLabelPaint)) {</span>
+<span class="fc" id="L934">            return false;</span>
+        }
+<span class="fc" id="L936">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Returns a hash code for this instance.
+     *
+     * @return A hash code.
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L946">        int result = 193;</span>
+        // lowerBound
+<span class="fc" id="L948">        long temp = Double.doubleToLongBits(this.lowerBound);</span>
+<span class="fc" id="L949">        result = 37 * result + (int) (temp ^ (temp &gt;&gt;&gt; 32));</span>
+        // upperBound
+<span class="fc" id="L951">        temp = Double.doubleToLongBits(this.upperBound);</span>
+<span class="fc" id="L952">        result = 37 * result + (int) (temp ^ (temp &gt;&gt;&gt; 32));</span>
+        // startAngle
+<span class="fc" id="L954">        temp = Double.doubleToLongBits(this.startAngle);</span>
+<span class="fc" id="L955">        result = 37 * result + (int) (temp ^ (temp &gt;&gt;&gt; 32));</span>
+        // extent
+<span class="fc" id="L957">        temp = Double.doubleToLongBits(this.extent);</span>
+<span class="fc" id="L958">        result = 37 * result + (int) (temp ^ (temp &gt;&gt;&gt; 32));</span>
+        // tickRadius
+<span class="fc" id="L960">        temp = Double.doubleToLongBits(this.tickRadius);</span>
+<span class="fc" id="L961">        result = 37 * result + (int) (temp ^ (temp &gt;&gt;&gt; 32));</span>
+        // majorTickIncrement
+        // majorTickLength
+        // majorTickPaint
+        // majorTickStroke
+        // minorTickCount
+        // minorTickLength
+        // minorTickPaint
+        // minorTickStroke
+        // tickLabelOffset
+        // tickLabelFont
+        // tickLabelsVisible
+        // tickLabelFormatter
+        // firstTickLabelsVisible
+<span class="fc" id="L975">        return result;</span>
+    }
+
+    /**
+     * Returns a clone of this instance.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException if this instance is not cloneable.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L987">        return super.clone();</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L998">        stream.defaultWriteObject();</span>
+<span class="fc" id="L999">        SerialUtilities.writePaint(this.majorTickPaint, stream);</span>
+<span class="fc" id="L1000">        SerialUtilities.writeStroke(this.majorTickStroke, stream);</span>
+<span class="fc" id="L1001">        SerialUtilities.writePaint(this.minorTickPaint, stream);</span>
+<span class="fc" id="L1002">        SerialUtilities.writeStroke(this.minorTickStroke, stream);</span>
+<span class="fc" id="L1003">        SerialUtilities.writePaint(this.tickLabelPaint, stream);</span>
+<span class="fc" id="L1004">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+            throws IOException, ClassNotFoundException {
+<span class="fc" id="L1016">        stream.defaultReadObject();</span>
+<span class="fc" id="L1017">        this.majorTickPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L1018">        this.majorTickStroke = SerialUtilities.readStroke(stream);</span>
+<span class="fc" id="L1019">        this.minorTickPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L1020">        this.minorTickStroke = SerialUtilities.readStroke(stream);</span>
+<span class="fc" id="L1021">        this.tickLabelPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L1022">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

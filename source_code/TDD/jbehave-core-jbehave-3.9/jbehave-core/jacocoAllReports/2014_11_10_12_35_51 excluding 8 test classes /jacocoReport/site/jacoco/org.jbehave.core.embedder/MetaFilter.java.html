@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>MetaFilter.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.embedder</a> &gt; <span class="el_source">MetaFilter.java</span></div><h1>MetaFilter.java</h1><pre class="source lang-java linenums">package org.jbehave.core.embedder;
+
+import groovy.lang.GroovyClassLoader;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.text.MessageFormat;
+import java.util.HashSet;
+import java.util.Properties;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.builder.ToStringBuilder;
+import org.apache.commons.lang.builder.ToStringStyle;
+import org.jbehave.core.model.Meta;
+import org.jbehave.core.model.Meta.Property;
+
+/**
+ * &lt;p&gt;
+ * Allows filtering on meta info.
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * A filter is uniquely identified by its String representation which is parsed
+ * and matched by the {@link MetaMatcher} to determine if the {@link Meta} is
+ * allowed or not.
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * The {@link DefaultMetaMatcher} interprets the filter as a sequence of any
+ * name-value properties (separated by a space), prefixed by &quot;+&quot; for inclusion
+ * and &quot;-&quot; for exclusion. E.g.:
+ * 
+ * &lt;pre&gt;
+ * MetaFilter filter = new MetaFilter(&quot;+author Mauro -theme smoke testing +map *API -skip&quot;);
+ * filter.allow(new Meta(asList(&quot;map someAPI&quot;)));
+ * &lt;/pre&gt;
+ * 
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The use of the {@link GroovyMetaMatcher} is triggered by the prefix &quot;groovy:&quot; and 
+ * allows the filter to be interpreted as a Groovy expression.
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ * MetaFilter filter = new MetaFilter(&quot;groovy: (a == '11' | a == '22') &amp;&amp; b == '33'&quot;);
+ * &lt;/pre&gt;
+ */
+public class MetaFilter {
+
+<span class="fc" id="L53">	private static String DEFAULT_META_PREFIX_PATTERN = &quot;(\\{0}(\\w|\\.|\\,|\\;|\\:|\\!|\\$|\\&amp;|\\s|\\*)*)&quot;;</span>
+
+<span class="fc" id="L55">    public static final MetaFilter EMPTY = new MetaFilter();</span>
+
+    private final String filterAsString;
+    private final EmbedderMonitor monitor;
+
+    private MetaMatcher metaMatcher;
+
+    public MetaFilter() {
+<span class="fc" id="L63">        this(&quot;&quot;);</span>
+<span class="fc" id="L64">    }</span>
+
+    public MetaFilter(String filterAsString) {
+<span class="fc" id="L67">        this(filterAsString, new PrintStreamEmbedderMonitor());</span>
+<span class="fc" id="L68">    }</span>
+
+<span class="fc" id="L70">    public MetaFilter(String filterAsString, EmbedderMonitor monitor) {</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        this.filterAsString = filterAsString == null ? &quot;&quot; : filterAsString;</span>
+<span class="fc" id="L72">        this.monitor = monitor;</span>
+<span class="fc" id="L73">        this.metaMatcher = createMetaMatcher(this.filterAsString);</span>
+<span class="fc" id="L74">        this.metaMatcher.parse(filterAsString);</span>
+<span class="fc" id="L75">    }</span>
+
+    /**
+     * Creates a MetaMatcher based on the filter content.  
+     * 
+     * @param filterAsString the String representation of the filter
+     * @return A MetaMatcher
+     */
+    protected MetaMatcher createMetaMatcher(String filterAsString) {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (filterAsString.startsWith(&quot;groovy: &quot;)) {</span>
+<span class="fc" id="L85">            return new GroovyMetaMatcher();</span>
+        }
+<span class="fc" id="L87">        return new DefaultMetaMatcher();</span>
+    }
+
+    public boolean allow(Meta meta) {
+<span class="fc" id="L91">        boolean allowed = this.metaMatcher.match(meta);</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (!allowed) {</span>
+<span class="fc" id="L93">            monitor.metaNotAllowed(meta, this);</span>
+        }
+<span class="fc" id="L95">        return allowed;</span>
+    }
+
+    public MetaMatcher metaMatcher() {
+<span class="fc" id="L99">        return metaMatcher;</span>
+    }
+
+    public String asString() {
+<span class="fc" id="L103">        return filterAsString;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L108">        return ToStringBuilder.reflectionToString(this, ToStringStyle.SHORT_PREFIX_STYLE);</span>
+    }
+
+    public interface MetaMatcher {
+
+        void parse(String filterAsString);
+
+        boolean match(Meta meta);
+
+    }
+
+<span class="fc" id="L119">    public class DefaultMetaMatcher implements MetaMatcher {</span>
+
+<span class="fc" id="L121">        private final Properties include = new Properties();</span>
+<span class="fc" id="L122">        private final Properties exclude = new Properties();</span>
+
+        public Properties include() {
+<span class="fc" id="L125">            return include;</span>
+        }
+
+        public Properties exclude() {
+<span class="fc" id="L129">            return exclude;</span>
+        }
+
+        public void parse(String filterAsString) {
+<span class="fc" id="L133">            parse(include, &quot;+&quot;);</span>
+<span class="fc" id="L134">            parse(exclude, &quot;-&quot;);</span>
+<span class="fc" id="L135">        }</span>
+
+        public boolean match(Meta meta) {
+            boolean matched;
+<span class="fc bfc" id="L139" title="All 4 branches covered.">            if (!include.isEmpty() &amp;&amp; exclude.isEmpty()) {</span>
+<span class="fc" id="L140">                matched = match(include, meta);</span>
+<span class="fc bfc" id="L141" title="All 4 branches covered.">            } else if (include.isEmpty() &amp;&amp; !exclude.isEmpty()) {</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">                matched = !match(exclude, meta);</span>
+<span class="pc bpc" id="L143" title="1 of 4 branches missed.">            } else if (!include.isEmpty() &amp;&amp; !exclude.isEmpty()) {</span>
+<span class="fc bfc" id="L144" title="All 4 branches covered.">                matched = match(merge(include, exclude), meta) &amp;&amp; !match(exclude, meta);</span>
+            } else {
+<span class="fc" id="L146">                matched = true;</span>
+            }
+<span class="fc" id="L148">            return matched;</span>
+        }
+
+        private void parse(Properties properties, String prefix) {
+<span class="fc" id="L152">            properties.clear();</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            for (String found : found(prefix)) {</span>
+<span class="fc" id="L154">                Property property = new Property(StringUtils.removeStartIgnoreCase(found, prefix));</span>
+<span class="fc" id="L155">                properties.setProperty(property.getName(), property.getValue());</span>
+<span class="fc" id="L156">            }</span>
+<span class="fc" id="L157">        }</span>
+
+        private Set&lt;String&gt; found(String prefix) {
+<span class="fc" id="L160">            Matcher matcher = findAllPrefixed(prefix).matcher(filterAsString);</span>
+<span class="fc" id="L161">            Set&lt;String&gt; found = new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">            while (matcher.find()) {</span>
+<span class="fc" id="L163">                found.add(matcher.group().trim());</span>
+            }
+<span class="fc" id="L165">            return found;</span>
+        }
+
+        private Pattern findAllPrefixed(String prefix) {
+<span class="fc" id="L169">			return Pattern.compile(MessageFormat.format(DEFAULT_META_PREFIX_PATTERN, prefix), Pattern.DOTALL);</span>
+        }
+
+        private Properties merge(Properties include, Properties exclude) {
+<span class="fc" id="L173">            Set&lt;Object&gt; in = new HashSet&lt;Object&gt;(include.keySet());</span>
+<span class="fc" id="L174">            in.addAll(exclude.keySet());</span>
+<span class="fc" id="L175">            Properties merged = new Properties();</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            for (Object key : in) {</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">                if (include.containsKey(key)) {</span>
+<span class="fc" id="L178">                    merged.put(key, include.get(key));</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">                } else if (exclude.containsKey(key)) {</span>
+<span class="fc" id="L180">                    merged.put(key, exclude.get(key));</span>
+                }
+<span class="fc" id="L182">            }</span>
+<span class="fc" id="L183">            return merged;</span>
+        }
+
+        private boolean match(Properties properties, Meta meta) {
+<span class="fc" id="L187">            boolean matches = false;</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">            for (Object key : properties.keySet()) {</span>
+<span class="fc" id="L189">                String property = (String) properties.get(key);</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                for (String metaName : meta.getPropertyNames()) {</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                    if (key.equals(metaName)) {</span>
+<span class="fc" id="L192">                        String value = meta.getProperty(metaName);</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                        if (StringUtils.isBlank(value)) {</span>
+<span class="fc" id="L194">                            matches = true;</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">                        } else if (property.contains(&quot;*&quot;)) {</span>
+<span class="fc" id="L196">                            matches = value.matches(property.replace(&quot;*&quot;, &quot;.*&quot;));</span>
+                        } else {
+<span class="fc" id="L198">                            matches = properties.get(key).equals(value);</span>
+                        }
+                    }
+<span class="fc bfc" id="L201" title="All 2 branches covered.">                    if (matches) {</span>
+<span class="fc" id="L202">                        break;</span>
+                    }
+<span class="fc" id="L204">                }</span>
+<span class="fc" id="L205">            }</span>
+<span class="fc" id="L206">            return matches;</span>
+        }
+
+    }
+
+<span class="fc" id="L211">    public class GroovyMetaMatcher implements MetaMatcher {</span>
+
+        private Class&lt;?&gt; groovyClass;
+        private Field metaField;
+        private Method match;
+
+        public void parse(String filterAsString) {
+<span class="fc" id="L218">            String groovyString = &quot;public class GroovyMatcher {\n&quot; +</span>
+                    &quot;public org.jbehave.core.model.Meta meta\n&quot; +
+                    &quot;  public boolean match() {\n&quot; +
+                    &quot;    return (&quot; + filterAsString.substring(&quot;groovy: &quot;.length()) + &quot;)\n&quot; +
+                    &quot;  }\n&quot; +
+                    &quot;  def propertyMissing(String name) {\n&quot; +
+                    &quot;    if (!meta.hasProperty(name)) {\n&quot; +
+                    &quot;      return false\n&quot; +
+                    &quot;    }\n&quot; +
+                    &quot;    def v = meta.getProperty(name)\n&quot; +
+                    &quot;    if (v.equals('')) {\n&quot; +
+                    &quot;      return true\n&quot; +
+                    &quot;    }\n&quot; +
+                    &quot;    return v\n&quot; +
+                    &quot;  }\n&quot; +
+                    &quot;}&quot;;
+
+<span class="fc" id="L235">            GroovyClassLoader loader = new GroovyClassLoader(getClass().getClassLoader());</span>
+<span class="fc" id="L236">            groovyClass = loader.parseClass(groovyString);</span>
+            try {
+<span class="fc" id="L238">                match = groovyClass.getDeclaredMethod(&quot;match&quot;);</span>
+<span class="fc" id="L239">                metaField = groovyClass.getField(&quot;meta&quot;);</span>
+<span class="nc" id="L240">            } catch (NoSuchFieldException e) {</span>
+                // can never occur as we control the groovy string
+<span class="nc" id="L242">            } catch (NoSuchMethodException e) {</span>
+                // can never occur as we control the groovy string
+<span class="pc" id="L244">            }</span>
+<span class="fc" id="L245">        }</span>
+
+        public boolean match(Meta meta) {
+            try {
+<span class="fc" id="L249">                Object matcher = groovyClass.newInstance();</span>
+<span class="fc" id="L250">                metaField.set(matcher, meta);</span>
+<span class="fc" id="L251">                return (Boolean) match.invoke(matcher);</span>
+<span class="nc" id="L252">            } catch (InstantiationException e) {</span>
+<span class="nc" id="L253">                throw new RuntimeException(e);</span>
+<span class="nc" id="L254">            } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L255">                throw new RuntimeException(e);</span>
+<span class="nc" id="L256">            } catch (InvocationTargetException e) {</span>
+<span class="nc" id="L257">                throw new RuntimeException(e);</span>
+            }
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

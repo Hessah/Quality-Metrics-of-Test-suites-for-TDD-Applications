@@ -1,0 +1,382 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ClusteredXYBarRenderer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.renderer.xy</a> &gt; <span class="el_source">ClusteredXYBarRenderer.java</span></div><h1>ClusteredXYBarRenderer.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ---------------------------
+ * ClusteredXYBarRenderer.java
+ * ---------------------------
+ * (C) Copyright 2003-2013, by Paolo Cova and Contributors.
+ *
+ * Original Author:  Paolo Cova;
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *                   Christian W. Zuckschwerdt;
+ *                   Matthias Rose;
+ *
+ * Changes
+ * -------
+ * 24-Jan-2003 : Version 1, contributed by Paolo Cova (DG);
+ * 25-Mar-2003 : Implemented Serializable (DG);
+ * 01-May-2003 : Modified drawItem() method signature (DG);
+ * 30-Jul-2003 : Modified entity constructor (CZ);
+ * 20-Aug-2003 : Implemented Cloneable and PublicCloneable (DG);
+ * 16-Sep-2003 : Changed ChartRenderingInfo --&gt; PlotRenderingInfo (DG);
+ * 07-Oct-2003 : Added renderer state (DG);
+ * 03-Nov-2003 : In draw method added state parameter and y==null value
+ *               handling (MR);
+ * 25-Feb-2004 : Replaced CrosshairInfo with CrosshairState (DG);
+ * 15-Jul-2004 : Switched getX() with getXValue() and getY() with
+ *               getYValue() (DG);
+ * 01-Oct-2004 : Fixed bug where 'drawBarOutline' flag is ignored (DG);
+ * 16-May-2005 : Fixed to used outline stroke for bar outlines.  Removed some
+ *               redundant code with the result that the renderer now respects
+ *               the 'base' setting from the super-class. Added an equals()
+ *               method (DG);
+ * 19-May-2005 : Added minimal item label implementation - needs improving (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 11-Dec-2006 : Added support for GradientPaint (DG);
+ * 12-Jun-2007 : Added override to findDomainBounds() to handle cluster offset,
+ *               fixed rendering to handle inverted axes, and simplified
+ *               entity generation code (DG);
+ * 24-Jun-2008 : Added new barPainter mechanism (DG);
+ * 03-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.chart.renderer.xy;
+
+import java.awt.Graphics2D;
+import java.awt.geom.Rectangle2D;
+import java.io.Serializable;
+
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.entity.EntityCollection;
+import org.jfree.chart.labels.XYItemLabelGenerator;
+import org.jfree.chart.plot.CrosshairState;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.plot.PlotRenderingInfo;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.data.Range;
+import org.jfree.data.xy.IntervalXYDataset;
+import org.jfree.data.xy.XYDataset;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * An extension of {@link XYBarRenderer} that displays bars for different
+ * series values at the same x next to each other. The assumption here is
+ * that for each x (time or else) there is a y value for each series. If
+ * this is not the case, there will be spaces between bars for a given x.
+ * The example shown here is generated by the
+ * &lt;code&gt;ClusteredXYBarRendererDemo1.java&lt;/code&gt; program included in the
+ * JFreeChart demo collection:
+ * &lt;br&gt;&lt;br&gt;
+ * &lt;img src=&quot;../../../../../images/ClusteredXYBarRendererSample.png&quot;
+ * alt=&quot;ClusteredXYBarRendererSample.png&quot; /&gt;
+ * &lt;P&gt;
+ * This renderer does not include code to calculate the crosshair point for the
+ * plot.
+ */
+public class ClusteredXYBarRenderer extends XYBarRenderer
+        implements Cloneable, PublicCloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = 5864462149177133147L;
+
+    /** Determines whether bar center should be interval start. */
+    private boolean centerBarAtStartValue;
+
+    /**
+     * Default constructor. Bar margin is set to 0.0.
+     */
+    public ClusteredXYBarRenderer() {
+<span class="fc" id="L115">        this(0.0, false);</span>
+<span class="fc" id="L116">    }</span>
+
+    /**
+     * Constructs a new XY clustered bar renderer.
+     *
+     * @param margin  the percentage amount to trim from the width of each bar.
+     * @param centerBarAtStartValue  if true, bars will be centered on the
+     *         start of the time period.
+     */
+    public ClusteredXYBarRenderer(double margin,
+                                  boolean centerBarAtStartValue) {
+<span class="fc" id="L127">        super(margin);</span>
+<span class="fc" id="L128">        this.centerBarAtStartValue = centerBarAtStartValue;</span>
+<span class="fc" id="L129">    }</span>
+
+    /**
+     * Returns the number of passes through the dataset that this renderer
+     * requires.  In this case, two passes are required, the first for drawing
+     * the shadows (if visible), and the second for drawing the bars.
+     *
+     * @return &lt;code&gt;2&lt;/code&gt;.
+     */
+    @Override
+    public int getPassCount() {
+<span class="nc" id="L140">        return 2;</span>
+    }
+
+    /**
+     * Returns the x-value bounds for the specified dataset.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return The bounds (possibly &lt;code&gt;null&lt;/code&gt;).
+     */
+    @Override
+    public Range findDomainBounds(XYDataset dataset) {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (dataset == null) {</span>
+<span class="fc" id="L153">            return null;</span>
+        }
+        // need to handle cluster centering as a special case
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (this.centerBarAtStartValue) {</span>
+<span class="fc" id="L157">            return findDomainBoundsWithOffset((IntervalXYDataset) dataset);</span>
+        }
+        else {
+<span class="fc" id="L160">            return super.findDomainBounds(dataset);</span>
+        }
+    }
+
+    /**
+     * Iterates over the items in an {@link IntervalXYDataset} to find
+     * the range of x-values including the interval OFFSET so that it centers
+     * the interval around the start value.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return The range (possibly &lt;code&gt;null&lt;/code&gt;).
+     */
+    protected Range findDomainBoundsWithOffset(IntervalXYDataset dataset) {
+<span class="fc" id="L174">        ParamChecks.nullNotPermitted(dataset, &quot;dataset&quot;);</span>
+<span class="fc" id="L175">        double minimum = Double.POSITIVE_INFINITY;</span>
+<span class="fc" id="L176">        double maximum = Double.NEGATIVE_INFINITY;</span>
+<span class="fc" id="L177">        int seriesCount = dataset.getSeriesCount();</span>
+        double lvalue;
+        double uvalue;
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        for (int series = 0; series &lt; seriesCount; series++) {</span>
+<span class="fc" id="L181">            int itemCount = dataset.getItemCount(series);</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">            for (int item = 0; item &lt; itemCount; item++) {</span>
+<span class="fc" id="L183">                lvalue = dataset.getStartXValue(series, item);</span>
+<span class="fc" id="L184">                uvalue = dataset.getEndXValue(series, item);</span>
+<span class="fc" id="L185">                double offset = (uvalue - lvalue) / 2.0;</span>
+<span class="fc" id="L186">                lvalue = lvalue - offset;</span>
+<span class="fc" id="L187">                uvalue = uvalue - offset;</span>
+<span class="fc" id="L188">                minimum = Math.min(minimum, lvalue);</span>
+<span class="fc" id="L189">                maximum = Math.max(maximum, uvalue);</span>
+            }
+        }
+
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">        if (minimum &gt; maximum) {</span>
+<span class="nc" id="L194">            return null;</span>
+        }
+        else {
+<span class="fc" id="L197">            return new Range(minimum, maximum);</span>
+        }
+    }
+
+    /**
+     * Draws the visual representation of a single data item. This method
+     * is mostly copied from the superclass, the change is that in the
+     * calculated space for a singe bar we draw bars for each series next to
+     * each other. The width of each bar is the available width divided by
+     * the number of series. Bars for each series are drawn in order left to
+     * right.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the area within which the plot is being drawn.
+     * @param info  collects information about the drawing.
+     * @param plot  the plot (can be used to obtain standard color
+     *              information etc).
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the dataset.
+     * @param series  the series index.
+     * @param item  the item index.
+     * @param crosshairState  crosshair information for the plot
+     *                        (&lt;code&gt;null&lt;/code&gt; permitted).
+     * @param pass  the pass index.
+     */
+    @Override
+    public void drawItem(Graphics2D g2, XYItemRendererState state, 
+            Rectangle2D dataArea, PlotRenderingInfo info, XYPlot plot,
+            ValueAxis domainAxis, ValueAxis rangeAxis, XYDataset dataset, 
+            int series, int item, CrosshairState crosshairState, int pass) {
+
+<span class="nc" id="L230">        IntervalXYDataset intervalDataset = (IntervalXYDataset) dataset;</span>
+
+        double y0;
+        double y1;
+<span class="nc bnc" id="L234" title="All 2 branches missed.">        if (getUseYInterval()) {</span>
+<span class="nc" id="L235">            y0 = intervalDataset.getStartYValue(series, item);</span>
+<span class="nc" id="L236">            y1 = intervalDataset.getEndYValue(series, item);</span>
+        }
+        else {
+<span class="nc" id="L239">            y0 = getBase();</span>
+<span class="nc" id="L240">            y1 = intervalDataset.getYValue(series, item);</span>
+        }
+<span class="nc bnc" id="L242" title="All 4 branches missed.">        if (Double.isNaN(y0) || Double.isNaN(y1)) {</span>
+<span class="nc" id="L243">            return;</span>
+        }
+
+<span class="nc" id="L246">        double yy0 = rangeAxis.valueToJava2D(y0, dataArea,</span>
+                plot.getRangeAxisEdge());
+<span class="nc" id="L248">        double yy1 = rangeAxis.valueToJava2D(y1, dataArea,</span>
+                plot.getRangeAxisEdge());
+
+<span class="nc" id="L251">        RectangleEdge xAxisLocation = plot.getDomainAxisEdge();</span>
+<span class="nc" id="L252">        double x0 = intervalDataset.getStartXValue(series, item);</span>
+<span class="nc" id="L253">        double xx0 = domainAxis.valueToJava2D(x0, dataArea, xAxisLocation);</span>
+
+<span class="nc" id="L255">        double x1 = intervalDataset.getEndXValue(series, item);</span>
+<span class="nc" id="L256">        double xx1 = domainAxis.valueToJava2D(x1, dataArea, xAxisLocation);</span>
+
+<span class="nc" id="L258">        double intervalW = xx1 - xx0;  // this may be negative</span>
+<span class="nc" id="L259">        double baseX = xx0;</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">        if (this.centerBarAtStartValue) {</span>
+<span class="nc" id="L261">            baseX = baseX - intervalW / 2.0;</span>
+        }
+<span class="nc" id="L263">        double m = getMargin();</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">        if (m &gt; 0.0) {</span>
+<span class="nc" id="L265">            double cut = intervalW * getMargin();</span>
+<span class="nc" id="L266">            intervalW = intervalW - cut;</span>
+<span class="nc" id="L267">            baseX = baseX + (cut / 2);</span>
+        }
+
+<span class="nc" id="L270">        double intervalH = Math.abs(yy0 - yy1);  // we don't need the sign</span>
+
+<span class="nc" id="L272">        PlotOrientation orientation = plot.getOrientation();</span>
+
+<span class="nc" id="L274">        int numSeries = dataset.getSeriesCount();</span>
+<span class="nc" id="L275">        double seriesBarWidth = intervalW / numSeries;  // may be negative</span>
+
+<span class="nc" id="L277">        Rectangle2D bar = null;</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">        if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L279">            double barY0 = baseX + (seriesBarWidth * series);</span>
+<span class="nc" id="L280">            double barY1 = barY0 + seriesBarWidth;</span>
+<span class="nc" id="L281">            double rx = Math.min(yy0, yy1);</span>
+<span class="nc" id="L282">            double rw = intervalH;</span>
+<span class="nc" id="L283">            double ry = Math.min(barY0, barY1);</span>
+<span class="nc" id="L284">            double rh = Math.abs(barY1 - barY0);</span>
+<span class="nc" id="L285">            bar = new Rectangle2D.Double(rx, ry, rw, rh);</span>
+<span class="nc" id="L286">        }</span>
+<span class="nc bnc" id="L287" title="All 2 branches missed.">        else if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="nc" id="L288">            double barX0 = baseX + (seriesBarWidth * series);</span>
+<span class="nc" id="L289">            double barX1 = barX0 + seriesBarWidth;</span>
+<span class="nc" id="L290">            double rx = Math.min(barX0, barX1);</span>
+<span class="nc" id="L291">            double rw = Math.abs(barX1 - barX0);</span>
+<span class="nc" id="L292">            double ry = Math.min(yy0, yy1);</span>
+<span class="nc" id="L293">            double rh = intervalH;</span>
+<span class="nc" id="L294">            bar = new Rectangle2D.Double(rx, ry, rw, rh);</span>
+<span class="nc" id="L295">        } else {</span>
+<span class="nc" id="L296">            throw new IllegalStateException();</span>
+        }
+<span class="nc bnc" id="L298" title="All 2 branches missed.">        boolean positive = (y1 &gt; 0.0);</span>
+<span class="nc" id="L299">        boolean inverted = rangeAxis.isInverted();</span>
+        RectangleEdge barBase;
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc bnc" id="L302" title="All 8 branches missed.">            if (positive &amp;&amp; inverted || !positive &amp;&amp; !inverted) {</span>
+<span class="nc" id="L303">                barBase = RectangleEdge.RIGHT;</span>
+            }
+            else {
+<span class="nc" id="L306">                barBase = RectangleEdge.LEFT;</span>
+            }
+        }
+        else {
+<span class="nc bnc" id="L310" title="All 8 branches missed.">            if (positive &amp;&amp; !inverted || !positive &amp;&amp; inverted) {</span>
+<span class="nc" id="L311">                barBase = RectangleEdge.BOTTOM;</span>
+            }
+            else {
+<span class="nc" id="L314">                barBase = RectangleEdge.TOP;</span>
+            }
+        }
+<span class="nc bnc" id="L317" title="All 4 branches missed.">        if (pass == 0 &amp;&amp; getShadowsVisible()) {</span>
+<span class="nc bnc" id="L318" title="All 2 branches missed.">            getBarPainter().paintBarShadow(g2, this, series, item, bar, barBase,</span>
+                !getUseYInterval());
+        }
+<span class="nc bnc" id="L321" title="All 2 branches missed.">        if (pass == 1) {</span>
+<span class="nc" id="L322">            getBarPainter().paintBar(g2, this, series, item, bar, barBase);</span>
+
+<span class="nc bnc" id="L324" title="All 2 branches missed.">            if (isItemLabelVisible(series, item)) {</span>
+<span class="nc" id="L325">                XYItemLabelGenerator generator = getItemLabelGenerator(series,</span>
+                        item);
+<span class="nc bnc" id="L327" title="All 2 branches missed.">                drawItemLabel(g2, dataset, series, item, plot, generator, bar,</span>
+                        y1 &lt; 0.0);
+            }
+
+            // add an entity for the item...
+<span class="nc bnc" id="L332" title="All 2 branches missed.">            if (info != null) {</span>
+<span class="nc" id="L333">                EntityCollection entities</span>
+                        = info.getOwner().getEntityCollection();
+<span class="nc bnc" id="L335" title="All 2 branches missed.">                if (entities != null) {</span>
+<span class="nc" id="L336">                    addEntity(entities, bar, dataset, series, item,</span>
+                            bar.getCenterX(), bar.getCenterY());
+                }
+            }
+        }
+
+<span class="nc" id="L342">    }</span>
+
+    /**
+     * Tests this renderer for equality with an arbitrary object, returning
+     * &lt;code&gt;true&lt;/code&gt; if &lt;code&gt;obj&lt;/code&gt; is a
+     * &lt;code&gt;ClusteredXYBarRenderer&lt;/code&gt; with the same settings as this
+     * renderer, and &lt;code&gt;false&lt;/code&gt; otherwise.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L356" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L357">            return true;</span>
+        }
+<span class="pc bpc" id="L359" title="1 of 2 branches missed.">        if (!(obj instanceof ClusteredXYBarRenderer)) {</span>
+<span class="nc" id="L360">            return false;</span>
+        }
+<span class="fc" id="L362">        ClusteredXYBarRenderer that = (ClusteredXYBarRenderer) obj;</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">        if (this.centerBarAtStartValue != that.centerBarAtStartValue) {</span>
+<span class="fc" id="L364">            return false;</span>
+        }
+<span class="fc" id="L366">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Returns a clone of the renderer.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException  if the renderer cannot be cloned.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L378">        return super.clone();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

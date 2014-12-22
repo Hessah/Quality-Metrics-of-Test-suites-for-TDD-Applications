@@ -1,0 +1,950 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>DefaultBoxAndWhiskerCategoryDataset.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.data.statistics</a> &gt; <span class="el_source">DefaultBoxAndWhiskerCategoryDataset.java</span></div><h1>DefaultBoxAndWhiskerCategoryDataset.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ----------------------------------------
+ * DefaultBoxAndWhiskerCategoryDataset.java
+ * ----------------------------------------
+ * (C) Copyright 2003-2008, by David Browning and Contributors.
+ *
+ * Original Author:  David Browning (for Australian Institute of Marine
+ *                   Science);
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *
+ * Changes
+ * -------
+ * 05-Aug-2003 : Version 1, contributed by David Browning (DG);
+ * 27-Aug-2003 : Moved from org.jfree.data --&gt; org.jfree.data.statistics (DG);
+ * 12-Nov-2003 : Changed 'data' from private to protected and added a new 'add'
+ *               method as proposed by Tim Bardzil.  Also removed old code (DG);
+ * 01-Mar-2004 : Added equals() method (DG);
+ * 18-Nov-2004 : Updates for changes in RangeInfo interface (DG);
+ * 11-Jan-2005 : Removed deprecated code in preparation for the 1.0.0
+ *               release (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 02-Feb-2007 : Removed author tags from all over JFreeChart sources (DG);
+ * 17-Apr-2007 : Fixed bug 1701822 (DG);
+ * 13-Jun-2007 : Fixed error in previous patch (DG);
+ * 28-Sep-2007 : Fixed cloning bug (DG);
+ * 02-Oct-2007 : Fixed bug in updating cached bounds (DG);
+ * 03-Oct-2007 : Fixed another bug in updating cached bounds, added removal
+ *               methods (DG);
+ *
+ */
+
+package org.jfree.data.statistics;
+
+import java.util.List;
+
+import org.jfree.data.KeyedObjects2D;
+import org.jfree.data.Range;
+import org.jfree.data.RangeInfo;
+import org.jfree.data.general.AbstractDataset;
+import org.jfree.data.general.DatasetChangeEvent;
+import org.jfree.util.ObjectUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A convenience class that provides a default implementation of the
+ * {@link BoxAndWhiskerCategoryDataset} interface.
+ */
+public class DefaultBoxAndWhiskerCategoryDataset extends AbstractDataset
+        implements BoxAndWhiskerCategoryDataset, RangeInfo, PublicCloneable {
+
+    /** Storage for the data. */
+    protected KeyedObjects2D data;
+
+    /** The minimum range value. */
+    private double minimumRangeValue;
+
+    /** The row index for the cell that the minimum range value comes from. */
+    private int minimumRangeValueRow;
+
+    /**
+     * The column index for the cell that the minimum range value comes from.
+     */
+    private int minimumRangeValueColumn;
+
+    /** The maximum range value. */
+    private double maximumRangeValue;
+
+    /** The row index for the cell that the maximum range value comes from. */
+    private int maximumRangeValueRow;
+
+    /**
+     * The column index for the cell that the maximum range value comes from.
+     */
+    private int maximumRangeValueColumn;
+
+    /**
+     * Creates a new dataset.
+     */
+<span class="fc" id="L104">    public DefaultBoxAndWhiskerCategoryDataset() {</span>
+<span class="fc" id="L105">        this.data = new KeyedObjects2D();</span>
+<span class="fc" id="L106">        this.minimumRangeValue = Double.NaN;</span>
+<span class="fc" id="L107">        this.minimumRangeValueRow = -1;</span>
+<span class="fc" id="L108">        this.minimumRangeValueColumn = -1;</span>
+<span class="fc" id="L109">        this.maximumRangeValue = Double.NaN;</span>
+<span class="fc" id="L110">        this.maximumRangeValueRow = -1;</span>
+<span class="fc" id="L111">        this.maximumRangeValueColumn = -1;</span>
+<span class="fc" id="L112">    }</span>
+
+    /**
+     * Adds a list of values relating to one box-and-whisker entity to the
+     * table.  The various median values are calculated.
+     *
+     * @param list  a collection of values from which the various medians will
+     *              be calculated.
+     * @param rowKey  the row key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param columnKey  the column key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #add(BoxAndWhiskerItem, Comparable, Comparable)
+     */
+    public void add(List list, Comparable rowKey, Comparable columnKey) {
+<span class="fc" id="L126">        BoxAndWhiskerItem item = BoxAndWhiskerCalculator</span>
+                .calculateBoxAndWhiskerStatistics(list);
+<span class="fc" id="L128">        add(item, rowKey, columnKey);</span>
+<span class="fc" id="L129">    }</span>
+
+    /**
+     * Adds a list of values relating to one Box and Whisker entity to the
+     * table.  The various median values are calculated.
+     *
+     * @param item  a box and whisker item (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param rowKey  the row key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param columnKey  the column key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #add(List, Comparable, Comparable)
+     */
+    public void add(BoxAndWhiskerItem item, Comparable rowKey,
+            Comparable columnKey) {
+
+<span class="fc" id="L144">        this.data.addObject(item, rowKey, columnKey);</span>
+
+        // update cached min and max values
+<span class="fc" id="L147">        int r = this.data.getRowIndex(rowKey);</span>
+<span class="fc" id="L148">        int c = this.data.getColumnIndex(columnKey);</span>
+<span class="fc bfc" id="L149" title="All 8 branches covered.">        if ((this.maximumRangeValueRow == r &amp;&amp; this.maximumRangeValueColumn</span>
+                == c) || (this.minimumRangeValueRow == r
+                &amp;&amp; this.minimumRangeValueColumn == c))  {
+<span class="fc" id="L152">            updateBounds();</span>
+        }
+        else {
+
+<span class="fc" id="L156">            double minval = Double.NaN;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (item.getMinOutlier() != null) {</span>
+<span class="fc" id="L158">                minval = item.getMinOutlier().doubleValue();</span>
+            }
+<span class="fc" id="L160">            double maxval = Double.NaN;</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            if (item.getMaxOutlier() != null) {</span>
+<span class="fc" id="L162">                maxval = item.getMaxOutlier().doubleValue();</span>
+            }
+
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            if (Double.isNaN(this.maximumRangeValue)) {</span>
+<span class="fc" id="L166">                this.maximumRangeValue = maxval;</span>
+<span class="fc" id="L167">                this.maximumRangeValueRow = r;</span>
+<span class="fc" id="L168">                this.maximumRangeValueColumn = c;</span>
+            }
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            else if (maxval &gt; this.maximumRangeValue) {</span>
+<span class="fc" id="L171">                this.maximumRangeValue = maxval;</span>
+<span class="fc" id="L172">                this.maximumRangeValueRow = r;</span>
+<span class="fc" id="L173">                this.maximumRangeValueColumn = c;</span>
+            }
+
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            if (Double.isNaN(this.minimumRangeValue)) {</span>
+<span class="fc" id="L177">                this.minimumRangeValue = minval;</span>
+<span class="fc" id="L178">                this.minimumRangeValueRow = r;</span>
+<span class="fc" id="L179">                this.minimumRangeValueColumn = c;</span>
+            }
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">            else if (minval &lt; this.minimumRangeValue) {</span>
+<span class="nc" id="L182">                this.minimumRangeValue = minval;</span>
+<span class="nc" id="L183">                this.minimumRangeValueRow = r;</span>
+<span class="nc" id="L184">                this.minimumRangeValueColumn = c;</span>
+            }
+        }
+
+<span class="fc" id="L188">        fireDatasetChanged();</span>
+
+<span class="fc" id="L190">    }</span>
+
+    /**
+     * Removes an item from the dataset and sends a {@link DatasetChangeEvent}
+     * to all registered listeners.
+     *
+     * @param rowKey  the row key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param columnKey  the column key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #add(BoxAndWhiskerItem, Comparable, Comparable)
+     *
+     * @since 1.0.7
+     */
+    public void remove(Comparable rowKey, Comparable columnKey) {
+        // defer null argument checks
+<span class="fc" id="L205">        int r = getRowIndex(rowKey);</span>
+<span class="fc" id="L206">        int c = getColumnIndex(columnKey);</span>
+<span class="fc" id="L207">        this.data.removeObject(rowKey, columnKey);</span>
+
+        // if this cell held a maximum and/or minimum value, we'll need to
+        // update the cached bounds...
+<span class="pc bpc" id="L211" title="5 of 8 branches missed.">        if ((this.maximumRangeValueRow == r &amp;&amp; this.maximumRangeValueColumn</span>
+                == c) || (this.minimumRangeValueRow == r
+                &amp;&amp; this.minimumRangeValueColumn == c))  {
+<span class="fc" id="L214">            updateBounds();</span>
+        }
+
+<span class="fc" id="L217">        fireDatasetChanged();</span>
+<span class="fc" id="L218">    }</span>
+
+    /**
+     * Removes a row from the dataset and sends a {@link DatasetChangeEvent}
+     * to all registered listeners.
+     *
+     * @param rowIndex  the row index.
+     *
+     * @see #removeColumn(int)
+     *
+     * @since 1.0.7
+     */
+    public void removeRow(int rowIndex) {
+<span class="nc" id="L231">        this.data.removeRow(rowIndex);</span>
+<span class="nc" id="L232">        updateBounds();</span>
+<span class="nc" id="L233">        fireDatasetChanged();</span>
+<span class="nc" id="L234">    }</span>
+
+    /**
+     * Removes a row from the dataset and sends a {@link DatasetChangeEvent}
+     * to all registered listeners.
+     *
+     * @param rowKey  the row key.
+     *
+     * @see #removeColumn(Comparable)
+     *
+     * @since 1.0.7
+     */
+    public void removeRow(Comparable rowKey) {
+<span class="nc" id="L247">        this.data.removeRow(rowKey);</span>
+<span class="nc" id="L248">        updateBounds();</span>
+<span class="nc" id="L249">        fireDatasetChanged();</span>
+<span class="nc" id="L250">    }</span>
+
+    /**
+     * Removes a column from the dataset and sends a {@link DatasetChangeEvent}
+     * to all registered listeners.
+     *
+     * @param columnIndex  the column index.
+     *
+     * @see #removeRow(int)
+     *
+     * @since 1.0.7
+     */
+    public void removeColumn(int columnIndex) {
+<span class="nc" id="L263">        this.data.removeColumn(columnIndex);</span>
+<span class="nc" id="L264">        updateBounds();</span>
+<span class="nc" id="L265">        fireDatasetChanged();</span>
+<span class="nc" id="L266">    }</span>
+
+    /**
+     * Removes a column from the dataset and sends a {@link DatasetChangeEvent}
+     * to all registered listeners.
+     *
+     * @param columnKey  the column key.
+     *
+     * @see #removeRow(Comparable)
+     *
+     * @since 1.0.7
+     */
+    public void removeColumn(Comparable columnKey) {
+<span class="nc" id="L279">        this.data.removeColumn(columnKey);</span>
+<span class="nc" id="L280">        updateBounds();</span>
+<span class="nc" id="L281">        fireDatasetChanged();</span>
+<span class="nc" id="L282">    }</span>
+
+    /**
+     * Clears all data from the dataset and sends a {@link DatasetChangeEvent}
+     * to all registered listeners.
+     *
+     * @since 1.0.7
+     */
+    public void clear() {
+<span class="nc" id="L291">        this.data.clear();</span>
+<span class="nc" id="L292">        updateBounds();</span>
+<span class="nc" id="L293">        fireDatasetChanged();</span>
+<span class="nc" id="L294">    }</span>
+
+    /**
+     * Return an item from within the dataset.
+     *
+     * @param row  the row index.
+     * @param column  the column index.
+     *
+     * @return The item.
+     */
+    public BoxAndWhiskerItem getItem(int row, int column) {
+<span class="fc" id="L305">        return (BoxAndWhiskerItem) this.data.getObject(row, column);</span>
+    }
+
+    /**
+     * Returns the value for an item.
+     *
+     * @param row  the row index.
+     * @param column  the column index.
+     *
+     * @return The value.
+     *
+     * @see #getMedianValue(int, int)
+     * @see #getValue(Comparable, Comparable)
+     */
+    @Override
+    public Number getValue(int row, int column) {
+<span class="fc" id="L321">        return getMedianValue(row, column);</span>
+    }
+
+    /**
+     * Returns the value for an item.
+     *
+     * @param rowKey  the row key.
+     * @param columnKey  the columnKey.
+     *
+     * @return The value.
+     *
+     * @see #getMedianValue(Comparable, Comparable)
+     * @see #getValue(int, int)
+     */
+    @Override
+    public Number getValue(Comparable rowKey, Comparable columnKey) {
+<span class="fc" id="L337">        return getMedianValue(rowKey, columnKey);</span>
+    }
+
+    /**
+     * Returns the mean value for an item.
+     *
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     *
+     * @return The mean value.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getMeanValue(int row, int column) {
+
+<span class="fc" id="L353">        Number result = null;</span>
+<span class="fc" id="L354">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(row,</span>
+                column);
+<span class="pc bpc" id="L356" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L357">            result = item.getMean();</span>
+        }
+<span class="fc" id="L359">        return result;</span>
+
+    }
+
+    /**
+     * Returns the mean value for an item.
+     *
+     * @param rowKey  the row key.
+     * @param columnKey  the column key.
+     *
+     * @return The mean value.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getMeanValue(Comparable rowKey, Comparable columnKey) {
+<span class="fc" id="L375">        Number result = null;</span>
+<span class="fc" id="L376">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                rowKey, columnKey);
+<span class="pc bpc" id="L378" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L379">            result = item.getMean();</span>
+        }
+<span class="fc" id="L381">        return result;</span>
+    }
+
+    /**
+     * Returns the median value for an item.
+     *
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     *
+     * @return The median value.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getMedianValue(int row, int column) {
+<span class="fc" id="L396">        Number result = null;</span>
+<span class="fc" id="L397">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(row,</span>
+                column);
+<span class="pc bpc" id="L399" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L400">            result = item.getMedian();</span>
+        }
+<span class="fc" id="L402">        return result;</span>
+    }
+
+    /**
+     * Returns the median value for an item.
+     *
+     * @param rowKey  the row key.
+     * @param columnKey  the columnKey.
+     *
+     * @return The median value.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getMedianValue(Comparable rowKey, Comparable columnKey) {
+<span class="fc" id="L417">        Number result = null;</span>
+<span class="fc" id="L418">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                rowKey, columnKey);
+<span class="pc bpc" id="L420" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L421">            result = item.getMedian();</span>
+        }
+<span class="fc" id="L423">        return result;</span>
+    }
+
+    /**
+     * Returns the first quartile value.
+     *
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     *
+     * @return The first quartile value.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getQ1Value(int row, int column) {
+<span class="fc" id="L438">        Number result = null;</span>
+<span class="fc" id="L439">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                row, column);
+<span class="pc bpc" id="L441" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L442">            result = item.getQ1();</span>
+        }
+<span class="fc" id="L444">        return result;</span>
+    }
+
+    /**
+     * Returns the first quartile value.
+     *
+     * @param rowKey  the row key.
+     * @param columnKey  the column key.
+     *
+     * @return The first quartile value.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getQ1Value(Comparable rowKey, Comparable columnKey) {
+<span class="fc" id="L459">        Number result = null;</span>
+<span class="fc" id="L460">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                rowKey, columnKey);
+<span class="pc bpc" id="L462" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L463">            result = item.getQ1();</span>
+        }
+<span class="fc" id="L465">        return result;</span>
+    }
+
+    /**
+     * Returns the third quartile value.
+     *
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     *
+     * @return The third quartile value.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getQ3Value(int row, int column) {
+<span class="fc" id="L480">        Number result = null;</span>
+<span class="fc" id="L481">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                row, column);
+<span class="pc bpc" id="L483" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L484">            result = item.getQ3();</span>
+        }
+<span class="fc" id="L486">        return result;</span>
+    }
+
+    /**
+     * Returns the third quartile value.
+     *
+     * @param rowKey  the row key.
+     * @param columnKey  the column key.
+     *
+     * @return The third quartile value.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getQ3Value(Comparable rowKey, Comparable columnKey) {
+<span class="fc" id="L501">        Number result = null;</span>
+<span class="fc" id="L502">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                rowKey, columnKey);
+<span class="pc bpc" id="L504" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L505">            result = item.getQ3();</span>
+        }
+<span class="fc" id="L507">        return result;</span>
+    }
+
+    /**
+     * Returns the column index for a given key.
+     *
+     * @param key  the column key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return The column index.
+     *
+     * @see #getColumnKey(int)
+     */
+    @Override
+    public int getColumnIndex(Comparable key) {
+<span class="fc" id="L521">        return this.data.getColumnIndex(key);</span>
+    }
+
+    /**
+     * Returns a column key.
+     *
+     * @param column  the column index (zero-based).
+     *
+     * @return The column key.
+     *
+     * @see #getColumnIndex(Comparable)
+     */
+    @Override
+    public Comparable getColumnKey(int column) {
+<span class="fc" id="L535">        return this.data.getColumnKey(column);</span>
+    }
+
+    /**
+     * Returns the column keys.
+     *
+     * @return The keys.
+     *
+     * @see #getRowKeys()
+     */
+    @Override
+    public List getColumnKeys() {
+<span class="nc" id="L547">        return this.data.getColumnKeys();</span>
+    }
+
+    /**
+     * Returns the row index for a given key.
+     *
+     * @param key  the row key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return The row index.
+     *
+     * @see #getRowKey(int)
+     */
+    @Override
+    public int getRowIndex(Comparable key) {
+        // defer null argument check
+<span class="fc" id="L562">        return this.data.getRowIndex(key);</span>
+    }
+
+    /**
+     * Returns a row key.
+     *
+     * @param row  the row index (zero-based).
+     *
+     * @return The row key.
+     *
+     * @see #getRowIndex(Comparable)
+     */
+    @Override
+    public Comparable getRowKey(int row) {
+<span class="fc" id="L576">        return this.data.getRowKey(row);</span>
+    }
+
+    /**
+     * Returns the row keys.
+     *
+     * @return The keys.
+     *
+     * @see #getColumnKeys()
+     */
+    @Override
+    public List getRowKeys() {
+<span class="nc" id="L588">        return this.data.getRowKeys();</span>
+    }
+
+    /**
+     * Returns the number of rows in the table.
+     *
+     * @return The row count.
+     *
+     * @see #getColumnCount()
+     */
+    @Override
+    public int getRowCount() {
+<span class="fc" id="L600">        return this.data.getRowCount();</span>
+    }
+
+    /**
+     * Returns the number of columns in the table.
+     *
+     * @return The column count.
+     *
+     * @see #getRowCount()
+     */
+    @Override
+    public int getColumnCount() {
+<span class="fc" id="L612">        return this.data.getColumnCount();</span>
+    }
+
+    /**
+     * Returns the minimum y-value in the dataset.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         y-interval is taken into account.
+     *
+     * @return The minimum value.
+     *
+     * @see #getRangeUpperBound(boolean)
+     */
+    @Override
+    public double getRangeLowerBound(boolean includeInterval) {
+<span class="fc" id="L627">        return this.minimumRangeValue;</span>
+    }
+
+    /**
+     * Returns the maximum y-value in the dataset.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         y-interval is taken into account.
+     *
+     * @return The maximum value.
+     *
+     * @see #getRangeLowerBound(boolean)
+     */
+    @Override
+    public double getRangeUpperBound(boolean includeInterval) {
+<span class="fc" id="L642">        return this.maximumRangeValue;</span>
+    }
+
+    /**
+     * Returns the range of the values in this dataset's range.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         y-interval is taken into account.
+     *
+     * @return The range.
+     */
+    @Override
+    public Range getRangeBounds(boolean includeInterval) {
+<span class="fc" id="L655">        return new Range(this.minimumRangeValue, this.maximumRangeValue);</span>
+    }
+
+    /**
+     * Returns the minimum regular (non outlier) value for an item.
+     *
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     *
+     * @return The minimum regular value.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getMinRegularValue(int row, int column) {
+<span class="fc" id="L670">        Number result = null;</span>
+<span class="fc" id="L671">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                row, column);
+<span class="pc bpc" id="L673" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L674">            result = item.getMinRegularValue();</span>
+        }
+<span class="fc" id="L676">        return result;</span>
+    }
+
+    /**
+     * Returns the minimum regular (non outlier) value for an item.
+     *
+     * @param rowKey  the row key.
+     * @param columnKey  the column key.
+     *
+     * @return The minimum regular value.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getMinRegularValue(Comparable rowKey, Comparable columnKey) {
+<span class="fc" id="L691">        Number result = null;</span>
+<span class="fc" id="L692">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                rowKey, columnKey);
+<span class="pc bpc" id="L694" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L695">            result = item.getMinRegularValue();</span>
+        }
+<span class="fc" id="L697">        return result;</span>
+    }
+
+    /**
+     * Returns the maximum regular (non outlier) value for an item.
+     *
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     *
+     * @return The maximum regular value.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getMaxRegularValue(int row, int column) {
+<span class="fc" id="L712">        Number result = null;</span>
+<span class="fc" id="L713">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                row, column);
+<span class="pc bpc" id="L715" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L716">            result = item.getMaxRegularValue();</span>
+        }
+<span class="fc" id="L718">        return result;</span>
+    }
+
+    /**
+     * Returns the maximum regular (non outlier) value for an item.
+     *
+     * @param rowKey  the row key.
+     * @param columnKey  the column key.
+     *
+     * @return The maximum regular value.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getMaxRegularValue(Comparable rowKey, Comparable columnKey) {
+<span class="fc" id="L733">        Number result = null;</span>
+<span class="fc" id="L734">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                rowKey, columnKey);
+<span class="pc bpc" id="L736" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L737">            result = item.getMaxRegularValue();</span>
+        }
+<span class="fc" id="L739">        return result;</span>
+    }
+
+    /**
+     * Returns the minimum outlier (non farout) value for an item.
+     *
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     *
+     * @return The minimum outlier.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getMinOutlier(int row, int column) {
+<span class="nc" id="L754">        Number result = null;</span>
+<span class="nc" id="L755">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                row, column);
+<span class="nc bnc" id="L757" title="All 2 branches missed.">        if (item != null) {</span>
+<span class="nc" id="L758">            result = item.getMinOutlier();</span>
+        }
+<span class="nc" id="L760">        return result;</span>
+    }
+
+    /**
+     * Returns the minimum outlier (non farout) value for an item.
+     *
+     * @param rowKey  the row key.
+     * @param columnKey  the column key.
+     *
+     * @return The minimum outlier.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getMinOutlier(Comparable rowKey, Comparable columnKey) {
+<span class="fc" id="L775">        Number result = null;</span>
+<span class="fc" id="L776">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                rowKey, columnKey);
+<span class="pc bpc" id="L778" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L779">            result = item.getMinOutlier();</span>
+        }
+<span class="fc" id="L781">        return result;</span>
+    }
+
+    /**
+     * Returns the maximum outlier (non farout) value for an item.
+     *
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     *
+     * @return The maximum outlier.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getMaxOutlier(int row, int column) {
+<span class="nc" id="L796">        Number result = null;</span>
+<span class="nc" id="L797">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                row, column);
+<span class="nc bnc" id="L799" title="All 2 branches missed.">        if (item != null) {</span>
+<span class="nc" id="L800">            result = item.getMaxOutlier();</span>
+        }
+<span class="nc" id="L802">        return result;</span>
+    }
+
+    /**
+     * Returns the maximum outlier (non farout) value for an item.
+     *
+     * @param rowKey  the row key.
+     * @param columnKey  the column key.
+     *
+     * @return The maximum outlier.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public Number getMaxOutlier(Comparable rowKey, Comparable columnKey) {
+<span class="fc" id="L817">        Number result = null;</span>
+<span class="fc" id="L818">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                rowKey, columnKey);
+<span class="pc bpc" id="L820" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L821">            result = item.getMaxOutlier();</span>
+        }
+<span class="fc" id="L823">        return result;</span>
+    }
+
+    /**
+     * Returns a list of outlier values for an item.
+     *
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     *
+     * @return A list of outlier values.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public List getOutliers(int row, int column) {
+<span class="fc" id="L838">        List result = null;</span>
+<span class="fc" id="L839">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                row, column);
+<span class="pc bpc" id="L841" title="1 of 2 branches missed.">        if (item != null) {</span>
+<span class="fc" id="L842">            result = item.getOutliers();</span>
+        }
+<span class="fc" id="L844">        return result;</span>
+    }
+
+    /**
+     * Returns a list of outlier values for an item.
+     *
+     * @param rowKey  the row key.
+     * @param columnKey  the column key.
+     *
+     * @return A list of outlier values.
+     *
+     * @see #getItem(int, int)
+     */
+    @Override
+    public List getOutliers(Comparable rowKey, Comparable columnKey) {
+<span class="nc" id="L859">        List result = null;</span>
+<span class="nc" id="L860">        BoxAndWhiskerItem item = (BoxAndWhiskerItem) this.data.getObject(</span>
+                rowKey, columnKey);
+<span class="nc bnc" id="L862" title="All 2 branches missed.">        if (item != null) {</span>
+<span class="nc" id="L863">            result = item.getOutliers();</span>
+        }
+<span class="nc" id="L865">        return result;</span>
+    }
+
+    /**
+     * Resets the cached bounds, by iterating over the entire dataset to find
+     * the current bounds.
+     */
+    private void updateBounds() {
+<span class="fc" id="L873">        this.minimumRangeValue = Double.NaN;</span>
+<span class="fc" id="L874">        this.minimumRangeValueRow = -1;</span>
+<span class="fc" id="L875">        this.minimumRangeValueColumn = -1;</span>
+<span class="fc" id="L876">        this.maximumRangeValue = Double.NaN;</span>
+<span class="fc" id="L877">        this.maximumRangeValueRow = -1;</span>
+<span class="fc" id="L878">        this.maximumRangeValueColumn = -1;</span>
+<span class="fc" id="L879">        int rowCount = getRowCount();</span>
+<span class="fc" id="L880">        int columnCount = getColumnCount();</span>
+<span class="fc bfc" id="L881" title="All 2 branches covered.">        for (int r = 0; r &lt; rowCount; r++) {</span>
+<span class="fc bfc" id="L882" title="All 2 branches covered.">            for (int c = 0; c &lt; columnCount; c++) {</span>
+<span class="fc" id="L883">                BoxAndWhiskerItem item = getItem(r, c);</span>
+<span class="pc bpc" id="L884" title="1 of 2 branches missed.">                if (item != null) {</span>
+<span class="fc" id="L885">                    Number min = item.getMinOutlier();</span>
+<span class="pc bpc" id="L886" title="1 of 2 branches missed.">                    if (min != null) {</span>
+<span class="fc" id="L887">                        double minv = min.doubleValue();</span>
+<span class="pc bpc" id="L888" title="1 of 2 branches missed.">                        if (!Double.isNaN(minv)) {</span>
+<span class="pc bpc" id="L889" title="1 of 4 branches missed.">                            if (minv &lt; this.minimumRangeValue || Double.isNaN(</span>
+                                    this.minimumRangeValue)) {
+<span class="fc" id="L891">                                this.minimumRangeValue = minv;</span>
+<span class="fc" id="L892">                                this.minimumRangeValueRow = r;</span>
+<span class="fc" id="L893">                                this.minimumRangeValueColumn = c;</span>
+                            }
+                        }
+                    }
+<span class="fc" id="L897">                    Number max = item.getMaxOutlier();</span>
+<span class="pc bpc" id="L898" title="1 of 2 branches missed.">                    if (max != null) {</span>
+<span class="fc" id="L899">                        double maxv = max.doubleValue();</span>
+<span class="pc bpc" id="L900" title="1 of 2 branches missed.">                        if (!Double.isNaN(maxv)) {</span>
+<span class="pc bpc" id="L901" title="1 of 4 branches missed.">                            if (maxv &gt; this.maximumRangeValue || Double.isNaN(</span>
+                                    this.maximumRangeValue)) {
+<span class="fc" id="L903">                                this.maximumRangeValue = maxv;</span>
+<span class="fc" id="L904">                                this.maximumRangeValueRow = r;</span>
+<span class="fc" id="L905">                                this.maximumRangeValueColumn = c;</span>
+                            }
+                        }
+                    }
+                }
+            }
+        }
+<span class="fc" id="L912">    }</span>
+
+    /**
+     * Tests this dataset for equality with an arbitrary object.
+     *
+     * @param obj  the object to test against (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L923" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L924">            return true;</span>
+        }
+<span class="pc bpc" id="L926" title="1 of 2 branches missed.">        if (obj instanceof DefaultBoxAndWhiskerCategoryDataset) {</span>
+<span class="fc" id="L927">            DefaultBoxAndWhiskerCategoryDataset dataset</span>
+                    = (DefaultBoxAndWhiskerCategoryDataset) obj;
+<span class="fc" id="L929">            return ObjectUtilities.equal(this.data, dataset.data);</span>
+        }
+<span class="nc" id="L931">        return false;</span>
+    }
+
+    /**
+     * Returns a clone of this dataset.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException if cloning is not possible.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L943">        DefaultBoxAndWhiskerCategoryDataset clone</span>
+                = (DefaultBoxAndWhiskerCategoryDataset) super.clone();
+<span class="fc" id="L945">        clone.data = (KeyedObjects2D) this.data.clone();</span>
+<span class="fc" id="L946">        return clone;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

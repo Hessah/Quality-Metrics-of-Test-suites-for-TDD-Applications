@@ -1,0 +1,666 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Marker.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.plot</a> &gt; <span class="el_source">Marker.java</span></div><h1>Marker.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates.
+ * Other names may be trademarks of their respective owners.]
+ *
+ * -----------
+ * Marker.java
+ * -----------
+ * (C) Copyright 2002-2013, by Object Refinery Limited.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   Nicolas Brodu;
+ *
+ * Changes
+ * -------
+ * 02-Jul-2002 : Added extra constructor, standard header and Javadoc
+ *               comments (DG);
+ * 20-Aug-2002 : Added the outline stroke attribute (DG);
+ * 02-Oct-2002 : Fixed errors reported by Checkstyle (DG);
+ * 16-Oct-2002 : Added new constructor (DG);
+ * 26-Mar-2003 : Implemented Serializable (DG);
+ * 21-May-2003 : Added labels (DG);
+ * 11-Sep-2003 : Implemented Cloneable (NB);
+ * 05-Nov-2003 : Added checks to ensure some attributes are never null (DG);
+ * 11-Feb-2003 : Moved to org.jfree.chart.plot package, plus significant API
+ *               changes to support IntervalMarker in plots (DG);
+ * 14-Jun-2004 : Updated equals() method (DG);
+ * 21-Jan-2005 : Added settings to control direction of horizontal and
+ *               vertical label offsets (DG);
+ * 01-Jun-2005 : Modified to use only one label offset type - this will be
+ *               applied to the domain or range axis as appropriate (DG);
+ * 06-Jun-2005 : Fix equals() method to handle GradientPaint (DG);
+ * 19-Aug-2005 : Changed constructor from public --&gt; protected (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 05-Sep-2006 : Added MarkerChangeListener support (DG);
+ * 26-Sep-2007 : Fix for serialization bug 1802195 (DG);
+ * 02-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.chart.plot;
+
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Paint;
+import java.awt.Stroke;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.EventListener;
+
+import javax.swing.event.EventListenerList;
+
+import org.jfree.chart.event.MarkerChangeEvent;
+import org.jfree.chart.event.MarkerChangeListener;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.io.SerialUtilities;
+import org.jfree.ui.LengthAdjustmentType;
+import org.jfree.ui.RectangleAnchor;
+import org.jfree.ui.RectangleInsets;
+import org.jfree.ui.TextAnchor;
+import org.jfree.util.ObjectUtilities;
+import org.jfree.util.PaintUtilities;
+
+/**
+ * The base class for markers that can be added to plots to highlight a value
+ * or range of values.
+ * &lt;br&gt;&lt;br&gt;
+ * An event notification mechanism was added to this class in JFreeChart
+ * version 1.0.3.
+ */
+public abstract class Marker implements Cloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = -734389651405327166L;
+
+    /** The paint (null is not allowed). */
+    private transient Paint paint;
+
+    /** The stroke (null is not allowed). */
+    private transient Stroke stroke;
+
+    /** The outline paint. */
+    private transient Paint outlinePaint;
+
+    /** The outline stroke. */
+    private transient Stroke outlineStroke;
+
+    /** The alpha transparency. */
+    private float alpha;
+
+    /** The label. */
+<span class="fc" id="L116">    private String label = null;</span>
+
+    /** The label font. */
+    private Font labelFont;
+
+    /** The label paint. */
+    private transient Paint labelPaint;
+
+    /** The label position. */
+    private RectangleAnchor labelAnchor;
+
+    /** The text anchor for the label. */
+    private TextAnchor labelTextAnchor;
+
+    /** The label offset from the marker rectangle. */
+    private RectangleInsets labelOffset;
+
+    /**
+     * The offset type for the domain or range axis (never &lt;code&gt;null&lt;/code&gt;).
+     */
+    private LengthAdjustmentType labelOffsetType;
+
+    /** Storage for registered change listeners. */
+    private transient EventListenerList listenerList;
+
+    /**
+     * Creates a new marker with default attributes.
+     */
+    protected Marker() {
+<span class="fc" id="L145">        this(Color.gray);</span>
+<span class="fc" id="L146">    }</span>
+
+    /**
+     * Constructs a new marker.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    protected Marker(Paint paint) {
+<span class="fc" id="L154">        this(paint, new BasicStroke(0.5f), Color.gray, new BasicStroke(0.5f),</span>
+                0.80f);
+<span class="fc" id="L156">    }</span>
+
+    /**
+     * Constructs a new marker.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param stroke  the stroke (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param outlinePaint  the outline paint (&lt;code&gt;null&lt;/code&gt; permitted).
+     * @param outlineStroke  the outline stroke (&lt;code&gt;null&lt;/code&gt; permitted).
+     * @param alpha  the alpha transparency (must be in the range 0.0f to
+     *     1.0f).
+     *
+     * @throws IllegalArgumentException if &lt;code&gt;paint&lt;/code&gt; or
+     *     &lt;code&gt;stroke&lt;/code&gt; is &lt;code&gt;null&lt;/code&gt;, or &lt;code&gt;alpha&lt;/code&gt; is
+     *     not in the specified range.
+     */
+    protected Marker(Paint paint, Stroke stroke, Paint outlinePaint, 
+<span class="fc" id="L173">            Stroke outlineStroke, float alpha) {</span>
+
+<span class="fc" id="L175">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L176">        ParamChecks.nullNotPermitted(stroke, &quot;stroke&quot;);</span>
+<span class="pc bpc" id="L177" title="2 of 4 branches missed.">        if (alpha &lt; 0.0f || alpha &gt; 1.0f) {</span>
+<span class="nc" id="L178">            throw new IllegalArgumentException(</span>
+                    &quot;The 'alpha' value must be in the range 0.0f to 1.0f&quot;);
+        }
+
+<span class="fc" id="L182">        this.paint = paint;</span>
+<span class="fc" id="L183">        this.stroke = stroke;</span>
+<span class="fc" id="L184">        this.outlinePaint = outlinePaint;</span>
+<span class="fc" id="L185">        this.outlineStroke = outlineStroke;</span>
+<span class="fc" id="L186">        this.alpha = alpha;</span>
+
+<span class="fc" id="L188">        this.labelFont = new Font(&quot;SansSerif&quot;, Font.PLAIN, 9);</span>
+<span class="fc" id="L189">        this.labelPaint = Color.black;</span>
+<span class="fc" id="L190">        this.labelAnchor = RectangleAnchor.TOP_LEFT;</span>
+<span class="fc" id="L191">        this.labelOffset = new RectangleInsets(3.0, 3.0, 3.0, 3.0);</span>
+<span class="fc" id="L192">        this.labelOffsetType = LengthAdjustmentType.CONTRACT;</span>
+<span class="fc" id="L193">        this.labelTextAnchor = TextAnchor.CENTER;</span>
+
+<span class="fc" id="L195">        this.listenerList = new EventListenerList();</span>
+<span class="fc" id="L196">    }</span>
+
+    /**
+     * Returns the paint.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setPaint(Paint)
+     */
+    public Paint getPaint() {
+<span class="fc" id="L206">        return this.paint;</span>
+    }
+
+    /**
+     * Sets the paint and sends a {@link MarkerChangeEvent} to all registered
+     * listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getPaint()
+     */
+    public void setPaint(Paint paint) {
+<span class="fc" id="L218">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L219">        this.paint = paint;</span>
+<span class="fc" id="L220">        notifyListeners(new MarkerChangeEvent(this));</span>
+<span class="fc" id="L221">    }</span>
+
+    /**
+     * Returns the stroke.
+     *
+     * @return The stroke (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setStroke(Stroke)
+     */
+    public Stroke getStroke() {
+<span class="fc" id="L231">        return this.stroke;</span>
+    }
+
+    /**
+     * Sets the stroke and sends a {@link MarkerChangeEvent} to all registered
+     * listeners.
+     *
+     * @param stroke  the stroke (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getStroke()
+     */
+    public void setStroke(Stroke stroke) {
+<span class="fc" id="L243">        ParamChecks.nullNotPermitted(stroke, &quot;stroke&quot;);</span>
+<span class="fc" id="L244">        this.stroke = stroke;</span>
+<span class="fc" id="L245">        notifyListeners(new MarkerChangeEvent(this));</span>
+<span class="fc" id="L246">    }</span>
+
+    /**
+     * Returns the outline paint.
+     *
+     * @return The outline paint (possibly &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setOutlinePaint(Paint)
+     */
+    public Paint getOutlinePaint() {
+<span class="fc" id="L256">        return this.outlinePaint;</span>
+    }
+
+    /**
+     * Sets the outline paint and sends a {@link MarkerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @see #getOutlinePaint()
+     */
+    public void setOutlinePaint(Paint paint) {
+<span class="fc" id="L268">        this.outlinePaint = paint;</span>
+<span class="fc" id="L269">        notifyListeners(new MarkerChangeEvent(this));</span>
+<span class="fc" id="L270">    }</span>
+
+    /**
+     * Returns the outline stroke.
+     *
+     * @return The outline stroke (possibly &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setOutlineStroke(Stroke)
+     */
+    public Stroke getOutlineStroke() {
+<span class="fc" id="L280">        return this.outlineStroke;</span>
+    }
+
+    /**
+     * Sets the outline stroke and sends a {@link MarkerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param stroke  the stroke (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @see #getOutlineStroke()
+     */
+    public void setOutlineStroke(Stroke stroke) {
+<span class="fc" id="L292">        this.outlineStroke = stroke;</span>
+<span class="fc" id="L293">        notifyListeners(new MarkerChangeEvent(this));</span>
+<span class="fc" id="L294">    }</span>
+
+    /**
+     * Returns the alpha transparency.
+     *
+     * @return The alpha transparency.
+     *
+     * @see #setAlpha(float)
+     */
+    public float getAlpha() {
+<span class="fc" id="L304">        return this.alpha;</span>
+    }
+
+    /**
+     * Sets the alpha transparency that should be used when drawing the
+     * marker, and sends a {@link MarkerChangeEvent} to all registered
+     * listeners.  The alpha transparency is a value in the range 0.0f
+     * (completely transparent) to 1.0f (completely opaque).
+     *
+     * @param alpha  the alpha transparency (must be in the range 0.0f to
+     *     1.0f).
+     *
+     * @throws IllegalArgumentException if &lt;code&gt;alpha&lt;/code&gt; is not in the
+     *     specified range.
+     *
+     * @see #getAlpha()
+     */
+    public void setAlpha(float alpha) {
+<span class="pc bpc" id="L322" title="2 of 4 branches missed.">        if (alpha &lt; 0.0f || alpha &gt; 1.0f) {</span>
+<span class="nc" id="L323">            throw new IllegalArgumentException(</span>
+                    &quot;The 'alpha' value must be in the range 0.0f to 1.0f&quot;);
+        }
+<span class="fc" id="L326">        this.alpha = alpha;</span>
+<span class="fc" id="L327">        notifyListeners(new MarkerChangeEvent(this));</span>
+<span class="fc" id="L328">    }</span>
+
+    /**
+     * Returns the label (if &lt;code&gt;null&lt;/code&gt; no label is displayed).
+     *
+     * @return The label (possibly &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setLabel(String)
+     */
+    public String getLabel() {
+<span class="fc" id="L338">        return this.label;</span>
+    }
+
+    /**
+     * Sets the label (if &lt;code&gt;null&lt;/code&gt; no label is displayed) and sends a
+     * {@link MarkerChangeEvent} to all registered listeners.
+     *
+     * @param label  the label (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @see #getLabel()
+     */
+    public void setLabel(String label) {
+<span class="fc" id="L350">        this.label = label;</span>
+<span class="fc" id="L351">        notifyListeners(new MarkerChangeEvent(this));</span>
+<span class="fc" id="L352">    }</span>
+
+    /**
+     * Returns the label font.
+     *
+     * @return The label font (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setLabelFont(Font)
+     */
+    public Font getLabelFont() {
+<span class="fc" id="L362">        return this.labelFont;</span>
+    }
+
+    /**
+     * Sets the label font and sends a {@link MarkerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param font  the font (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getLabelFont()
+     */
+    public void setLabelFont(Font font) {
+<span class="fc" id="L374">        ParamChecks.nullNotPermitted(font, &quot;font&quot;);</span>
+<span class="fc" id="L375">        this.labelFont = font;</span>
+<span class="fc" id="L376">        notifyListeners(new MarkerChangeEvent(this));</span>
+<span class="fc" id="L377">    }</span>
+
+    /**
+     * Returns the label paint.
+     *
+     * @return The label paint (never &lt;/code&gt;null&lt;/code&gt;).
+     *
+     * @see #setLabelPaint(Paint)
+     */
+    public Paint getLabelPaint() {
+<span class="fc" id="L387">        return this.labelPaint;</span>
+    }
+
+    /**
+     * Sets the label paint and sends a {@link MarkerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getLabelPaint()
+     */
+    public void setLabelPaint(Paint paint) {
+<span class="fc" id="L399">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L400">        this.labelPaint = paint;</span>
+<span class="fc" id="L401">        notifyListeners(new MarkerChangeEvent(this));</span>
+<span class="fc" id="L402">    }</span>
+
+    /**
+     * Returns the label anchor.  This defines the position of the label
+     * anchor, relative to the bounds of the marker.
+     *
+     * @return The label anchor (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setLabelAnchor(RectangleAnchor)
+     */
+    public RectangleAnchor getLabelAnchor() {
+<span class="fc" id="L413">        return this.labelAnchor;</span>
+    }
+
+    /**
+     * Sets the label anchor and sends a {@link MarkerChangeEvent} to all
+     * registered listeners.  The anchor defines the position of the label
+     * anchor, relative to the bounds of the marker.
+     *
+     * @param anchor  the anchor (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getLabelAnchor()
+     */
+    public void setLabelAnchor(RectangleAnchor anchor) {
+<span class="fc" id="L426">        ParamChecks.nullNotPermitted(anchor, &quot;anchor&quot;);</span>
+<span class="fc" id="L427">        this.labelAnchor = anchor;</span>
+<span class="fc" id="L428">        notifyListeners(new MarkerChangeEvent(this));</span>
+<span class="fc" id="L429">    }</span>
+
+    /**
+     * Returns the label offset.
+     *
+     * @return The label offset (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setLabelOffset(RectangleInsets)
+     */
+    public RectangleInsets getLabelOffset() {
+<span class="fc" id="L439">        return this.labelOffset;</span>
+    }
+
+    /**
+     * Sets the label offset and sends a {@link MarkerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param offset  the label offset (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getLabelOffset()
+     */
+    public void setLabelOffset(RectangleInsets offset) {
+<span class="fc" id="L451">        ParamChecks.nullNotPermitted(offset, &quot;offset&quot;);</span>
+<span class="fc" id="L452">        this.labelOffset = offset;</span>
+<span class="fc" id="L453">        notifyListeners(new MarkerChangeEvent(this));</span>
+<span class="fc" id="L454">    }</span>
+
+    /**
+     * Returns the label offset type.
+     *
+     * @return The type (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setLabelOffsetType(LengthAdjustmentType)
+     */
+    public LengthAdjustmentType getLabelOffsetType() {
+<span class="fc" id="L464">        return this.labelOffsetType;</span>
+    }
+
+    /**
+     * Sets the label offset type and sends a {@link MarkerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param adj  the type (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getLabelOffsetType()
+     */
+    public void setLabelOffsetType(LengthAdjustmentType adj) {
+<span class="fc" id="L476">        ParamChecks.nullNotPermitted(adj, &quot;adj&quot;);</span>
+<span class="fc" id="L477">        this.labelOffsetType = adj;</span>
+<span class="fc" id="L478">        notifyListeners(new MarkerChangeEvent(this));</span>
+<span class="fc" id="L479">    }</span>
+
+    /**
+     * Returns the label text anchor.
+     *
+     * @return The label text anchor (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setLabelTextAnchor(TextAnchor)
+     */
+    public TextAnchor getLabelTextAnchor() {
+<span class="fc" id="L489">        return this.labelTextAnchor;</span>
+    }
+
+    /**
+     * Sets the label text anchor and sends a {@link MarkerChangeEvent} to
+     * all registered listeners.
+     *
+     * @param anchor  the label text anchor (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getLabelTextAnchor()
+     */
+    public void setLabelTextAnchor(TextAnchor anchor) {
+<span class="fc" id="L501">        ParamChecks.nullNotPermitted(anchor, &quot;anchor&quot;);</span>
+<span class="fc" id="L502">        this.labelTextAnchor = anchor;</span>
+<span class="fc" id="L503">        notifyListeners(new MarkerChangeEvent(this));</span>
+<span class="fc" id="L504">    }</span>
+
+    /**
+     * Registers an object for notification of changes to the marker.
+     *
+     * @param listener  the object to be registered.
+     *
+     * @see #removeChangeListener(MarkerChangeListener)
+     *
+     * @since 1.0.3
+     */
+    public void addChangeListener(MarkerChangeListener listener) {
+<span class="fc" id="L516">        this.listenerList.add(MarkerChangeListener.class, listener);</span>
+<span class="fc" id="L517">    }</span>
+
+    /**
+     * Unregisters an object for notification of changes to the marker.
+     *
+     * @param listener  the object to be unregistered.
+     *
+     * @see #addChangeListener(MarkerChangeListener)
+     *
+     * @since 1.0.3
+     */
+    public void removeChangeListener(MarkerChangeListener listener) {
+<span class="fc" id="L529">        this.listenerList.remove(MarkerChangeListener.class, listener);</span>
+<span class="fc" id="L530">    }</span>
+
+    /**
+     * Notifies all registered listeners that the marker has been modified.
+     *
+     * @param event  information about the change event.
+     *
+     * @since 1.0.3
+     */
+    public void notifyListeners(MarkerChangeEvent event) {
+
+<span class="fc" id="L541">        Object[] listeners = this.listenerList.getListenerList();</span>
+<span class="fc bfc" id="L542" title="All 2 branches covered.">        for (int i = listeners.length - 2; i &gt;= 0; i -= 2) {</span>
+<span class="pc bpc" id="L543" title="1 of 2 branches missed.">            if (listeners[i] == MarkerChangeListener.class) {</span>
+<span class="fc" id="L544">                ((MarkerChangeListener) listeners[i + 1]).markerChanged(event);</span>
+            }
+        }
+
+<span class="fc" id="L548">    }</span>
+
+    /**
+     * Returns an array containing all the listeners of the specified type.
+     *
+     * @param listenerType  the listener type.
+     *
+     * @return The array of listeners.
+     *
+     * @since 1.0.3
+     */
+    public EventListener[] getListeners(Class listenerType) {
+<span class="fc" id="L560">        return this.listenerList.getListeners(listenerType);</span>
+    }
+
+    /**
+     * Tests the marker for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L572" title="All 2 branches covered.">        if (obj == this) {</span>
+<span class="fc" id="L573">            return true;</span>
+        }
+<span class="pc bpc" id="L575" title="1 of 2 branches missed.">        if (!(obj instanceof Marker)) {</span>
+<span class="nc" id="L576">            return false;</span>
+        }
+<span class="fc" id="L578">        Marker that = (Marker) obj;</span>
+<span class="fc bfc" id="L579" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.paint, that.paint)) {</span>
+<span class="fc" id="L580">            return false;</span>
+        }
+<span class="fc bfc" id="L582" title="All 2 branches covered.">        if (!ObjectUtilities.equal(this.stroke, that.stroke)) {</span>
+<span class="fc" id="L583">            return false;</span>
+        }
+<span class="fc bfc" id="L585" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.outlinePaint, that.outlinePaint)) {</span>
+<span class="fc" id="L586">            return false;</span>
+        }
+<span class="fc bfc" id="L588" title="All 2 branches covered.">        if (!ObjectUtilities.equal(this.outlineStroke, that.outlineStroke)) {</span>
+<span class="fc" id="L589">            return false;</span>
+        }
+<span class="fc bfc" id="L591" title="All 2 branches covered.">        if (this.alpha != that.alpha) {</span>
+<span class="fc" id="L592">            return false;</span>
+        }
+<span class="fc bfc" id="L594" title="All 2 branches covered.">        if (!ObjectUtilities.equal(this.label, that.label)) {</span>
+<span class="fc" id="L595">            return false;</span>
+        }
+<span class="fc bfc" id="L597" title="All 2 branches covered.">        if (!ObjectUtilities.equal(this.labelFont, that.labelFont)) {</span>
+<span class="fc" id="L598">            return false;</span>
+        }
+<span class="fc bfc" id="L600" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.labelPaint, that.labelPaint)) {</span>
+<span class="fc" id="L601">            return false;</span>
+        }
+<span class="fc bfc" id="L603" title="All 2 branches covered.">        if (this.labelAnchor != that.labelAnchor) {</span>
+<span class="fc" id="L604">            return false;</span>
+        }
+<span class="fc bfc" id="L606" title="All 2 branches covered.">        if (this.labelTextAnchor != that.labelTextAnchor) {</span>
+<span class="fc" id="L607">            return false;</span>
+        }
+<span class="fc bfc" id="L609" title="All 2 branches covered.">        if (!ObjectUtilities.equal(this.labelOffset, that.labelOffset)) {</span>
+<span class="fc" id="L610">            return false;</span>
+        }
+<span class="fc bfc" id="L612" title="All 2 branches covered.">        if (!this.labelOffsetType.equals(that.labelOffsetType)) {</span>
+<span class="fc" id="L613">            return false;</span>
+        }
+<span class="fc" id="L615">        return true;</span>
+    }
+
+    /**
+     * Creates a clone of the marker.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException never.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L627">        return super.clone();</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L638">        stream.defaultWriteObject();</span>
+<span class="fc" id="L639">        SerialUtilities.writePaint(this.paint, stream);</span>
+<span class="fc" id="L640">        SerialUtilities.writeStroke(this.stroke, stream);</span>
+<span class="fc" id="L641">        SerialUtilities.writePaint(this.outlinePaint, stream);</span>
+<span class="fc" id="L642">        SerialUtilities.writeStroke(this.outlineStroke, stream);</span>
+<span class="fc" id="L643">        SerialUtilities.writePaint(this.labelPaint, stream);</span>
+<span class="fc" id="L644">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+        throws IOException, ClassNotFoundException {
+<span class="fc" id="L656">        stream.defaultReadObject();</span>
+<span class="fc" id="L657">        this.paint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L658">        this.stroke = SerialUtilities.readStroke(stream);</span>
+<span class="fc" id="L659">        this.outlinePaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L660">        this.outlineStroke = SerialUtilities.readStroke(stream);</span>
+<span class="fc" id="L661">        this.labelPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L662">        this.listenerList = new EventListenerList();</span>
+<span class="fc" id="L663">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

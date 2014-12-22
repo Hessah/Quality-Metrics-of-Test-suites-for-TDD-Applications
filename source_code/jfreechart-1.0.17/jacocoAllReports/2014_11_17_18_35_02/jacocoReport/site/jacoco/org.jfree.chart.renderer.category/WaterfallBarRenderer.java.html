@@ -1,0 +1,499 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>WaterfallBarRenderer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.renderer.category</a> &gt; <span class="el_source">WaterfallBarRenderer.java</span></div><h1>WaterfallBarRenderer.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * -------------------------
+ * WaterfallBarRenderer.java
+ * -------------------------
+ * (C) Copyright 2003-2013, by Object Refinery Limited and Contributors.
+ *
+ * Original Author:  Darshan Shah;
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *
+ * Changes
+ * -------
+ * 20-Oct-2003 : Version 1, contributed by Darshan Shah (DG);
+ * 06-Nov-2003 : Changed order of parameters in constructor, and added support
+ *               for GradientPaint (DG);
+ * 10-Feb-2004 : Updated drawItem() method to make cut-and-paste overriding
+ *               easier.  Also fixed a bug that meant the minimum bar length
+ *               was being ignored (DG);
+ * 04-Oct-2004 : Reworked equals() method and renamed PaintUtils
+ *               --&gt; PaintUtilities (DG);
+ * 05-Nov-2004 : Modified drawItem() signature (DG);
+ * 07-Jan-2005 : Renamed getRangeExtent() --&gt; findRangeBounds (DG);
+ * 23-Feb-2005 : Added argument checking (DG);
+ * 20-Apr-2005 : Renamed CategoryLabelGenerator
+ *               --&gt; CategoryItemLabelGenerator (DG);
+ * 09-Jun-2005 : Use addItemEntity() from superclass (DG);
+ * 27-Mar-2008 : Fixed error in findRangeBounds() method (DG);
+ * 26-Sep-2008 : Fixed bug with bar alignment when maximumBarWidth is
+ *               applied (DG);
+ * 04-Feb-2009 : Updated findRangeBounds to handle null dataset consistently
+ *               with other renderers (DG);
+ * 19-May-2009 : Fixed FindBugs warnings, patch by Michal Wozniak (DG);
+ * 03-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.chart.renderer.category;
+
+import java.awt.Color;
+import java.awt.GradientPaint;
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Stroke;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+
+import org.jfree.chart.axis.CategoryAxis;
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.entity.EntityCollection;
+import org.jfree.chart.event.RendererChangeEvent;
+import org.jfree.chart.labels.CategoryItemLabelGenerator;
+import org.jfree.chart.plot.CategoryPlot;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.renderer.AbstractRenderer;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.data.Range;
+import org.jfree.data.category.CategoryDataset;
+import org.jfree.io.SerialUtilities;
+import org.jfree.ui.GradientPaintTransformType;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.ui.StandardGradientPaintTransformer;
+import org.jfree.util.PaintUtilities;
+
+/**
+ * A renderer that handles the drawing of waterfall bar charts, for use with
+ * the {@link CategoryPlot} class.  Some quirks to note:
+ * &lt;ul&gt;
+ * &lt;li&gt;the value in the last category of the dataset should be (redundantly)
+ *   specified as the sum of the items in the preceding categories - otherwise
+ *   the final bar in the plot will be incorrectly plotted;&lt;/li&gt;
+ * &lt;li&gt;the bar colors are defined using special methods in this class - the
+ *   inherited methods (for example,
+ *   {@link AbstractRenderer#setSeriesPaint(int, Paint)}) are ignored;&lt;/li&gt;
+ * &lt;/ul&gt;
+ * The example shown here is generated by the
+ * &lt;code&gt;WaterfallChartDemo1.java&lt;/code&gt; program included in the JFreeChart
+ * Demo Collection:
+ * &lt;br&gt;&lt;br&gt;
+ * &lt;img src=&quot;../../../../../images/WaterfallBarRendererSample.png&quot;
+ * alt=&quot;WaterfallBarRendererSample.png&quot; /&gt;
+ */
+public class WaterfallBarRenderer extends BarRenderer {
+
+    /** For serialization. */
+    private static final long serialVersionUID = -2482910643727230911L;
+
+    /** The paint used to draw the first bar. */
+    private transient Paint firstBarPaint;
+
+    /** The paint used to draw the last bar. */
+    private transient Paint lastBarPaint;
+
+    /** The paint used to draw bars having positive values. */
+    private transient Paint positiveBarPaint;
+
+    /** The paint used to draw bars having negative values. */
+    private transient Paint negativeBarPaint;
+
+    /**
+     * Constructs a new renderer with default values for the bar colors.
+     */
+    public WaterfallBarRenderer() {
+<span class="fc" id="L129">        this(new GradientPaint(0.0f, 0.0f, new Color(0x22, 0x22, 0xFF),</span>
+                0.0f, 0.0f, new Color(0x66, 0x66, 0xFF)),
+                new GradientPaint(0.0f, 0.0f, new Color(0x22, 0xFF, 0x22),
+                0.0f, 0.0f, new Color(0x66, 0xFF, 0x66)),
+                new GradientPaint(0.0f, 0.0f, new Color(0xFF, 0x22, 0x22),
+                0.0f, 0.0f, new Color(0xFF, 0x66, 0x66)),
+                new GradientPaint(0.0f, 0.0f, new Color(0xFF, 0xFF, 0x22),
+                0.0f, 0.0f, new Color(0xFF, 0xFF, 0x66)));
+<span class="fc" id="L137">    }</span>
+
+    /**
+     * Constructs a new waterfall renderer.
+     *
+     * @param firstBarPaint  the color of the first bar (&lt;code&gt;null&lt;/code&gt; not
+     *                       permitted).
+     * @param positiveBarPaint  the color for bars with positive values
+     *                          (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param negativeBarPaint  the color for bars with negative values
+     *                          (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param lastBarPaint  the color of the last bar (&lt;code&gt;null&lt;/code&gt; not
+     *                      permitted).
+     */
+    public WaterfallBarRenderer(Paint firstBarPaint, Paint positiveBarPaint,
+            Paint negativeBarPaint, Paint lastBarPaint) {
+<span class="fc" id="L153">        super();</span>
+<span class="fc" id="L154">        ParamChecks.nullNotPermitted(firstBarPaint, &quot;firstBarPaint&quot;);</span>
+<span class="fc" id="L155">        ParamChecks.nullNotPermitted(positiveBarPaint, &quot;positiveBarPaint&quot;);</span>
+<span class="fc" id="L156">        ParamChecks.nullNotPermitted(negativeBarPaint, &quot;negativeBarPaint&quot;);</span>
+<span class="fc" id="L157">        ParamChecks.nullNotPermitted(lastBarPaint, &quot;lastBarPaint&quot;);</span>
+<span class="fc" id="L158">        this.firstBarPaint = firstBarPaint;</span>
+<span class="fc" id="L159">        this.lastBarPaint = lastBarPaint;</span>
+<span class="fc" id="L160">        this.positiveBarPaint = positiveBarPaint;</span>
+<span class="fc" id="L161">        this.negativeBarPaint = negativeBarPaint;</span>
+<span class="fc" id="L162">        setGradientPaintTransformer(new StandardGradientPaintTransformer(</span>
+                GradientPaintTransformType.CENTER_VERTICAL));
+<span class="fc" id="L164">        setMinimumBarLength(1.0);</span>
+<span class="fc" id="L165">    }</span>
+
+    /**
+     * Returns the paint used to draw the first bar.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     */
+    public Paint getFirstBarPaint() {
+<span class="nc" id="L173">        return this.firstBarPaint;</span>
+    }
+
+    /**
+     * Sets the paint that will be used to draw the first bar and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void setFirstBarPaint(Paint paint) {
+<span class="fc" id="L183">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L184">        this.firstBarPaint = paint;</span>
+<span class="fc" id="L185">        fireChangeEvent();</span>
+<span class="fc" id="L186">    }</span>
+
+    /**
+     * Returns the paint used to draw the last bar.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     */
+    public Paint getLastBarPaint() {
+<span class="nc" id="L194">        return this.lastBarPaint;</span>
+    }
+
+    /**
+     * Sets the paint that will be used to draw the last bar and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void setLastBarPaint(Paint paint) {
+<span class="fc" id="L204">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L205">        this.lastBarPaint = paint;</span>
+<span class="fc" id="L206">        fireChangeEvent();</span>
+<span class="fc" id="L207">    }</span>
+
+    /**
+     * Returns the paint used to draw bars with positive values.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     */
+    public Paint getPositiveBarPaint() {
+<span class="nc" id="L215">        return this.positiveBarPaint;</span>
+    }
+
+    /**
+     * Sets the paint that will be used to draw bars having positive values.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void setPositiveBarPaint(Paint paint) {
+<span class="fc" id="L224">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L225">        this.positiveBarPaint = paint;</span>
+<span class="fc" id="L226">        fireChangeEvent();</span>
+<span class="fc" id="L227">    }</span>
+
+    /**
+     * Returns the paint used to draw bars with negative values.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     */
+    public Paint getNegativeBarPaint() {
+<span class="nc" id="L235">        return this.negativeBarPaint;</span>
+    }
+
+    /**
+     * Sets the paint that will be used to draw bars having negative values,
+     * and sends a {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void setNegativeBarPaint(Paint paint) {
+<span class="fc" id="L245">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L246">        this.negativeBarPaint = paint;</span>
+<span class="fc" id="L247">        fireChangeEvent();</span>
+<span class="fc" id="L248">    }</span>
+
+    /**
+     * Returns the range of values the renderer requires to display all the
+     * items from the specified dataset.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return The range (or &lt;code&gt;null&lt;/code&gt; if the dataset is empty).
+     */
+    @Override
+    public Range findRangeBounds(CategoryDataset dataset) {
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        if (dataset == null) {</span>
+<span class="fc" id="L261">            return null;</span>
+        }
+<span class="fc" id="L263">        boolean allItemsNull = true; // we'll set this to false if there is at</span>
+                                     // least one non-null data item...
+<span class="fc" id="L265">        double minimum = 0.0;</span>
+<span class="fc" id="L266">        double maximum = 0.0;</span>
+<span class="fc" id="L267">        int columnCount = dataset.getColumnCount();</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        for (int row = 0; row &lt; dataset.getRowCount(); row++) {</span>
+<span class="fc" id="L269">            double runningTotal = 0.0;</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">            for (int column = 0; column &lt;= columnCount - 1; column++) {</span>
+<span class="fc" id="L271">                Number n = dataset.getValue(row, column);</span>
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">                if (n != null) {</span>
+<span class="fc" id="L273">                    allItemsNull = false;</span>
+<span class="fc" id="L274">                    double value = n.doubleValue();</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">                    if (column == columnCount - 1) {</span>
+                        // treat the last column value as an absolute
+<span class="fc" id="L277">                        runningTotal = value;</span>
+                    }
+                    else {
+<span class="fc" id="L280">                        runningTotal = runningTotal + value;</span>
+                    }
+<span class="fc" id="L282">                    minimum = Math.min(minimum, runningTotal);</span>
+<span class="fc" id="L283">                    maximum = Math.max(maximum, runningTotal);</span>
+                }
+            }
+
+        }
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">        if (!allItemsNull) {</span>
+<span class="fc" id="L289">            return new Range(minimum, maximum);</span>
+        }
+        else {
+<span class="nc" id="L292">            return null;</span>
+        }
+
+    }
+
+    /**
+     * Draws the bar for a single (series, category) data item.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the data area.
+     * @param plot  the plot.
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the dataset.
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     * @param pass  the pass index.
+     */
+    @Override
+    public void drawItem(Graphics2D g2, CategoryItemRendererState state,
+            Rectangle2D dataArea, CategoryPlot plot, CategoryAxis domainAxis,
+            ValueAxis rangeAxis, CategoryDataset dataset, int row, int column,
+            int pass) {
+
+<span class="nc" id="L317">        double previous = state.getSeriesRunningTotal();</span>
+<span class="nc bnc" id="L318" title="All 2 branches missed.">        if (column == dataset.getColumnCount() - 1) {</span>
+<span class="nc" id="L319">            previous = 0.0;</span>
+        }
+<span class="nc" id="L321">        double current = 0.0;</span>
+<span class="nc" id="L322">        Number n = dataset.getValue(row, column);</span>
+<span class="nc bnc" id="L323" title="All 2 branches missed.">        if (n != null) {</span>
+<span class="nc" id="L324">            current = previous + n.doubleValue();</span>
+        }
+<span class="nc" id="L326">        state.setSeriesRunningTotal(current);</span>
+
+<span class="nc" id="L328">        int categoryCount = getColumnCount();</span>
+<span class="nc" id="L329">        PlotOrientation orientation = plot.getOrientation();</span>
+
+<span class="nc" id="L331">        double rectX = 0.0;</span>
+<span class="nc" id="L332">        double rectY = 0.0;</span>
+
+<span class="nc" id="L334">        RectangleEdge rangeAxisLocation = plot.getRangeAxisEdge();</span>
+
+        // Y0
+<span class="nc" id="L337">        double j2dy0 = rangeAxis.valueToJava2D(previous, dataArea,</span>
+                rangeAxisLocation);
+
+        // Y1
+<span class="nc" id="L341">        double j2dy1 = rangeAxis.valueToJava2D(current, dataArea,</span>
+                rangeAxisLocation);
+
+<span class="nc" id="L344">        double valDiff = current - previous;</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">        if (j2dy1 &lt; j2dy0) {</span>
+<span class="nc" id="L346">            double temp = j2dy1;</span>
+<span class="nc" id="L347">            j2dy1 = j2dy0;</span>
+<span class="nc" id="L348">            j2dy0 = temp;</span>
+        }
+
+        // BAR WIDTH
+<span class="nc" id="L352">        double rectWidth = state.getBarWidth();</span>
+
+        // BAR HEIGHT
+<span class="nc" id="L355">        double rectHeight = Math.max(getMinimumBarLength(),</span>
+                Math.abs(j2dy1 - j2dy0));
+
+<span class="nc" id="L358">        Comparable seriesKey = dataset.getRowKey(row);</span>
+<span class="nc" id="L359">        Comparable categoryKey = dataset.getColumnKey(column);</span>
+<span class="nc bnc" id="L360" title="All 2 branches missed.">        if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L361">            rectY = domainAxis.getCategorySeriesMiddle(categoryKey, seriesKey,</span>
+                    dataset, getItemMargin(), dataArea, RectangleEdge.LEFT);
+
+<span class="nc" id="L364">            rectX = j2dy0;</span>
+<span class="nc" id="L365">            rectHeight = state.getBarWidth();</span>
+<span class="nc" id="L366">            rectY = rectY - rectHeight / 2.0;</span>
+<span class="nc" id="L367">            rectWidth = Math.max(getMinimumBarLength(),</span>
+                    Math.abs(j2dy1 - j2dy0));
+
+        }
+<span class="nc bnc" id="L371" title="All 2 branches missed.">        else if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="nc" id="L372">            rectX = domainAxis.getCategorySeriesMiddle(categoryKey, seriesKey,</span>
+                    dataset, getItemMargin(), dataArea, RectangleEdge.TOP);
+<span class="nc" id="L374">            rectX = rectX - rectWidth / 2.0;</span>
+<span class="nc" id="L375">            rectY = j2dy0;</span>
+        }
+<span class="nc" id="L377">        Rectangle2D bar = new Rectangle2D.Double(rectX, rectY, rectWidth,</span>
+                rectHeight);
+        Paint seriesPaint;
+<span class="nc bnc" id="L380" title="All 2 branches missed.">        if (column == 0) {</span>
+<span class="nc" id="L381">            seriesPaint = getFirstBarPaint();</span>
+        }
+<span class="nc bnc" id="L383" title="All 2 branches missed.">        else if (column == categoryCount - 1) {</span>
+<span class="nc" id="L384">            seriesPaint = getLastBarPaint();</span>
+        }
+        else {
+<span class="nc bnc" id="L387" title="All 2 branches missed.">            if (valDiff &gt;= 0.0) {</span>
+<span class="nc" id="L388">                seriesPaint = getPositiveBarPaint();</span>
+            } else {
+<span class="nc" id="L390">                seriesPaint = getNegativeBarPaint();</span>
+            }
+        }
+<span class="nc bnc" id="L393" title="All 4 branches missed.">        if (getGradientPaintTransformer() != null</span>
+                &amp;&amp; seriesPaint instanceof GradientPaint) {
+<span class="nc" id="L395">            GradientPaint gp = (GradientPaint) seriesPaint;</span>
+<span class="nc" id="L396">            seriesPaint = getGradientPaintTransformer().transform(gp, bar);</span>
+        }
+<span class="nc" id="L398">        g2.setPaint(seriesPaint);</span>
+<span class="nc" id="L399">        g2.fill(bar);</span>
+
+        // draw the outline...
+<span class="nc bnc" id="L402" title="All 4 branches missed.">        if (isDrawBarOutline()</span>
+                &amp;&amp; state.getBarWidth() &gt; BAR_OUTLINE_WIDTH_THRESHOLD) {
+<span class="nc" id="L404">            Stroke stroke = getItemOutlineStroke(row, column);</span>
+<span class="nc" id="L405">            Paint paint = getItemOutlinePaint(row, column);</span>
+<span class="nc bnc" id="L406" title="All 4 branches missed.">            if (stroke != null &amp;&amp; paint != null) {</span>
+<span class="nc" id="L407">                g2.setStroke(stroke);</span>
+<span class="nc" id="L408">                g2.setPaint(paint);</span>
+<span class="nc" id="L409">                g2.draw(bar);</span>
+            }
+        }
+
+<span class="nc" id="L413">        CategoryItemLabelGenerator generator</span>
+            = getItemLabelGenerator(row, column);
+<span class="nc bnc" id="L415" title="All 4 branches missed.">        if (generator != null &amp;&amp; isItemLabelVisible(row, column)) {</span>
+<span class="nc bnc" id="L416" title="All 2 branches missed.">            drawItemLabel(g2, dataset, row, column, plot, generator, bar,</span>
+                    (valDiff &lt; 0.0));
+        }
+
+        // add an item entity, if this information is being collected
+<span class="nc" id="L421">        EntityCollection entities = state.getEntityCollection();</span>
+<span class="nc bnc" id="L422" title="All 2 branches missed.">        if (entities != null) {</span>
+<span class="nc" id="L423">            addItemEntity(entities, dataset, row, column, bar);</span>
+        }
+
+<span class="nc" id="L426">    }</span>
+
+    /**
+     * Tests an object for equality with this instance.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+
+<span class="pc bpc" id="L438" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L439">            return true;</span>
+        }
+<span class="pc bpc" id="L441" title="1 of 2 branches missed.">        if (!super.equals(obj)) {</span>
+<span class="nc" id="L442">            return false;</span>
+        }
+<span class="pc bpc" id="L444" title="1 of 2 branches missed.">        if (!(obj instanceof WaterfallBarRenderer)) {</span>
+<span class="nc" id="L445">            return false;</span>
+        }
+<span class="fc" id="L447">        WaterfallBarRenderer that = (WaterfallBarRenderer) obj;</span>
+<span class="fc bfc" id="L448" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.firstBarPaint, that.firstBarPaint)) {</span>
+<span class="fc" id="L449">            return false;</span>
+        }
+<span class="fc bfc" id="L451" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.lastBarPaint, that.lastBarPaint)) {</span>
+<span class="fc" id="L452">            return false;</span>
+        }
+<span class="fc bfc" id="L454" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.positiveBarPaint,</span>
+                that.positiveBarPaint)) {
+<span class="fc" id="L456">            return false;</span>
+        }
+<span class="fc bfc" id="L458" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.negativeBarPaint,</span>
+                that.negativeBarPaint)) {
+<span class="fc" id="L460">            return false;</span>
+        }
+<span class="fc" id="L462">        return true;</span>
+
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L474">        stream.defaultWriteObject();</span>
+<span class="fc" id="L475">        SerialUtilities.writePaint(this.firstBarPaint, stream);</span>
+<span class="fc" id="L476">        SerialUtilities.writePaint(this.lastBarPaint, stream);</span>
+<span class="fc" id="L477">        SerialUtilities.writePaint(this.positiveBarPaint, stream);</span>
+<span class="fc" id="L478">        SerialUtilities.writePaint(this.negativeBarPaint, stream);</span>
+<span class="fc" id="L479">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+        throws IOException, ClassNotFoundException {
+<span class="fc" id="L491">        stream.defaultReadObject();</span>
+<span class="fc" id="L492">        this.firstBarPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L493">        this.lastBarPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L494">        this.positiveBarPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L495">        this.negativeBarPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L496">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

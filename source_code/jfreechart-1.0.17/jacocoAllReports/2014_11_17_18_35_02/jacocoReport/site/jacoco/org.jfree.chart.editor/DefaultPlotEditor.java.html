@@ -1,0 +1,677 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>DefaultPlotEditor.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.editor</a> &gt; <span class="el_source">DefaultPlotEditor.java</span></div><h1>DefaultPlotEditor.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ----------------------
+ * DefaultPlotEditor.java
+ * ----------------------
+ * (C) Copyright 2005-2009, by Object Refinery Limited and Contributors.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   Andrzej Porebski;
+ *                   Arnaud Lelievre;
+ *                   Daniel Gredler;
+ *
+ * Changes:
+ * --------
+ * 24-Nov-2005 : Version 1, based on PlotPropertyEditPanel.java (DG);
+ * 18-Dec-2008 : Use ResourceBundleWrapper - see patch 1607918 by
+ *               Jess Thrysoee (DG);
+ * 27-Feb-2009 : Fixed bug 2612649, NullPointerException (DG);
+ * 03-Nov-2011 : Added support for DefaultPolarPlotEditor (MH);
+ *
+ */
+
+package org.jfree.chart.editor;
+
+import java.awt.BasicStroke;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Paint;
+import java.awt.Stroke;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.util.ResourceBundle;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JColorChooser;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JTabbedPane;
+
+import org.jfree.chart.axis.Axis;
+import org.jfree.chart.axis.ColorBar;
+import org.jfree.chart.plot.CategoryPlot;
+import org.jfree.chart.plot.ContourPlot;
+import org.jfree.chart.plot.Plot;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.plot.PolarPlot;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.renderer.category.CategoryItemRenderer;
+import org.jfree.chart.renderer.category.LineAndShapeRenderer;
+import org.jfree.chart.renderer.xy.StandardXYItemRenderer;
+import org.jfree.chart.renderer.xy.XYItemRenderer;
+import org.jfree.chart.util.ResourceBundleWrapper;
+import org.jfree.layout.LCBLayout;
+import org.jfree.ui.PaintSample;
+import org.jfree.ui.RectangleInsets;
+import org.jfree.ui.StrokeChooserPanel;
+import org.jfree.ui.StrokeSample;
+import org.jfree.util.BooleanUtilities;
+
+/**
+ * A panel for editing the properties of a {@link Plot}.
+ */
+class DefaultPlotEditor extends JPanel implements ActionListener {
+
+    /** Orientation constants. */
+<span class="nc" id="L94">    private final static String[] orientationNames = {&quot;Vertical&quot;, &quot;Horizontal&quot;};</span>
+    private final static int ORIENTATION_VERTICAL = 0;
+    private final static int ORIENTATION_HORIZONTAL = 1;
+
+    /** The paint (color) used to fill the background of the plot. */
+    private PaintSample backgroundPaintSample;
+
+    /** The stroke used to draw the outline of the plot. */
+    private StrokeSample outlineStrokeSample;
+
+    /** The paint (color) used to draw the outline of the plot. */
+    private PaintSample outlinePaintSample;
+
+    /**
+     * A panel used to display/edit the properties of the domain axis (if any).
+     */
+    private DefaultAxisEditor domainAxisPropertyPanel;
+
+    /**
+     * A panel used to display/edit the properties of the range axis (if any).
+     */
+    private DefaultAxisEditor rangeAxisPropertyPanel;
+
+    /**
+     * A panel used to display/edit the properties of the colorbar axis (if
+     * any).
+     */
+    private DefaultColorBarEditor colorBarAxisPropertyPanel;
+
+    /** An array of stroke samples to choose from. */
+    private StrokeSample[] availableStrokeSamples;
+
+    /** The insets for the plot. */
+    private RectangleInsets plotInsets;
+
+    /**
+     * The orientation for the plot (for &lt;tt&gt;CategoryPlot&lt;/tt&gt;s and
+     * &lt;tt&gt;XYPlot&lt;/tt&gt;s).
+     */
+    private PlotOrientation plotOrientation;
+
+    /**
+     * The orientation combo box (for &lt;tt&gt;CategoryPlot&lt;/tt&gt;s and
+     * &lt;tt&gt;XYPlot&lt;/tt&gt;s).
+     */
+    private JComboBox orientationCombo;
+
+    /** Whether or not to draw lines between each data point (for
+     * &lt;tt&gt;LineAndShapeRenderer&lt;/tt&gt;s and &lt;tt&gt;StandardXYItemRenderer&lt;/tt&gt;s).
+     */
+    private Boolean drawLines;
+
+    /**
+     * The checkbox for whether or not to draw lines between each data point.
+     */
+    private JCheckBox drawLinesCheckBox;
+
+    /** Whether or not to draw shapes at each data point (for
+     * &lt;tt&gt;LineAndShapeRenderer&lt;/tt&gt;s and &lt;tt&gt;StandardXYItemRenderer&lt;/tt&gt;s).
+     */
+    private Boolean drawShapes;
+
+    /**
+     * The checkbox for whether or not to draw shapes at each data point.
+     */
+    private JCheckBox drawShapesCheckBox;
+
+    /** The resourceBundle for the localization. */
+<span class="nc" id="L162">    protected static ResourceBundle localizationResources</span>
+            = ResourceBundleWrapper.getBundle(
+                    &quot;org.jfree.chart.editor.LocalizationBundle&quot;);
+
+    /**
+     * Standard constructor - constructs a panel for editing the properties of
+     * the specified plot.
+     * &lt;P&gt;
+     * In designing the panel, we need to be aware that subclasses of Plot will
+     * need to implement subclasses of PlotPropertyEditPanel - so we need to
+     * leave one or two 'slots' where the subclasses can extend the user
+     * interface.
+     *
+     * @param plot  the plot, which should be changed.
+     */
+<span class="nc" id="L177">    public DefaultPlotEditor(Plot plot) {</span>
+<span class="nc" id="L178">        JPanel panel = createPlotPanel(plot);</span>
+<span class="nc" id="L179">        add(panel);</span>
+<span class="nc" id="L180">    }</span>
+    
+    protected JPanel createPlotPanel(Plot plot) {
+<span class="nc" id="L183">        this.plotInsets = plot.getInsets();</span>
+<span class="nc" id="L184">        this.backgroundPaintSample = new PaintSample(plot.getBackgroundPaint());</span>
+<span class="nc" id="L185">        this.outlineStrokeSample = new StrokeSample(plot.getOutlineStroke());</span>
+<span class="nc" id="L186">        this.outlinePaintSample = new PaintSample(plot.getOutlinePaint());</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">        if (plot instanceof CategoryPlot) {</span>
+<span class="nc" id="L188">            this.plotOrientation = ((CategoryPlot) plot).getOrientation();</span>
+        }
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        else if (plot instanceof XYPlot) {</span>
+<span class="nc" id="L191">            this.plotOrientation = ((XYPlot) plot).getOrientation();</span>
+        }
+<span class="nc bnc" id="L193" title="All 2 branches missed.">        if (plot instanceof CategoryPlot) {</span>
+<span class="nc" id="L194">            CategoryItemRenderer renderer = ((CategoryPlot) plot).getRenderer();</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">            if (renderer instanceof LineAndShapeRenderer) {</span>
+<span class="nc" id="L196">                LineAndShapeRenderer r = (LineAndShapeRenderer) renderer;</span>
+<span class="nc" id="L197">                this.drawLines = BooleanUtilities.valueOf(</span>
+                        r.getBaseLinesVisible());
+<span class="nc" id="L199">                this.drawShapes = BooleanUtilities.valueOf(</span>
+                        r.getBaseShapesVisible());
+            }
+<span class="nc" id="L202">        }</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        else if (plot instanceof XYPlot) {</span>
+<span class="nc" id="L204">            XYItemRenderer renderer = ((XYPlot) plot).getRenderer();</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">            if (renderer instanceof StandardXYItemRenderer) {</span>
+<span class="nc" id="L206">                StandardXYItemRenderer r = (StandardXYItemRenderer) renderer;</span>
+<span class="nc" id="L207">                this.drawLines = BooleanUtilities.valueOf(r.getPlotLines());</span>
+<span class="nc" id="L208">                this.drawShapes = BooleanUtilities.valueOf(</span>
+                        r.getBaseShapesVisible());
+            }
+        }
+
+<span class="nc" id="L213">        setLayout(new BorderLayout());</span>
+
+<span class="nc" id="L215">        this.availableStrokeSamples = new StrokeSample[4];</span>
+<span class="nc" id="L216">        this.availableStrokeSamples[0] = new StrokeSample(null);</span>
+<span class="nc" id="L217">        this.availableStrokeSamples[1] = new StrokeSample(</span>
+                new BasicStroke(1.0f));
+<span class="nc" id="L219">        this.availableStrokeSamples[2] = new StrokeSample(</span>
+                new BasicStroke(2.0f));
+<span class="nc" id="L221">        this.availableStrokeSamples[3] = new StrokeSample(</span>
+                new BasicStroke(3.0f));
+
+        // create a panel for the settings...
+<span class="nc" id="L225">        JPanel panel = new JPanel(new BorderLayout());</span>
+<span class="nc" id="L226">        panel.setBorder(BorderFactory.createTitledBorder(</span>
+                BorderFactory.createEtchedBorder(), plot.getPlotType()
+                + localizationResources.getString(&quot;:&quot;)));
+
+<span class="nc" id="L230">        JPanel general = new JPanel(new BorderLayout());</span>
+<span class="nc" id="L231">        general.setBorder(BorderFactory.createTitledBorder(</span>
+                localizationResources.getString(&quot;General&quot;)));
+
+<span class="nc" id="L234">        JPanel interior = new JPanel(new LCBLayout(7));</span>
+<span class="nc" id="L235">        interior.setBorder(BorderFactory.createEmptyBorder(0, 5, 0, 5));</span>
+
+//        interior.add(new JLabel(localizationResources.getString(&quot;Insets&quot;)));
+//        JButton button = new JButton(
+//            localizationResources.getString(&quot;Edit...&quot;)
+//        );
+//        button.setActionCommand(&quot;Insets&quot;);
+//        button.addActionListener(this);
+//
+//        this.insetsTextField = new InsetsTextField(this.plotInsets);
+//        this.insetsTextField.setEnabled(false);
+//        interior.add(this.insetsTextField);
+//        interior.add(button);
+
+<span class="nc" id="L249">        interior.add(new JLabel(localizationResources.getString(</span>
+                &quot;Outline_stroke&quot;)));
+<span class="nc" id="L251">        JButton button = new JButton(localizationResources.getString(</span>
+                &quot;Select...&quot;));
+<span class="nc" id="L253">        button.setActionCommand(&quot;OutlineStroke&quot;);</span>
+<span class="nc" id="L254">        button.addActionListener(this);</span>
+<span class="nc" id="L255">        interior.add(this.outlineStrokeSample);</span>
+<span class="nc" id="L256">        interior.add(button);</span>
+
+<span class="nc" id="L258">        interior.add(new JLabel(localizationResources.getString(</span>
+                &quot;Outline_Paint&quot;)));
+<span class="nc" id="L260">        button = new JButton(localizationResources.getString(&quot;Select...&quot;));</span>
+<span class="nc" id="L261">        button.setActionCommand(&quot;OutlinePaint&quot;);</span>
+<span class="nc" id="L262">        button.addActionListener(this);</span>
+<span class="nc" id="L263">        interior.add(this.outlinePaintSample);</span>
+<span class="nc" id="L264">        interior.add(button);</span>
+
+<span class="nc" id="L266">        interior.add(new JLabel(localizationResources.getString(</span>
+                &quot;Background_paint&quot;)));
+<span class="nc" id="L268">        button = new JButton(localizationResources.getString(&quot;Select...&quot;));</span>
+<span class="nc" id="L269">        button.setActionCommand(&quot;BackgroundPaint&quot;);</span>
+<span class="nc" id="L270">        button.addActionListener(this);</span>
+<span class="nc" id="L271">        interior.add(this.backgroundPaintSample);</span>
+<span class="nc" id="L272">        interior.add(button);</span>
+
+<span class="nc bnc" id="L274" title="All 2 branches missed.">        if (this.plotOrientation != null) {</span>
+<span class="nc" id="L275">            boolean isVertical = this.plotOrientation.equals(</span>
+                    PlotOrientation.VERTICAL);
+<span class="nc bnc" id="L277" title="All 2 branches missed.">            int index = isVertical ? ORIENTATION_VERTICAL</span>
+                    : ORIENTATION_HORIZONTAL;
+<span class="nc" id="L279">            interior.add(new JLabel(localizationResources.getString(</span>
+                    &quot;Orientation&quot;)));
+<span class="nc" id="L281">            this.orientationCombo = new JComboBox(orientationNames);</span>
+<span class="nc" id="L282">            this.orientationCombo.setSelectedIndex(index);</span>
+<span class="nc" id="L283">            this.orientationCombo.setActionCommand(&quot;Orientation&quot;);</span>
+<span class="nc" id="L284">            this.orientationCombo.addActionListener(this);</span>
+<span class="nc" id="L285">            interior.add(new JPanel());</span>
+<span class="nc" id="L286">            interior.add(this.orientationCombo);</span>
+        }
+
+<span class="nc bnc" id="L289" title="All 2 branches missed.">        if (this.drawLines != null) {</span>
+<span class="nc" id="L290">            interior.add(new JLabel(localizationResources.getString(</span>
+                    &quot;Draw_lines&quot;)));
+<span class="nc" id="L292">            this.drawLinesCheckBox = new JCheckBox();</span>
+<span class="nc" id="L293">            this.drawLinesCheckBox.setSelected(this.drawLines.booleanValue());</span>
+<span class="nc" id="L294">            this.drawLinesCheckBox.setActionCommand(&quot;DrawLines&quot;);</span>
+<span class="nc" id="L295">            this.drawLinesCheckBox.addActionListener(this);</span>
+<span class="nc" id="L296">            interior.add(new JPanel());</span>
+<span class="nc" id="L297">            interior.add(this.drawLinesCheckBox);</span>
+        }
+
+<span class="nc bnc" id="L300" title="All 2 branches missed.">        if (this.drawShapes != null) {</span>
+<span class="nc" id="L301">            interior.add(new JLabel(localizationResources.getString(</span>
+                    &quot;Draw_shapes&quot;)));
+<span class="nc" id="L303">            this.drawShapesCheckBox = new JCheckBox();</span>
+<span class="nc" id="L304">            this.drawShapesCheckBox.setSelected(this.drawShapes.booleanValue());</span>
+<span class="nc" id="L305">            this.drawShapesCheckBox.setActionCommand(&quot;DrawShapes&quot;);</span>
+<span class="nc" id="L306">            this.drawShapesCheckBox.addActionListener(this);</span>
+<span class="nc" id="L307">            interior.add(new JPanel());</span>
+<span class="nc" id="L308">            interior.add(this.drawShapesCheckBox);</span>
+        }
+
+<span class="nc" id="L311">        general.add(interior, BorderLayout.NORTH);</span>
+
+<span class="nc" id="L313">        JPanel appearance = new JPanel(new BorderLayout());</span>
+<span class="nc" id="L314">        appearance.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));</span>
+<span class="nc" id="L315">        appearance.add(general, BorderLayout.NORTH);</span>
+
+<span class="nc" id="L317">        JTabbedPane tabs = createPlotTabs(plot);</span>
+<span class="nc" id="L318">        tabs.add(localizationResources.getString(&quot;Appearance&quot;), appearance);</span>
+<span class="nc" id="L319">        panel.add(tabs);</span>
+        
+<span class="nc" id="L321">        return panel;</span>
+    }
+
+    protected JTabbedPane createPlotTabs(Plot plot)
+    {
+<span class="nc" id="L326">        JTabbedPane tabs = new JTabbedPane();</span>
+<span class="nc" id="L327">        tabs.setBorder(BorderFactory.createEmptyBorder(0, 5, 0, 5));</span>
+
+<span class="nc" id="L329">        Axis domainAxis = null;</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">        if (plot instanceof CategoryPlot) {</span>
+<span class="nc" id="L331">            domainAxis = ((CategoryPlot) plot).getDomainAxis();</span>
+        }
+<span class="nc bnc" id="L333" title="All 2 branches missed.">        else if (plot instanceof XYPlot) {</span>
+<span class="nc" id="L334">            domainAxis = ((XYPlot) plot).getDomainAxis();</span>
+        }
+<span class="nc" id="L336">        this.domainAxisPropertyPanel = DefaultAxisEditor.getInstance(</span>
+                domainAxis);
+<span class="nc bnc" id="L338" title="All 2 branches missed.">        if (this.domainAxisPropertyPanel != null) {</span>
+<span class="nc" id="L339">            this.domainAxisPropertyPanel.setBorder(</span>
+                    BorderFactory.createEmptyBorder(2, 2, 2, 2));
+<span class="nc" id="L341">            tabs.add(localizationResources.getString(&quot;Domain_Axis&quot;),</span>
+                    this.domainAxisPropertyPanel);
+        }
+
+<span class="nc" id="L345">        Axis rangeAxis = null;</span>
+<span class="nc bnc" id="L346" title="All 2 branches missed.">        if (plot instanceof CategoryPlot) {</span>
+<span class="nc" id="L347">            rangeAxis = ((CategoryPlot) plot).getRangeAxis();</span>
+        }
+<span class="nc bnc" id="L349" title="All 2 branches missed.">        else if (plot instanceof XYPlot) {</span>
+<span class="nc" id="L350">            rangeAxis = ((XYPlot) plot).getRangeAxis();</span>
+        }
+<span class="nc bnc" id="L352" title="All 2 branches missed.">        else if (plot instanceof PolarPlot) {</span>
+<span class="nc" id="L353">            rangeAxis = ((PolarPlot) plot).getAxis();</span>
+        }
+
+<span class="nc" id="L356">        this.rangeAxisPropertyPanel = DefaultAxisEditor.getInstance(rangeAxis);</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">        if (this.rangeAxisPropertyPanel != null) {</span>
+<span class="nc" id="L358">            this.rangeAxisPropertyPanel.setBorder(</span>
+                    BorderFactory.createEmptyBorder(2, 2, 2, 2));
+<span class="nc" id="L360">            tabs.add(localizationResources.getString(&quot;Range_Axis&quot;),</span>
+                    this.rangeAxisPropertyPanel);
+        }
+
+//dmo: added this panel for colorbar control. (start dmo additions)
+<span class="nc" id="L365">        ColorBar colorBar = null;</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">        if (plot instanceof ContourPlot) {</span>
+<span class="nc" id="L367">            colorBar = ((ContourPlot) plot).getColorBar();</span>
+        }
+
+<span class="nc" id="L370">        this.colorBarAxisPropertyPanel = DefaultColorBarEditor.getInstance(</span>
+                colorBar);
+<span class="nc bnc" id="L372" title="All 2 branches missed.">        if (this.colorBarAxisPropertyPanel != null) {</span>
+<span class="nc" id="L373">            this.colorBarAxisPropertyPanel.setBorder(</span>
+                    BorderFactory.createEmptyBorder(2, 2, 2, 2));
+<span class="nc" id="L375">            tabs.add(localizationResources.getString(&quot;Color_Bar&quot;),</span>
+                    this.colorBarAxisPropertyPanel);
+        }
+//dmo: (end dmo additions)
+
+<span class="nc" id="L380">        return tabs;</span>
+    }
+
+    /**
+     * Returns the current plot insets.
+     *
+     * @return The current plot insets.
+     */
+    public RectangleInsets getPlotInsets() {
+<span class="nc bnc" id="L389" title="All 2 branches missed.">        if (this.plotInsets == null) {</span>
+<span class="nc" id="L390">            this.plotInsets = new RectangleInsets(0.0, 0.0, 0.0, 0.0);</span>
+        }
+<span class="nc" id="L392">        return this.plotInsets;</span>
+    }
+
+    /**
+     * Returns the current background paint.
+     *
+     * @return The current background paint.
+     */
+    public Paint getBackgroundPaint() {
+<span class="nc" id="L401">        return this.backgroundPaintSample.getPaint();</span>
+    }
+
+    /**
+     * Returns the current outline stroke.
+     *
+     * @return The current outline stroke (possibly &lt;code&gt;null&lt;/code&gt;).
+     */
+    public Stroke getOutlineStroke() {
+<span class="nc" id="L410">        return this.outlineStrokeSample.getStroke();</span>
+    }
+
+    /**
+     * Returns the current outline paint.
+     *
+     * @return The current outline paint.
+     */
+    public Paint getOutlinePaint() {
+<span class="nc" id="L419">        return this.outlinePaintSample.getPaint();</span>
+    }
+
+    /**
+     * Returns a reference to the panel for editing the properties of the
+     * domain axis.
+     *
+     * @return A reference to a panel.
+     */
+    public DefaultAxisEditor getDomainAxisPropertyEditPanel() {
+<span class="nc" id="L429">        return this.domainAxisPropertyPanel;</span>
+    }
+
+    /**
+     * Returns a reference to the panel for editing the properties of the
+     * range axis.
+     *
+     * @return A reference to a panel.
+     */
+    public DefaultAxisEditor getRangeAxisPropertyEditPanel() {
+<span class="nc" id="L439">        return this.rangeAxisPropertyPanel;</span>
+    }
+
+    /**
+     * Handles user actions generated within the panel.
+     * @param event     the event
+     */
+    @Override
+    public void actionPerformed(ActionEvent event) {
+<span class="nc" id="L448">        String command = event.getActionCommand();</span>
+<span class="nc bnc" id="L449" title="All 2 branches missed.">        if (command.equals(&quot;BackgroundPaint&quot;)) {</span>
+<span class="nc" id="L450">            attemptBackgroundPaintSelection();</span>
+        }
+<span class="nc bnc" id="L452" title="All 2 branches missed.">        else if (command.equals(&quot;OutlineStroke&quot;)) {</span>
+<span class="nc" id="L453">            attemptOutlineStrokeSelection();</span>
+        }
+<span class="nc bnc" id="L455" title="All 2 branches missed.">        else if (command.equals(&quot;OutlinePaint&quot;)) {</span>
+<span class="nc" id="L456">            attemptOutlinePaintSelection();</span>
+        }
+//        else if (command.equals(&quot;Insets&quot;)) {
+//            editInsets();
+//        }
+<span class="nc bnc" id="L461" title="All 2 branches missed.">        else if (command.equals(&quot;Orientation&quot;)) {</span>
+<span class="nc" id="L462">            attemptOrientationSelection();</span>
+        }
+<span class="nc bnc" id="L464" title="All 2 branches missed.">        else if (command.equals(&quot;DrawLines&quot;)) {</span>
+<span class="nc" id="L465">            attemptDrawLinesSelection();</span>
+        }
+<span class="nc bnc" id="L467" title="All 2 branches missed.">        else if (command.equals(&quot;DrawShapes&quot;)) {</span>
+<span class="nc" id="L468">            attemptDrawShapesSelection();</span>
+        }
+<span class="nc" id="L470">    }</span>
+
+    /**
+     * Allow the user to change the background paint.
+     */
+    private void attemptBackgroundPaintSelection() {
+        Color c;
+<span class="nc" id="L477">        c = JColorChooser.showDialog(this, localizationResources.getString(</span>
+                &quot;Background_Color&quot;), Color.blue);
+<span class="nc bnc" id="L479" title="All 2 branches missed.">        if (c != null) {</span>
+<span class="nc" id="L480">            this.backgroundPaintSample.setPaint(c);</span>
+        }
+<span class="nc" id="L482">    }</span>
+
+    /**
+     * Allow the user to change the outline stroke.
+     */
+    private void attemptOutlineStrokeSelection() {
+<span class="nc" id="L488">        StrokeChooserPanel panel = new StrokeChooserPanel(</span>
+                this.outlineStrokeSample, this.availableStrokeSamples);
+<span class="nc" id="L490">        int result = JOptionPane.showConfirmDialog(this, panel,</span>
+                localizationResources.getString(&quot;Stroke_Selection&quot;),
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+
+<span class="nc bnc" id="L494" title="All 2 branches missed.">        if (result == JOptionPane.OK_OPTION) {</span>
+<span class="nc" id="L495">            this.outlineStrokeSample.setStroke(panel.getSelectedStroke());</span>
+        }
+<span class="nc" id="L497">    }</span>
+
+    /**
+     * Allow the user to change the outline paint.  We use JColorChooser, so
+     * the user can only choose colors (a subset of all possible paints).
+     */
+    private void attemptOutlinePaintSelection() {
+        Color c;
+<span class="nc" id="L505">        c = JColorChooser.showDialog(this, localizationResources.getString(</span>
+                &quot;Outline_Color&quot;), Color.blue);
+<span class="nc bnc" id="L507" title="All 2 branches missed.">        if (c != null) {</span>
+<span class="nc" id="L508">            this.outlinePaintSample.setPaint(c);</span>
+        }
+<span class="nc" id="L510">    }</span>
+
+//    /**
+//     * Allow the user to edit the individual insets' values.
+//     */
+//    private void editInsets() {
+//        InsetsChooserPanel panel = new InsetsChooserPanel(this.plotInsets);
+//        int result = JOptionPane.showConfirmDialog(
+//            this, panel, localizationResources.getString(&quot;Edit_Insets&quot;),
+//            JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE
+//        );
+//
+//        if (result == JOptionPane.OK_OPTION) {
+//            this.plotInsets = panel.getInsets();
+//            this.insetsTextField.setInsets(this.plotInsets);
+//        }
+//
+//    }
+//
+    /**
+     * Allow the user to modify the plot orientation if this is an editor for a
+     * &lt;tt&gt;CategoryPlot&lt;/tt&gt; or a &lt;tt&gt;XYPlot&lt;/tt&gt;.
+     */
+    private void attemptOrientationSelection() {
+
+<span class="nc" id="L535">        int index = this.orientationCombo.getSelectedIndex();</span>
+
+<span class="nc bnc" id="L537" title="All 2 branches missed.">        if (index == ORIENTATION_VERTICAL) {</span>
+<span class="nc" id="L538">            this.plotOrientation = PlotOrientation.VERTICAL;</span>
+        }
+        else {
+<span class="nc" id="L541">            this.plotOrientation = PlotOrientation.HORIZONTAL;</span>
+        }
+<span class="nc" id="L543">    }</span>
+
+    /**
+     * Allow the user to modify whether or not lines are drawn between data
+     * points by &lt;tt&gt;LineAndShapeRenderer&lt;/tt&gt;s and
+     * &lt;tt&gt;StandardXYItemRenderer&lt;/tt&gt;s.
+     */
+    private void attemptDrawLinesSelection() {
+<span class="nc" id="L551">        this.drawLines = BooleanUtilities.valueOf(</span>
+                this.drawLinesCheckBox.isSelected());
+<span class="nc" id="L553">    }</span>
+
+    /**
+     * Allow the user to modify whether or not shapes are drawn at data points
+     * by &lt;tt&gt;LineAndShapeRenderer&lt;/tt&gt;s and &lt;tt&gt;StandardXYItemRenderer&lt;/tt&gt;s.
+     */
+    private void attemptDrawShapesSelection() {
+<span class="nc" id="L560">        this.drawShapes = BooleanUtilities.valueOf(</span>
+                this.drawShapesCheckBox.isSelected());
+<span class="nc" id="L562">    }</span>
+
+    /**
+     * Updates the plot properties to match the properties defined on the panel.
+     *
+     * @param plot  The plot.
+     */
+    public void updatePlotProperties(Plot plot) {
+
+        // set the plot properties...
+<span class="nc" id="L572">        plot.setOutlinePaint(getOutlinePaint());</span>
+<span class="nc" id="L573">        plot.setOutlineStroke(getOutlineStroke());</span>
+<span class="nc" id="L574">        plot.setBackgroundPaint(getBackgroundPaint());</span>
+<span class="nc" id="L575">        plot.setInsets(getPlotInsets());</span>
+
+        // then the axis properties...
+<span class="nc bnc" id="L578" title="All 2 branches missed.">        if (this.domainAxisPropertyPanel != null) {</span>
+<span class="nc" id="L579">            Axis domainAxis = null;</span>
+<span class="nc bnc" id="L580" title="All 2 branches missed.">            if (plot instanceof CategoryPlot) {</span>
+<span class="nc" id="L581">                CategoryPlot p = (CategoryPlot) plot;</span>
+<span class="nc" id="L582">                domainAxis = p.getDomainAxis();</span>
+<span class="nc" id="L583">            }</span>
+<span class="nc bnc" id="L584" title="All 2 branches missed.">            else if (plot instanceof XYPlot) {</span>
+<span class="nc" id="L585">                XYPlot p = (XYPlot) plot;</span>
+<span class="nc" id="L586">                domainAxis = p.getDomainAxis();</span>
+            }
+<span class="nc bnc" id="L588" title="All 2 branches missed.">            if (domainAxis != null) {</span>
+<span class="nc" id="L589">                this.domainAxisPropertyPanel.setAxisProperties(domainAxis);</span>
+            }
+        }
+
+<span class="nc bnc" id="L593" title="All 2 branches missed.">        if (this.rangeAxisPropertyPanel != null) {</span>
+<span class="nc" id="L594">            Axis rangeAxis = null;</span>
+<span class="nc bnc" id="L595" title="All 2 branches missed.">            if (plot instanceof CategoryPlot) {</span>
+<span class="nc" id="L596">                CategoryPlot p = (CategoryPlot) plot;</span>
+<span class="nc" id="L597">                rangeAxis = p.getRangeAxis();</span>
+<span class="nc" id="L598">            }</span>
+<span class="nc bnc" id="L599" title="All 2 branches missed.">            else if (plot instanceof XYPlot) {</span>
+<span class="nc" id="L600">                XYPlot p = (XYPlot) plot;</span>
+<span class="nc" id="L601">                rangeAxis = p.getRangeAxis();</span>
+<span class="nc" id="L602">            }</span>
+<span class="nc bnc" id="L603" title="All 2 branches missed.">            else if (plot instanceof PolarPlot) {</span>
+<span class="nc" id="L604">                PolarPlot p = (PolarPlot) plot;</span>
+<span class="nc" id="L605">                rangeAxis = p.getAxis();</span>
+            }
+<span class="nc bnc" id="L607" title="All 2 branches missed.">            if (rangeAxis != null) {</span>
+<span class="nc" id="L608">                this.rangeAxisPropertyPanel.setAxisProperties(rangeAxis);</span>
+            }
+        }
+
+<span class="nc bnc" id="L612" title="All 2 branches missed.">        if (this.plotOrientation != null) {</span>
+<span class="nc bnc" id="L613" title="All 2 branches missed.">            if (plot instanceof CategoryPlot) {</span>
+<span class="nc" id="L614">                CategoryPlot p = (CategoryPlot) plot;</span>
+<span class="nc" id="L615">                p.setOrientation(this.plotOrientation);</span>
+<span class="nc" id="L616">            }</span>
+<span class="nc bnc" id="L617" title="All 2 branches missed.">            else if (plot instanceof XYPlot) {</span>
+<span class="nc" id="L618">                XYPlot p = (XYPlot) plot;</span>
+<span class="nc" id="L619">                p.setOrientation(this.plotOrientation);</span>
+            }
+        }
+
+<span class="nc bnc" id="L623" title="All 2 branches missed.">        if (this.drawLines != null) {</span>
+<span class="nc bnc" id="L624" title="All 2 branches missed.">            if (plot instanceof CategoryPlot) {</span>
+<span class="nc" id="L625">                CategoryPlot p = (CategoryPlot) plot;</span>
+<span class="nc" id="L626">                CategoryItemRenderer r = p.getRenderer();</span>
+<span class="nc bnc" id="L627" title="All 2 branches missed.">                if (r instanceof LineAndShapeRenderer) {</span>
+<span class="nc" id="L628">                    ((LineAndShapeRenderer) r).setLinesVisible(</span>
+                            this.drawLines.booleanValue());
+                }
+<span class="nc" id="L631">            }</span>
+<span class="nc bnc" id="L632" title="All 2 branches missed.">            else if (plot instanceof XYPlot) {</span>
+<span class="nc" id="L633">                XYPlot p = (XYPlot) plot;</span>
+<span class="nc" id="L634">                XYItemRenderer r = p.getRenderer();</span>
+<span class="nc bnc" id="L635" title="All 2 branches missed.">                if (r instanceof StandardXYItemRenderer) {</span>
+<span class="nc" id="L636">                    ((StandardXYItemRenderer) r).setPlotLines(</span>
+                            this.drawLines.booleanValue());
+                }
+            }
+        }
+
+<span class="nc bnc" id="L642" title="All 2 branches missed.">        if (this.drawShapes != null) {</span>
+<span class="nc bnc" id="L643" title="All 2 branches missed.">            if (plot instanceof CategoryPlot) {</span>
+<span class="nc" id="L644">                CategoryPlot p = (CategoryPlot) plot;</span>
+<span class="nc" id="L645">                CategoryItemRenderer r = p.getRenderer();</span>
+<span class="nc bnc" id="L646" title="All 2 branches missed.">                if (r instanceof LineAndShapeRenderer) {</span>
+<span class="nc" id="L647">                    ((LineAndShapeRenderer) r).setShapesVisible(</span>
+                            this.drawShapes.booleanValue());
+                }
+<span class="nc" id="L650">            }</span>
+<span class="nc bnc" id="L651" title="All 2 branches missed.">            else if (plot instanceof XYPlot) {</span>
+<span class="nc" id="L652">                XYPlot p = (XYPlot) plot;</span>
+<span class="nc" id="L653">                XYItemRenderer r = p.getRenderer();</span>
+<span class="nc bnc" id="L654" title="All 2 branches missed.">                if (r instanceof StandardXYItemRenderer) {</span>
+<span class="nc" id="L655">                    ((StandardXYItemRenderer) r).setBaseShapesVisible(</span>
+                        this.drawShapes.booleanValue());
+                }
+            }
+        }
+
+//dmo: added this panel for colorbar control. (start dmo additions)
+<span class="nc bnc" id="L662" title="All 2 branches missed.">        if (this.colorBarAxisPropertyPanel != null) {</span>
+<span class="nc" id="L663">            ColorBar colorBar = null;</span>
+<span class="nc bnc" id="L664" title="All 2 branches missed.">            if (plot instanceof  ContourPlot) {</span>
+<span class="nc" id="L665">                ContourPlot p = (ContourPlot) plot;</span>
+<span class="nc" id="L666">                colorBar = p.getColorBar();</span>
+            }
+<span class="nc bnc" id="L668" title="All 2 branches missed.">            if (colorBar != null) {</span>
+<span class="nc" id="L669">                this.colorBarAxisPropertyPanel.setAxisProperties(colorBar);</span>
+            }
+        }
+//dmo: (end dmo additions)
+
+<span class="nc" id="L674">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

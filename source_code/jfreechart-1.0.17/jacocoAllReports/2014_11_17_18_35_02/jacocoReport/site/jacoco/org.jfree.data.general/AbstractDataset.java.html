@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>AbstractDataset.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.data.general</a> &gt; <span class="el_source">AbstractDataset.java</span></div><h1>AbstractDataset.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * --------------------
+ * AbstractDataset.java
+ * --------------------
+ * (C)opyright 2000-2013, by Object Refinery Limited.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   Nicolas Brodu (for Astrium and EADS Corporate Research
+ *                   Center);
+ *
+ * Changes (from 21-Aug-2001)
+ * --------------------------
+ * 21-Aug-2001 : Added standard header. Fixed DOS encoding problem (DG);
+ * 18-Sep-2001 : Updated e-mail address in header (DG);
+ * 15-Oct-2001 : Moved to new package (com.jrefinery.data.*) (DG);
+ * 22-Oct-2001 : Renamed DataSource.java --&gt; Dataset.java etc. (DG);
+ * 17-Nov-2001 : Changed constructor from public to protected, created new
+ *               AbstractSeriesDataset class and transferred series-related
+ *               methods, updated Javadoc comments (DG);
+ * 04-Mar-2002 : Updated import statements (DG);
+ * 11-Jun-2002 : Updated for change in the event constructor (DG);
+ * 07-Aug-2002 : Changed listener list to use
+ *               javax.swing.event.EventListenerList (DG);
+ * 04-Oct-2002 : Fixed errors reported by Checkstyle (DG);
+ * 27-Mar-2003 : Implemented Serializable (DG);
+ * 18-Aug-2003 : Implemented Cloneable (DG);
+ * 08-Sep-2003 : Serialization fixes (NB);
+ * 11-Sep-2003 : Cloning Fixes (NB);
+ * 01-Jun-2005 : Added hasListener() method for unit testing (DG);
+ * 03-Jul-2013 : Use ParamChecks (DG);
+ * 21-Nov-2013 : Added notify flag to allow suppressing change events 
+ *               temporarily (DG);
+ *
+ */
+
+package org.jfree.data.general;
+
+import java.io.IOException;
+import java.io.InvalidObjectException;
+import java.io.ObjectInputStream;
+import java.io.ObjectInputValidation;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.Arrays;
+import java.util.EventListener;
+import java.util.List;
+
+import javax.swing.event.EventListenerList;
+import org.jfree.chart.util.ParamChecks;
+
+/**
+ * An abstract implementation of the {@link Dataset} interface, containing a
+ * mechanism for registering change listeners.
+ */
+public abstract class AbstractDataset implements Dataset, Cloneable,
+        Serializable, ObjectInputValidation {
+
+    /** For serialization. */
+    private static final long serialVersionUID = 1918768939869230744L;
+
+    /** The group that the dataset belongs to. */
+    private DatasetGroup group;
+
+    /** Storage for registered change listeners. */
+    private transient EventListenerList listenerList;
+    
+    /** 
+     * A flag that can be used to temporarily suppress dataset change event
+     * notifications.
+     */
+    private boolean notify;
+
+    /**
+     * Constructs a dataset. By default, the dataset is assigned to its own
+     * group.
+     */
+<span class="fc" id="L102">    protected AbstractDataset() {</span>
+<span class="fc" id="L103">        this.group = new DatasetGroup();</span>
+<span class="fc" id="L104">        this.listenerList = new EventListenerList();</span>
+<span class="fc" id="L105">        this.notify = true;</span>
+<span class="fc" id="L106">    }</span>
+
+    /**
+     * Returns the dataset group for the dataset.
+     *
+     * @return The group (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setGroup(DatasetGroup)
+     */
+    @Override
+    public DatasetGroup getGroup() {
+<span class="fc" id="L117">        return this.group;</span>
+    }
+
+    /**
+     * Sets the dataset group for the dataset.
+     *
+     * @param group  the group (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getGroup()
+     */
+    @Override
+    public void setGroup(DatasetGroup group) {
+<span class="nc" id="L129">        ParamChecks.nullNotPermitted(group, &quot;group&quot;);</span>
+<span class="nc" id="L130">        this.group = group;</span>
+<span class="nc" id="L131">    }</span>
+
+    /**
+     * Returns the value of the notify flag.  The default value is 
+     * &lt;code&gt;true&lt;/code&gt;.  If this is &lt;code&gt;false&lt;/code&gt;, calls to the 
+     * {@link #fireDatasetChanged()} method will NOT trigger a dataset
+     * change event.
+     * 
+     * @return A boolean.
+     * 
+     * @since 1.0.17
+     */
+    public boolean getNotify() {
+<span class="nc" id="L144">        return this.notify;</span>
+    }
+    
+    /**
+     * Sets the notify flag, which controls whether or not the {@link #fireDatasetChanged()}
+     * method notifies listeners.  Setting this flag to &lt;code&gt;true&lt;/code&gt; will
+     * trigger a &lt;code&gt;DatasetChangeEvent&lt;/code&gt; because there may be 
+     * queued up changes.
+     * 
+     * @param notify  the new flag value.
+     * 
+     * @since 1.0.17
+     */
+    public void setNotify(boolean notify) {
+<span class="nc" id="L158">        this.notify = notify;</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">        if (notify) {</span>
+<span class="nc" id="L160">            fireDatasetChanged();</span>
+        }    
+<span class="nc" id="L162">    }</span>
+    
+    /**
+     * Registers an object to receive notification of changes to the dataset.
+     *
+     * @param listener  the object to register.
+     *
+     * @see #removeChangeListener(DatasetChangeListener)
+     */
+    @Override
+    public void addChangeListener(DatasetChangeListener listener) {
+<span class="fc" id="L173">        this.listenerList.add(DatasetChangeListener.class, listener);</span>
+<span class="fc" id="L174">    }</span>
+
+    /**
+     * Deregisters an object so that it no longer receives notification of
+     * changes to the dataset.
+     *
+     * @param listener  the object to deregister.
+     *
+     * @see #addChangeListener(DatasetChangeListener)
+     */
+    @Override
+    public void removeChangeListener(DatasetChangeListener listener) {
+<span class="fc" id="L186">        this.listenerList.remove(DatasetChangeListener.class, listener);</span>
+<span class="fc" id="L187">    }</span>
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; if the specified object is registered with
+     * the dataset as a listener.  Most applications won't need to call this
+     * method, it exists mainly for use by unit testing code.
+     *
+     * @param listener  the listener.
+     *
+     * @return A boolean.
+     *
+     * @see #addChangeListener(DatasetChangeListener)
+     * @see #removeChangeListener(DatasetChangeListener)
+     */
+    public boolean hasListener(EventListener listener) {
+<span class="fc" id="L202">        List list = Arrays.asList(this.listenerList.getListenerList());</span>
+<span class="fc" id="L203">        return list.contains(listener);</span>
+    }
+
+    /**
+     * Notifies all registered listeners that the dataset has changed, 
+     * provided that the &lt;code&gt;notify&lt;/code&gt; flag has not been set to 
+     * &lt;code&gt;false&lt;/code&gt;.
+     *
+     * @see #addChangeListener(DatasetChangeListener)
+     */
+    protected void fireDatasetChanged() {
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">        if (this.notify) {</span>
+<span class="fc" id="L215">            notifyListeners(new DatasetChangeEvent(this, this));</span>
+        }
+<span class="fc" id="L217">    }</span>
+
+    /**
+     * Notifies all registered listeners that the dataset has changed.
+     *
+     * @param event  contains information about the event that triggered the
+     *               notification.
+     *
+     * @see #addChangeListener(DatasetChangeListener)
+     * @see #removeChangeListener(DatasetChangeListener)
+     */
+    protected void notifyListeners(DatasetChangeEvent event) {
+<span class="fc" id="L229">        Object[] listeners = this.listenerList.getListenerList();</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        for (int i = listeners.length - 2; i &gt;= 0; i -= 2) {</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">            if (listeners[i] == DatasetChangeListener.class) {</span>
+<span class="fc" id="L232">                ((DatasetChangeListener) listeners[i + 1]).datasetChanged(</span>
+                        event);
+            }
+        }
+<span class="fc" id="L236">    }</span>
+
+    /**
+     * Returns a clone of the dataset. The cloned dataset will NOT include the
+     * {@link DatasetChangeListener} references that have been registered with
+     * this dataset.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException  if the dataset does not support
+     *                                     cloning.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L250">        AbstractDataset clone = (AbstractDataset) super.clone();</span>
+<span class="fc" id="L251">        clone.listenerList = new EventListenerList();</span>
+<span class="fc" id="L252">        return clone;</span>
+    }
+
+    /**
+     * Handles serialization.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException if there is an I/O problem.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L263">        stream.defaultWriteObject();</span>
+<span class="fc" id="L264">    }</span>
+
+    /**
+     * Restores a serialized object.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException if there is an I/O problem.
+     * @throws ClassNotFoundException if there is a problem loading a class.
+     */
+    private void readObject(ObjectInputStream stream)
+        throws IOException, ClassNotFoundException {
+<span class="fc" id="L276">        stream.defaultReadObject();</span>
+<span class="fc" id="L277">        this.listenerList = new EventListenerList();</span>
+<span class="fc" id="L278">        stream.registerValidation(this, 10);  // see comments about priority of</span>
+                                              // 10 in validateObject()
+<span class="fc" id="L280">    }</span>
+
+    /**
+     * Validates the object. We use this opportunity to call listeners who have
+     * registered during the deserialization process, as listeners are not
+     * serialized. This method is called by the serialization system after the
+     * entire graph is read.
+     *
+     * This object has registered itself to the system with a priority of 10.
+     * Other callbacks may register with a higher priority number to be called
+     * before this object, or with a lower priority number to be called after
+     * the listeners were notified.
+     *
+     * All listeners are supposed to have register by now, either in their
+     * readObject or validateObject methods. Notify them that this dataset has
+     * changed.
+     *
+     * @exception InvalidObjectException If the object cannot validate itself.
+     */
+    @Override
+    public void validateObject() throws InvalidObjectException {
+<span class="fc" id="L301">        fireDatasetChanged();</span>
+<span class="fc" id="L302">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

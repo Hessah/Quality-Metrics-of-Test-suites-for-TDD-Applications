@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Steps.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.steps</a> &gt; <span class="el_source">Steps.java</span></div><h1>Steps.java</h1><pre class="source lang-java linenums">package org.jbehave.core.steps;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.commons.lang.builder.ToStringBuilder;
+import org.apache.commons.lang.builder.ToStringStyle;
+import org.jbehave.core.annotations.AfterScenario;
+import org.jbehave.core.annotations.AfterScenario.Outcome;
+import org.jbehave.core.annotations.AfterStories;
+import org.jbehave.core.annotations.AfterStory;
+import org.jbehave.core.annotations.Alias;
+import org.jbehave.core.annotations.Aliases;
+import org.jbehave.core.annotations.BeforeScenario;
+import org.jbehave.core.annotations.BeforeStories;
+import org.jbehave.core.annotations.BeforeStory;
+import org.jbehave.core.annotations.Composite;
+import org.jbehave.core.annotations.Given;
+import org.jbehave.core.annotations.ScenarioType;
+import org.jbehave.core.annotations.Then;
+import org.jbehave.core.annotations.When;
+import org.jbehave.core.configuration.Configuration;
+import org.jbehave.core.configuration.MostUsefulConfiguration;
+import org.jbehave.core.parsers.RegexPrefixCapturingPatternParser;
+import org.jbehave.core.parsers.StepPatternParser;
+import org.jbehave.core.steps.StepCollector.Stage;
+
+import static java.util.Arrays.asList;
+import static org.jbehave.core.annotations.AfterScenario.Outcome.ANY;
+import static org.jbehave.core.annotations.AfterScenario.Outcome.FAILURE;
+import static org.jbehave.core.annotations.AfterScenario.Outcome.SUCCESS;
+import static org.jbehave.core.steps.StepType.GIVEN;
+import static org.jbehave.core.steps.StepType.THEN;
+import static org.jbehave.core.steps.StepType.WHEN;
+
+/**
+ * &lt;p&gt;
+ * Default implementation of {@link CandidateSteps} which provides the step
+ * candidates that match the steps being run.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * To provide your step candidate methods, you can:
+ * &lt;ul&gt;
+ * &lt;li&gt;pass in the steps instance type and the steps factory used to instantiate
+ * the instance if any candidate steps are matched (lazy &quot;has-a&quot; relationship)&lt;/li&gt;
+ * &lt;li&gt;pass in the steps instance, instantiated regardless of whether the
+ * candidate steps are matched (eager &quot;has-a&quot; relationship)&lt;/li&gt;
+ * &lt;li&gt;extend the {@link Steps} class, in which case the instance is the
+ * extended {@link Steps} class itself (&quot;is-a&quot; relationship)&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;b&gt;The &quot;has-a&quot; design model, in which the steps instance is passed in, is
+ * strongly recommended over the &quot;is-a&quot; model as it does not have tie-ins in the
+ * {@link Steps} class implementation&lt;/b&gt;.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * You can define the methods that should be run by annotating them with
+ * {@link Given @Given}, {@link When @When} or {@link Then @Then}, and providing
+ * as a value for each annotation a pattern matches the textual step. The value
+ * is interpreted by the {@link StepPatternParser}, which by default is a
+ * {@link RegexPrefixCapturingPatternParser} that interprets the words starting
+ * with '$' as parameters.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * For instance, you could define a method as:
+ * 
+ * &lt;pre&gt;
+ * @When(&quot;I log in as $username with password: $password&quot;)
+ * public void logIn(String username, String password) { //... }
+ * &lt;/pre&gt;
+ * 
+ * and this would match the step:
+ * 
+ * &lt;pre&gt;
+ * When I log in as Liz with password: Pa55word
+ * &lt;/pre&gt;
+ * 
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * When the step is performed, the parameters matched will be passed to the
+ * method, so in this case the effect will be to invoke:
+ * &lt;/p&gt;
+ * 
+ * &lt;pre&gt;
+ * logIn(&amp;quot;Liz&amp;quot;, &amp;quot;Pa55word&amp;quot;);
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * The {@link Configuration} can be used to provide customize the
+ * {@link StepCandidate}s that are created, e.g. providing a step monitor or
+ * creating them in &quot;dry run&quot; mode.
+ * &lt;/p&gt;
+ */
+public class Steps implements CandidateSteps {
+
+    private final Configuration configuration;
+    private Class&lt;?&gt; type;
+    private InjectableStepsFactory stepsFactory;
+
+    /**
+     * Creates Steps with default configuration for a class extending this
+     * instance and containing the candidate step methods
+     */
+    public Steps() {
+<span class="fc" id="L105">        this(new MostUsefulConfiguration());</span>
+<span class="fc" id="L106">    }</span>
+
+    /**
+     * Creates Steps with given custom configuration for a class extending this
+     * instance and containing the candidate step methods
+     * 
+     * @param configuration the Configuration
+     */
+<span class="fc" id="L114">    public Steps(Configuration configuration) {</span>
+<span class="fc" id="L115">        this.configuration = configuration;</span>
+<span class="fc" id="L116">        this.type = this.getClass();</span>
+<span class="fc" id="L117">        this.stepsFactory = new InstanceStepsFactory(configuration, this);</span>
+<span class="fc" id="L118">    }</span>
+
+    /**
+     * Creates Steps with given custom configuration and a steps instance
+     * containing the candidate step methods
+     * 
+     * @param configuration the Configuration
+     * @param instance the steps instance
+     */
+<span class="nc" id="L127">    public Steps(Configuration configuration, Object instance) {</span>
+<span class="nc" id="L128">        this.configuration = configuration;</span>
+<span class="nc" id="L129">        this.type = instance.getClass();</span>
+<span class="nc" id="L130">        this.stepsFactory = new InstanceStepsFactory(configuration, instance);</span>
+<span class="nc" id="L131">    }</span>
+
+    /**
+     * Creates Steps with given custom configuration and a steps instance type
+     * containing the candidate step methods. The steps instance is created
+     * using the steps instance factory provided.
+     * 
+     * @param configuration the Configuration
+     * @param type the steps instance type
+     * @param stepsFactory the {@link InjectableStepsFactory}
+     */
+<span class="fc" id="L142">    public Steps(Configuration configuration, Class&lt;?&gt; type, InjectableStepsFactory stepsFactory) {</span>
+<span class="fc" id="L143">        this.configuration = configuration;</span>
+<span class="fc" id="L144">        this.type = type;</span>
+<span class="fc" id="L145">        this.stepsFactory = stepsFactory;</span>
+<span class="fc" id="L146">    }</span>
+
+    public Class&lt;?&gt; type() {
+<span class="nc" id="L149">        return type;</span>
+    }
+
+    public Object instance() {
+<span class="fc" id="L153">        return stepsFactory.createInstanceOfType(type);</span>
+    }
+
+    public Configuration configuration() {
+<span class="fc" id="L157">        return configuration;</span>
+    }
+
+    public List&lt;StepCandidate&gt; listCandidates() {
+<span class="fc" id="L161">        List&lt;StepCandidate&gt; candidates = new ArrayList&lt;StepCandidate&gt;();</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        for (Method method : allMethods()) {</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">            if (method.isAnnotationPresent(Given.class)) {</span>
+<span class="fc" id="L164">                Given annotation = method.getAnnotation(Given.class);</span>
+<span class="fc" id="L165">                String value = annotation.value();</span>
+<span class="fc" id="L166">                int priority = annotation.priority();</span>
+<span class="fc" id="L167">                addCandidatesFromVariants(candidates, method, GIVEN, value, priority);</span>
+<span class="fc" id="L168">                addCandidatesFromAliases(candidates, method, GIVEN, priority);</span>
+            }
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            if (method.isAnnotationPresent(When.class)) {</span>
+<span class="fc" id="L171">                When annotation = method.getAnnotation(When.class);</span>
+<span class="fc" id="L172">                String value = annotation.value();</span>
+<span class="fc" id="L173">                int priority = annotation.priority();</span>
+<span class="fc" id="L174">                addCandidatesFromVariants(candidates, method, WHEN, value, priority);</span>
+<span class="fc" id="L175">                addCandidatesFromAliases(candidates, method, WHEN, priority);</span>
+            }
+<span class="fc bfc" id="L177" title="All 2 branches covered.">            if (method.isAnnotationPresent(Then.class)) {</span>
+<span class="fc" id="L178">                Then annotation = method.getAnnotation(Then.class);</span>
+<span class="fc" id="L179">                String value = annotation.value();</span>
+<span class="fc" id="L180">                int priority = annotation.priority();</span>
+<span class="fc" id="L181">                addCandidatesFromVariants(candidates, method, THEN, value, priority);</span>
+<span class="fc" id="L182">                addCandidatesFromAliases(candidates, method, THEN, priority);</span>
+            }
+<span class="fc" id="L184">        }</span>
+<span class="fc" id="L185">        return candidates;</span>
+    }
+
+    private void addCandidatesFromVariants(List&lt;StepCandidate&gt; candidates, Method method, StepType stepType, String value, int priority) {
+<span class="fc" id="L189">        PatternVariantBuilder b = new PatternVariantBuilder(value);</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        for (String variant : b.allVariants()) {</span>
+<span class="fc" id="L191">            addCandidate(candidates, method, stepType, variant, priority);</span>
+<span class="fc" id="L192">        }</span>
+<span class="fc" id="L193">    }</span>
+    
+    private void addCandidatesFromAliases(List&lt;StepCandidate&gt; candidates, Method method, StepType stepType, int priority) {
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        if (method.isAnnotationPresent(Aliases.class)) {</span>
+<span class="fc" id="L197">            String[] aliases = method.getAnnotation(Aliases.class).values();</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            for (String alias : aliases) {</span>
+<span class="fc" id="L199">                addCandidatesFromVariants(candidates, method, stepType, alias, priority);</span>
+            }
+        }
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (method.isAnnotationPresent(Alias.class)) {</span>
+<span class="fc" id="L203">            String alias = method.getAnnotation(Alias.class).value();</span>
+<span class="fc" id="L204">            addCandidatesFromVariants(candidates, method, stepType, alias, priority);</span>
+        }
+<span class="fc" id="L206">    }</span>
+
+    private void addCandidate(List&lt;StepCandidate&gt; candidates, Method method, StepType stepType,
+            String stepPatternAsString, int priority) {
+<span class="fc" id="L210">        checkForDuplicateCandidates(candidates, stepType, stepPatternAsString);</span>
+<span class="fc" id="L211">        StepCandidate candidate = createCandidate(method, stepType, stepPatternAsString, priority, configuration);</span>
+<span class="fc" id="L212">        candidate.useStepMonitor(configuration.stepMonitor());</span>
+<span class="fc" id="L213">        candidate.useParanamer(configuration.paranamer());</span>
+<span class="fc" id="L214">        candidate.doDryRun(configuration.storyControls().dryRun());</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        if (method.isAnnotationPresent(Composite.class)) {</span>
+<span class="fc" id="L216">            candidate.composedOf(method.getAnnotation(Composite.class).steps());</span>
+        }
+<span class="fc" id="L218">        candidates.add(candidate);</span>
+<span class="fc" id="L219">    }</span>
+
+    private void checkForDuplicateCandidates(List&lt;StepCandidate&gt; candidates, StepType stepType, String patternAsString) {
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        for (StepCandidate candidate : candidates) {</span>
+<span class="fc bfc" id="L223" title="All 4 branches covered.">            if (candidate.getStepType() == stepType &amp;&amp; candidate.getPatternAsString().equals(patternAsString)) {</span>
+<span class="fc" id="L224">                throw new DuplicateCandidateFound(stepType, patternAsString);</span>
+            }
+<span class="fc" id="L226">        }</span>
+<span class="fc" id="L227">    }</span>
+
+    private StepCandidate createCandidate(Method method, StepType stepType, String stepPatternAsString, int priority,
+            Configuration configuration) {
+<span class="fc" id="L231">        return new StepCandidate(stepPatternAsString, priority, stepType, method, type, stepsFactory,</span>
+                configuration.keywords(), configuration.stepPatternParser(), configuration.parameterConverters(), configuration.parameterControls());
+    }
+
+    public List&lt;BeforeOrAfterStep&gt; listBeforeOrAfterStories() {
+<span class="fc" id="L236">        List&lt;BeforeOrAfterStep&gt; steps = new ArrayList&lt;BeforeOrAfterStep&gt;();</span>
+<span class="fc" id="L237">        steps.addAll(stepsHaving(Stage.BEFORE, BeforeStories.class));</span>
+<span class="fc" id="L238">        steps.addAll(stepsHaving(Stage.AFTER, AfterStories.class));</span>
+<span class="fc" id="L239">        return steps;</span>
+    }
+
+    public List&lt;BeforeOrAfterStep&gt; listBeforeOrAfterStory(boolean givenStory) {
+<span class="fc" id="L243">        List&lt;BeforeOrAfterStep&gt; steps = new ArrayList&lt;BeforeOrAfterStep&gt;();</span>
+<span class="fc" id="L244">        steps.addAll(stepsHaving(Stage.BEFORE, BeforeStory.class, givenStory));</span>
+<span class="fc" id="L245">        steps.addAll(stepsHaving(Stage.AFTER, AfterStory.class, givenStory));</span>
+<span class="fc" id="L246">        return steps;</span>
+    }
+
+    public List&lt;BeforeOrAfterStep&gt; listBeforeOrAfterScenario(ScenarioType type) {
+<span class="fc" id="L250">        List&lt;BeforeOrAfterStep&gt; steps = new ArrayList&lt;BeforeOrAfterStep&gt;();</span>
+<span class="fc" id="L251">        steps.addAll(scenarioStepsHaving(type, Stage.BEFORE, BeforeScenario.class));</span>
+<span class="fc" id="L252">        steps.addAll(scenarioStepsHaving(type, Stage.AFTER, AfterScenario.class, ANY, SUCCESS, FAILURE));</span>
+<span class="fc" id="L253">        return steps;</span>
+    }
+
+    private boolean runnableStoryStep(Annotation annotation, boolean givenStory) {
+<span class="fc" id="L257">        boolean uponGivenStory = uponGivenStory(annotation);</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        return uponGivenStory == givenStory;</span>
+    }
+
+    private boolean uponGivenStory(Annotation annotation) {
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        if (annotation instanceof BeforeStory) {</span>
+<span class="fc" id="L263">            return ((BeforeStory) annotation).uponGivenStory();</span>
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">        } else if (annotation instanceof AfterStory) {</span>
+<span class="fc" id="L265">            return ((AfterStory) annotation).uponGivenStory();</span>
+        }
+<span class="nc" id="L267">        return false;</span>
+    }
+
+    private List&lt;BeforeOrAfterStep&gt; stepsHaving(Stage stage, Class&lt;? extends Annotation&gt; annotationClass) {
+<span class="fc" id="L271">        List&lt;BeforeOrAfterStep&gt; steps = new ArrayList&lt;BeforeOrAfterStep&gt;();</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        for (Method method : methodsAnnotatedWith(annotationClass)) {</span>
+<span class="fc" id="L273">            steps.add(createBeforeOrAfterStep(stage, method));</span>
+<span class="fc" id="L274">        }</span>
+<span class="fc" id="L275">        return steps;</span>
+    }
+
+    private List&lt;BeforeOrAfterStep&gt; stepsHaving(Stage stage, Class&lt;? extends Annotation&gt; annotationClass,
+            boolean givenStory) {
+<span class="fc" id="L280">        List&lt;BeforeOrAfterStep&gt; steps = new ArrayList&lt;BeforeOrAfterStep&gt;();</span>
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        for (final Method method : methodsAnnotatedWith(annotationClass)) {</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">            if (runnableStoryStep(method.getAnnotation(annotationClass), givenStory)) {</span>
+<span class="fc" id="L283">                steps.add(createBeforeOrAfterStep(stage, method));</span>
+            }
+<span class="fc" id="L285">        }</span>
+<span class="fc" id="L286">        return steps;</span>
+    }
+
+    private List&lt;BeforeOrAfterStep&gt; scenarioStepsHaving(ScenarioType type, Stage stage,
+            Class&lt;? extends Annotation&gt; annotationClass, Outcome... outcomes) {
+<span class="fc" id="L291">        List&lt;BeforeOrAfterStep&gt; steps = new ArrayList&lt;BeforeOrAfterStep&gt;();</span>
+<span class="fc bfc" id="L292" title="All 2 branches covered.">        for (Method method : methodsAnnotatedWith(annotationClass)) {</span>
+<span class="fc" id="L293">            ScenarioType scenarioType = scenarioType(method, annotationClass);</span>
+<span class="fc bfc" id="L294" title="All 2 branches covered.">            if (type == scenarioType) {</span>
+<span class="fc bfc" id="L295" title="All 2 branches covered.">                if (stage == Stage.BEFORE) {</span>
+<span class="fc" id="L296">                    steps.add(createBeforeOrAfterStep(stage, method));</span>
+                }
+<span class="fc bfc" id="L298" title="All 2 branches covered.">                if (stage == Stage.AFTER) {</span>
+<span class="fc" id="L299">                    Outcome scenarioOutcome = scenarioOutcome(method, annotationClass);</span>
+<span class="fc bfc" id="L300" title="All 2 branches covered.">                    for (Outcome outcome : outcomes) {</span>
+<span class="fc bfc" id="L301" title="All 2 branches covered.">                        if (outcome.equals(scenarioOutcome)) {</span>
+<span class="fc" id="L302">                            steps.add(createBeforeOrAfterStep(stage, method, outcome));</span>
+                        }
+                    }
+                }
+            }
+<span class="fc" id="L307">        }</span>
+<span class="fc" id="L308">        return steps;</span>
+    }
+
+    private ScenarioType scenarioType(Method method, Class&lt;? extends Annotation&gt; annotationClass) {
+<span class="fc bfc" id="L312" title="All 2 branches covered.">        if (annotationClass.isAssignableFrom(BeforeScenario.class)) {</span>
+<span class="fc" id="L313">            return ((BeforeScenario) method.getAnnotation(annotationClass)).uponType();</span>
+        }
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">        if (annotationClass.isAssignableFrom(AfterScenario.class)) {</span>
+<span class="fc" id="L316">            return ((AfterScenario) method.getAnnotation(annotationClass)).uponType();</span>
+        }
+<span class="nc" id="L318">        return ScenarioType.NORMAL;</span>
+    }
+
+    private Outcome scenarioOutcome(Method method, Class&lt;? extends Annotation&gt; annotationClass) {
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">        if (annotationClass.isAssignableFrom(AfterScenario.class)) {</span>
+<span class="fc" id="L323">            return ((AfterScenario) method.getAnnotation(annotationClass)).uponOutcome();</span>
+        }
+<span class="nc" id="L325">        return Outcome.ANY;</span>
+    }
+
+    private BeforeOrAfterStep createBeforeOrAfterStep(Stage stage, Method method) {
+<span class="fc" id="L329">        return createBeforeOrAfterStep(stage, method, Outcome.ANY);</span>
+    }
+
+    private BeforeOrAfterStep createBeforeOrAfterStep(Stage stage, Method method, Outcome outcome) {
+<span class="fc" id="L333">        return new BeforeOrAfterStep(stage, method, outcome, new StepCreator(type, stepsFactory,</span>
+                configuration.parameterConverters(), configuration.parameterControls(), null, configuration.stepMonitor()));
+    }
+
+    private List&lt;Method&gt; allMethods() {
+<span class="fc" id="L338">        return asList(type.getMethods());</span>
+    }
+
+    private List&lt;Method&gt; methodsAnnotatedWith(Class&lt;? extends Annotation&gt; annotationClass) {
+<span class="fc" id="L342">        List&lt;Method&gt; annotated = new ArrayList&lt;Method&gt;();</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">        for (Method method : allMethods()) {</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">            if (method.isAnnotationPresent(annotationClass)) {</span>
+<span class="fc" id="L345">                annotated.add(method);</span>
+            }
+<span class="fc" id="L347">        }</span>
+<span class="fc" id="L348">        return annotated;</span>
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class DuplicateCandidateFound extends RuntimeException {
+
+        public DuplicateCandidateFound(StepType stepType, String patternAsString) {
+<span class="fc" id="L355">            super(stepType + &quot; &quot; + patternAsString);</span>
+<span class="fc" id="L356">        }</span>
+
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L362">        return new ToStringBuilder(this, ToStringStyle.SHORT_PREFIX_STYLE).append(instance()).toString();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

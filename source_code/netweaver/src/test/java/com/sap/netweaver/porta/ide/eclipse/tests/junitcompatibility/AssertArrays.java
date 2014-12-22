@@ -10,6 +10,7 @@ import java.lang.reflect.Array;
  * 
  * @see org.junit.Assert
  */
+
 public class AssertArrays {
 
 	/**
@@ -25,6 +26,7 @@ public class AssertArrays {
 	 *            Object array or array of arrays (multi-dimensional array) with
 	 *            actual values
 	 */
+
 	public static void assertArrayEquals(Object[] expecteds, Object[] actuals) {
 		assertArrayEquals(null, expecteds, actuals);
 	}
@@ -45,6 +47,7 @@ public class AssertArrays {
 	 *            Object array or array of arrays (multi-dimensional array) with
 	 *            actual values
 	 */
+
 	public static void assertArrayEquals(String message, Object[] expecteds,
 			Object[] actuals) throws ArrayComparisonFailure {
 		internalArrayEquals(message, expecteds, actuals);
@@ -66,6 +69,7 @@ public class AssertArrays {
 	 *            Object array or array of arrays (multi-dimensional array) with
 	 *            actual values
 	 */
+
 	private static void internalArrayEquals(String message, Object expecteds,
 			Object actuals) throws ArrayComparisonFailure {
 		if (expecteds == actuals)
@@ -99,7 +103,7 @@ public class AssertArrays {
 				}
 		}
 	}
-	
+
 	private static boolean isArray(Object expected) {
 		return expected != null && expected.getClass().isArray();
 	}

@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>FileEntry.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-io-2.4</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.io.monitor</a> &gt; <span class="el_source">FileEntry.java</span></div><h1>FileEntry.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.io.monitor;
+
+import java.io.File;
+import java.io.Serializable;
+
+/**
+ * {@link FileEntry} represents the state of a file or directory, capturing
+ * the following {@link File} attributes at a point in time.
+ * &lt;ul&gt;
+ *   &lt;li&gt;File Name (see {@link File#getName()})&lt;/li&gt;
+ *   &lt;li&gt;Exists - whether the file exists or not (see {@link File#exists()})&lt;/li&gt;
+ *   &lt;li&gt;Directory - whether the file is a directory or not (see {@link File#isDirectory()})&lt;/li&gt;
+ *   &lt;li&gt;Last Modified Date/Time (see {@link File#lastModified()})&lt;/li&gt;
+ *   &lt;li&gt;Length (see {@link File#length()}) - directories treated as zero&lt;/li&gt;
+ *   &lt;li&gt;Children - contents of a directory (see {@link File#listFiles(java.io.FileFilter)})&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * &lt;h3&gt;Custom Implementations&lt;/h3&gt;
+ * If the state of additional {@link File} attributes is required then create a custom
+ * {@link FileEntry} with properties for those attributes. Override the
+ * {@link #newChildInstance(File)} to return a new instance of the appropriate type.
+ * You may also want to override the {@link #refresh(File)} method.
+ * @see FileAlterationObserver
+ * @since 2.0
+ */
+public class FileEntry implements Serializable {
+
+<span class="fc" id="L44">    static final FileEntry[] EMPTY_ENTRIES = new FileEntry[0];</span>
+
+    private final FileEntry parent;
+    private FileEntry[] children;
+    private final File file;
+    private String name;
+    private boolean exists;
+    private boolean directory;
+    private long lastModified;
+    private long length;
+
+    /**
+     * Construct a new monitor for a specified {@link File}.
+     *
+     * @param file The file being monitored
+     */
+    public FileEntry(File file) {
+<span class="fc" id="L61">        this((FileEntry)null, file);</span>
+<span class="fc" id="L62">    }</span>
+
+    /**
+     * Construct a new monitor for a specified {@link File}.
+     *
+     * @param parent The parent
+     * @param file The file being monitored
+     */
+<span class="fc" id="L70">    public FileEntry(FileEntry parent, File file) {</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">        if (file == null) {</span>
+<span class="nc" id="L72">            throw new IllegalArgumentException(&quot;File is missing&quot;);</span>
+        }
+<span class="fc" id="L74">        this.file = file;</span>
+<span class="fc" id="L75">        this.parent = parent;</span>
+<span class="fc" id="L76">        this.name = file.getName();</span>
+<span class="fc" id="L77">    }</span>
+
+    /**
+     * Refresh the attributes from the {@link File}, indicating
+     * whether the file has changed.
+     * &lt;p&gt;
+     * This implementation refreshes the &lt;code&gt;name&lt;/code&gt;, &lt;code&gt;exists&lt;/code&gt;,
+     * &lt;code&gt;directory&lt;/code&gt;, &lt;code&gt;lastModified&lt;/code&gt; and &lt;code&gt;length&lt;/code&gt;
+     * properties.
+     * &lt;p&gt;
+     * The &lt;code&gt;exists&lt;/code&gt;, &lt;code&gt;directory&lt;/code&gt;, &lt;code&gt;lastModified&lt;/code&gt;
+     * and &lt;code&gt;length&lt;/code&gt; properties are compared for changes
+     *
+     * @param file the file instance to compare to
+     * @return {@code true} if the file has changed, otherwise {@code false}
+     */
+    public boolean refresh(File file) {
+
+        // cache original values
+<span class="fc" id="L96">        boolean origExists       = exists;</span>
+<span class="fc" id="L97">        long    origLastModified = lastModified;</span>
+<span class="fc" id="L98">        boolean origDirectory    = directory;</span>
+<span class="fc" id="L99">        long    origLength       = length;</span>
+
+        // refresh the values
+<span class="fc" id="L102">        name         = file.getName();</span>
+<span class="fc" id="L103">        exists       = file.exists();</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        directory    = exists ? file.isDirectory() : false;</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">        lastModified = exists ? file.lastModified() : 0;</span>
+<span class="pc bpc" id="L106" title="1 of 4 branches missed.">        length       = exists &amp;&amp; !directory ? file.length() : 0;</span>
+
+        // Return if there are changes
+<span class="pc bpc" id="L109" title="2 of 8 branches missed.">        return exists != origExists ||</span>
+                lastModified != origLastModified ||
+                directory != origDirectory ||
+                length != origLength;
+    }
+
+    /**
+     * Create a new child instance.
+     * &lt;p&gt;
+     * Custom implementations should override this method to return
+     * a new instance of the appropriate type.
+     *
+     * @param file The child file
+     * @return a new child instance
+     */
+    public FileEntry newChildInstance(File file) {
+<span class="fc" id="L125">        return new FileEntry(this, file);</span>
+    }
+
+    /**
+     * Return the parent entry.
+     *
+     * @return the parent entry
+     */
+    public FileEntry getParent() {
+<span class="nc" id="L134">        return parent;</span>
+    }
+
+    /**
+     * Return the level
+     *
+     * @return the level
+     */
+    public int getLevel() {
+<span class="nc bnc" id="L143" title="All 2 branches missed.">        return parent == null ? 0 : parent.getLevel() + 1;</span>
+    }
+
+    /**
+     * Return the directory's files.
+     *
+     * @return This directory's files or an empty
+     * array if the file is not a directory or the
+     * directory is empty
+     */
+    public FileEntry[] getChildren() {
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">        return children != null ? children : EMPTY_ENTRIES;</span>
+    }
+
+    /**
+     * Set the directory's files.
+     *
+     * @param children This directory's files, may be null
+     */
+    public void setChildren(FileEntry[] children) {
+<span class="fc" id="L163">        this.children = children;</span>
+<span class="fc" id="L164">    }</span>
+
+    /**
+     * Return the file being monitored.
+     *
+     * @return the file being monitored
+     */
+    public File getFile() {
+<span class="fc" id="L172">        return file;</span>
+    }
+
+    /**
+     * Return the file name.
+     *
+     * @return the file name
+     */
+    public String getName() {
+<span class="nc" id="L181">        return name;</span>
+    }
+
+    /**
+     * Set the file name.
+     *
+     * @param name the file name
+     */
+    public void setName(String name) {
+<span class="nc" id="L190">        this.name = name;</span>
+<span class="nc" id="L191">    }</span>
+
+    /**
+     * Return the last modified time from the last time it
+     * was checked.
+     *
+     * @return the last modified time
+     */
+    public long getLastModified() {
+<span class="nc" id="L200">        return lastModified;</span>
+    }
+
+    /**
+     * Return the last modified time from the last time it
+     * was checked.
+     *
+     * @param lastModified The last modified time
+     */
+    public void setLastModified(long lastModified) {
+<span class="nc" id="L210">        this.lastModified = lastModified;</span>
+<span class="nc" id="L211">    }</span>
+
+    /**
+     * Return the length.
+     *
+     * @return the length
+     */
+    public long getLength() {
+<span class="nc" id="L219">        return length;</span>
+    }
+
+    /**
+     * Set the length.
+     *
+     * @param length the length
+     */
+    public void setLength(long length) {
+<span class="nc" id="L228">        this.length = length;</span>
+<span class="nc" id="L229">    }</span>
+
+    /**
+     * Indicate whether the file existed the last time it
+     * was checked.
+     *
+     * @return whether the file existed
+     */
+    public boolean isExists() {
+<span class="fc" id="L238">        return exists;</span>
+    }
+
+    /**
+     * Set whether the file existed the last time it
+     * was checked.
+     *
+     * @param exists whether the file exists or not
+     */
+    public void setExists(boolean exists) {
+<span class="nc" id="L248">        this.exists = exists;</span>
+<span class="nc" id="L249">    }</span>
+
+    /**
+     * Indicate whether the file is a directory or not.
+     *
+     * @return whether the file is a directory or not
+     */
+    public boolean isDirectory() {
+<span class="fc" id="L257">        return directory;</span>
+    }
+
+    /**
+     * Set whether the file is a directory or not.
+     *
+     * @param directory whether the file is a directory or not
+     */
+    public void setDirectory(boolean directory) {
+<span class="nc" id="L266">        this.directory = directory;</span>
+<span class="nc" id="L267">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,1013 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>XYSeries.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.data.xy</a> &gt; <span class="el_source">XYSeries.java</span></div><h1>XYSeries.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * -------------
+ * XYSeries.java
+ * -------------
+ * (C) Copyright 2001-2013, Object Refinery Limited and Contributors.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   Aaron Metzger;
+ *                   Jonathan Gabbai;
+ *                   Richard Atkinson;
+ *                   Michel Santos;
+ *                   Ted Schwartz (fix for bug 1955483);
+ *
+ * Changes
+ * -------
+ * 15-Nov-2001 : Version 1 (DG);
+ * 03-Apr-2002 : Added an add(double, double) method (DG);
+ * 29-Apr-2002 : Added a clear() method (ARM);
+ * 06-Jun-2002 : Updated Javadoc comments (DG);
+ * 29-Aug-2002 : Modified to give user control over whether or not duplicate
+ *               x-values are allowed (DG);
+ * 07-Oct-2002 : Fixed errors reported by Checkstyle (DG);
+ * 11-Nov-2002 : Added maximum item count, code contributed by Jonathan
+ *               Gabbai (DG);
+ * 26-Mar-2003 : Implemented Serializable (DG);
+ * 04-Aug-2003 : Added getItems() method (DG);
+ * 15-Aug-2003 : Changed 'data' from private to protected, added new add()
+ *               methods with a 'notify' argument (DG);
+ * 22-Sep-2003 : Added getAllowDuplicateXValues() method (RA);
+ * 29-Jan-2004 : Added autoSort attribute, based on a contribution by
+ *               Michel Santos - see patch 886740 (DG);
+ * 03-Feb-2004 : Added indexOf() method (DG);
+ * 16-Feb-2004 : Added remove() method (DG);
+ * 18-Aug-2004 : Moved from org.jfree.data --&gt; org.jfree.data.xy (DG);
+ * 21-Feb-2005 : Added update(Number, Number) and addOrUpdate(Number, Number)
+ *               methods (DG);
+ * 03-May-2005 : Added a new constructor, fixed the setMaximumItemCount()
+ *               method to remove items (and notify listeners) if necessary,
+ *               fixed the add() and addOrUpdate() methods to handle unsorted
+ *               series (DG);
+ * ------------- JFreeChart 1.0.x ---------------------------------------------
+ * 11-Jan-2005 : Renamed update(int, Number) --&gt; updateByIndex() (DG);
+ * 15-Jan-2007 : Added toArray() method (DG);
+ * 31-Oct-2007 : Implemented faster hashCode() (DG);
+ * 22-Nov-2007 : Reimplemented clone() (DG);
+ * 01-May-2008 : Fixed bug 1955483 in addOrUpdate() method, thanks to
+ *               Ted Schwartz (DG);
+ * 24-Nov-2008 : Further fix for 1955483 (DG);
+ * 06-Mar-2009 : Added minX, maxX, minY and maxY fields (DG);
+ * 10-Jun-2009 : Make clones to isolate XYDataItem instances used
+ *               for data storage (DG);
+ * 02-Jul-2013 : Use ParamChecks (DG);
+ * 
+ */
+
+package org.jfree.data.xy;
+
+import java.io.Serializable;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import org.jfree.chart.util.ParamChecks;
+
+import org.jfree.data.general.Series;
+import org.jfree.data.general.SeriesChangeEvent;
+import org.jfree.data.general.SeriesException;
+import org.jfree.util.ObjectUtilities;
+
+/**
+ * Represents a sequence of zero or more data items in the form (x, y).  By
+ * default, items in the series will be sorted into ascending order by x-value,
+ * and duplicate x-values are permitted.  Both the sorting and duplicate
+ * defaults can be changed in the constructor.  Y-values can be
+ * &lt;code&gt;null&lt;/code&gt; to represent missing values.
+ */
+public class XYSeries extends Series implements Cloneable, Serializable {
+
+    /** For serialization. */
+    static final long serialVersionUID = -5908509288197150436L;
+
+    // In version 0.9.12, in response to several developer requests, I changed
+    // the 'data' attribute from 'private' to 'protected', so that others can
+    // make subclasses that work directly with the underlying data structure.
+
+    /** Storage for the data items in the series. */
+    protected List data;
+
+    /** The maximum number of items for the series. */
+<span class="fc" id="L114">    private int maximumItemCount = Integer.MAX_VALUE;</span>
+
+    /**
+     * A flag that controls whether the items are automatically sorted
+     * (by x-value ascending).
+     */
+    private boolean autoSort;
+
+    /** A flag that controls whether or not duplicate x-values are allowed. */
+    private boolean allowDuplicateXValues;
+
+    /** The lowest x-value in the series, excluding Double.NaN values. */
+    private double minX;
+
+    /** The highest x-value in the series, excluding Double.NaN values. */
+    private double maxX;
+
+    /** The lowest y-value in the series, excluding Double.NaN values. */
+    private double minY;
+
+    /** The highest y-value in the series, excluding Double.NaN values. */
+    private double maxY;
+
+    /**
+     * Creates a new empty series.  By default, items added to the series will
+     * be sorted into ascending order by x-value, and duplicate x-values will
+     * be allowed (these defaults can be modified with another constructor).
+     *
+     * @param key  the series key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public XYSeries(Comparable key) {
+<span class="fc" id="L145">        this(key, true, true);</span>
+<span class="fc" id="L146">    }</span>
+
+    /**
+     * Constructs a new empty series, with the auto-sort flag set as requested,
+     * and duplicate values allowed.
+     *
+     * @param key  the series key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param autoSort  a flag that controls whether or not the items in the
+     *                  series are sorted.
+     */
+    public XYSeries(Comparable key, boolean autoSort) {
+<span class="fc" id="L157">        this(key, autoSort, true);</span>
+<span class="fc" id="L158">    }</span>
+
+    /**
+     * Constructs a new xy-series that contains no data.  You can specify
+     * whether or not duplicate x-values are allowed for the series.
+     *
+     * @param key  the series key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param autoSort  a flag that controls whether or not the items in the
+     *                  series are sorted.
+     * @param allowDuplicateXValues  a flag that controls whether duplicate
+     *                               x-values are allowed.
+     */
+    public XYSeries(Comparable key, boolean autoSort,
+            boolean allowDuplicateXValues) {
+<span class="fc" id="L172">        super(key);</span>
+<span class="fc" id="L173">        this.data = new java.util.ArrayList();</span>
+<span class="fc" id="L174">        this.autoSort = autoSort;</span>
+<span class="fc" id="L175">        this.allowDuplicateXValues = allowDuplicateXValues;</span>
+<span class="fc" id="L176">        this.minX = Double.NaN;</span>
+<span class="fc" id="L177">        this.maxX = Double.NaN;</span>
+<span class="fc" id="L178">        this.minY = Double.NaN;</span>
+<span class="fc" id="L179">        this.maxY = Double.NaN;</span>
+<span class="fc" id="L180">    }</span>
+
+    /**
+     * Returns the smallest x-value in the series, ignoring any Double.NaN
+     * values.  This method returns Double.NaN if there is no smallest x-value
+     * (for example, when the series is empty).
+     *
+     * @return The smallest x-value.
+     *
+     * @see #getMaxX()
+     *
+     * @since 1.0.13
+     */
+    public double getMinX() {
+<span class="fc" id="L194">        return this.minX;</span>
+    }
+
+    /**
+     * Returns the largest x-value in the series, ignoring any Double.NaN
+     * values.  This method returns Double.NaN if there is no largest x-value
+     * (for example, when the series is empty).
+     *
+     * @return The largest x-value.
+     *
+     * @see #getMinX()
+     *
+     * @since 1.0.13
+     */
+    public double getMaxX() {
+<span class="fc" id="L209">        return this.maxX;</span>
+    }
+
+    /**
+     * Returns the smallest y-value in the series, ignoring any null and
+     * Double.NaN values.  This method returns Double.NaN if there is no
+     * smallest y-value (for example, when the series is empty).
+     *
+     * @return The smallest y-value.
+     *
+     * @see #getMaxY()
+     *
+     * @since 1.0.13
+     */
+    public double getMinY() {
+<span class="fc" id="L224">        return this.minY;</span>
+    }
+
+    /**
+     * Returns the largest y-value in the series, ignoring any Double.NaN
+     * values.  This method returns Double.NaN if there is no largest y-value
+     * (for example, when the series is empty).
+     *
+     * @return The largest y-value.
+     *
+     * @see #getMinY()
+     *
+     * @since 1.0.13
+     */
+    public double getMaxY() {
+<span class="fc" id="L239">        return this.maxY;</span>
+    }
+
+    /**
+     * Updates the cached values for the minimum and maximum data values.
+     *
+     * @param item  the item added (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @since 1.0.13
+     */
+    private void updateBoundsForAddedItem(XYDataItem item) {
+<span class="fc" id="L250">        double x = item.getXValue();</span>
+<span class="fc" id="L251">        this.minX = minIgnoreNaN(this.minX, x);</span>
+<span class="fc" id="L252">        this.maxX = maxIgnoreNaN(this.maxX, x);</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        if (item.getY() != null) {</span>
+<span class="fc" id="L254">            double y = item.getYValue();</span>
+<span class="fc" id="L255">            this.minY = minIgnoreNaN(this.minY, y);</span>
+<span class="fc" id="L256">            this.maxY = maxIgnoreNaN(this.maxY, y);</span>
+        }
+<span class="fc" id="L258">    }</span>
+
+    /**
+     * Updates the cached values for the minimum and maximum data values on
+     * the basis that the specified item has just been removed.
+     *
+     * @param item  the item added (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @since 1.0.13
+     */
+    private void updateBoundsForRemovedItem(XYDataItem item) {
+<span class="fc" id="L269">        boolean itemContributesToXBounds = false;</span>
+<span class="fc" id="L270">        boolean itemContributesToYBounds = false;</span>
+<span class="fc" id="L271">        double x = item.getXValue();</span>
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">        if (!Double.isNaN(x)) {</span>
+<span class="fc bfc" id="L273" title="All 4 branches covered.">            if (x &lt;= this.minX || x &gt;= this.maxX) {</span>
+<span class="fc" id="L274">                itemContributesToXBounds = true;</span>
+            }
+        }
+<span class="fc bfc" id="L277" title="All 2 branches covered.">        if (item.getY() != null) {</span>
+<span class="fc" id="L278">            double y = item.getYValue();</span>
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">            if (!Double.isNaN(y)) {</span>
+<span class="fc bfc" id="L280" title="All 4 branches covered.">                if (y &lt;= this.minY || y &gt;= this.maxY) {</span>
+<span class="fc" id="L281">                    itemContributesToYBounds = true;</span>
+                }
+            }
+        }
+<span class="fc bfc" id="L285" title="All 2 branches covered.">        if (itemContributesToYBounds) {</span>
+<span class="fc" id="L286">            findBoundsByIteration();</span>
+        }
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        else if (itemContributesToXBounds) {</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">            if (getAutoSort()) {</span>
+<span class="fc" id="L290">                this.minX = getX(0).doubleValue();</span>
+<span class="fc" id="L291">                this.maxX = getX(getItemCount() - 1).doubleValue();</span>
+            }
+            else {
+<span class="nc" id="L294">                findBoundsByIteration();</span>
+            }
+        }
+<span class="fc" id="L297">    }</span>
+
+    /**
+     * Finds the bounds of the x and y values for the series, by iterating
+     * through all the data items.
+     *
+     * @since 1.0.13
+     */
+    private void findBoundsByIteration() {
+<span class="fc" id="L306">        this.minX = Double.NaN;</span>
+<span class="fc" id="L307">        this.maxX = Double.NaN;</span>
+<span class="fc" id="L308">        this.minY = Double.NaN;</span>
+<span class="fc" id="L309">        this.maxY = Double.NaN;</span>
+<span class="fc" id="L310">        Iterator iterator = this.data.iterator();</span>
+<span class="fc bfc" id="L311" title="All 2 branches covered.">        while (iterator.hasNext()) {</span>
+<span class="fc" id="L312">            XYDataItem item = (XYDataItem) iterator.next();</span>
+<span class="fc" id="L313">            updateBoundsForAddedItem(item);</span>
+<span class="fc" id="L314">        }</span>
+<span class="fc" id="L315">    }</span>
+
+    /**
+     * Returns the flag that controls whether the items in the series are
+     * automatically sorted.  There is no setter for this flag, it must be
+     * defined in the series constructor.
+     *
+     * @return A boolean.
+     */
+    public boolean getAutoSort() {
+<span class="fc" id="L325">        return this.autoSort;</span>
+    }
+
+    /**
+     * Returns a flag that controls whether duplicate x-values are allowed.
+     * This flag can only be set in the constructor.
+     *
+     * @return A boolean.
+     */
+    public boolean getAllowDuplicateXValues() {
+<span class="fc" id="L335">        return this.allowDuplicateXValues;</span>
+    }
+
+    /**
+     * Returns the number of items in the series.
+     *
+     * @return The item count.
+     *
+     * @see #getItems()
+     */
+    @Override
+    public int getItemCount() {
+<span class="fc" id="L347">        return this.data.size();</span>
+    }
+
+    /**
+     * Returns the list of data items for the series (the list contains
+     * {@link XYDataItem} objects and is unmodifiable).
+     *
+     * @return The list of data items.
+     */
+    public List getItems() {
+<span class="nc" id="L357">        return Collections.unmodifiableList(this.data);</span>
+    }
+
+    /**
+     * Returns the maximum number of items that will be retained in the series.
+     * The default value is &lt;code&gt;Integer.MAX_VALUE&lt;/code&gt;.
+     *
+     * @return The maximum item count.
+     *
+     * @see #setMaximumItemCount(int)
+     */
+    public int getMaximumItemCount() {
+<span class="fc" id="L369">        return this.maximumItemCount;</span>
+    }
+
+    /**
+     * Sets the maximum number of items that will be retained in the series.
+     * If you add a new item to the series such that the number of items will
+     * exceed the maximum item count, then the first element in the series is
+     * automatically removed, ensuring that the maximum item count is not
+     * exceeded.
+     * &lt;p&gt;
+     * Typically this value is set before the series is populated with data,
+     * but if it is applied later, it may cause some items to be removed from
+     * the series (in which case a {@link SeriesChangeEvent} will be sent to
+     * all registered listeners).
+     *
+     * @param maximum  the maximum number of items for the series.
+     */
+    public void setMaximumItemCount(int maximum) {
+<span class="fc" id="L387">        this.maximumItemCount = maximum;</span>
+<span class="fc" id="L388">        int remove = this.data.size() - maximum;</span>
+<span class="fc bfc" id="L389" title="All 2 branches covered.">        if (remove &gt; 0) {</span>
+<span class="fc" id="L390">            this.data.subList(0, remove).clear();</span>
+<span class="fc" id="L391">            findBoundsByIteration();</span>
+<span class="fc" id="L392">            fireSeriesChanged();</span>
+        }
+<span class="fc" id="L394">    }</span>
+
+    /**
+     * Adds a data item to the series and sends a {@link SeriesChangeEvent} to
+     * all registered listeners.
+     *
+     * @param item  the (x, y) item (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void add(XYDataItem item) {
+        // argument checking delegated...
+<span class="fc" id="L404">        add(item, true);</span>
+<span class="fc" id="L405">    }</span>
+
+    /**
+     * Adds a data item to the series and sends a {@link SeriesChangeEvent} to
+     * all registered listeners.
+     *
+     * @param x  the x value.
+     * @param y  the y value.
+     */
+    public void add(double x, double y) {
+<span class="fc" id="L415">        add(new Double(x), new Double(y), true);</span>
+<span class="fc" id="L416">    }</span>
+
+    /**
+     * Adds a data item to the series and, if requested, sends a
+     * {@link SeriesChangeEvent} to all registered listeners.
+     *
+     * @param x  the x value.
+     * @param y  the y value.
+     * @param notify  a flag that controls whether or not a
+     *                {@link SeriesChangeEvent} is sent to all registered
+     *                listeners.
+     */
+    public void add(double x, double y, boolean notify) {
+<span class="nc" id="L429">        add(new Double(x), new Double(y), notify);</span>
+<span class="nc" id="L430">    }</span>
+
+    /**
+     * Adds a data item to the series and sends a {@link SeriesChangeEvent} to
+     * all registered listeners.  The unusual pairing of parameter types is to
+     * make it easier to add &lt;code&gt;null&lt;/code&gt; y-values.
+     *
+     * @param x  the x value.
+     * @param y  the y value (&lt;code&gt;null&lt;/code&gt; permitted).
+     */
+    public void add(double x, Number y) {
+<span class="fc" id="L441">        add(new Double(x), y);</span>
+<span class="fc" id="L442">    }</span>
+
+    /**
+     * Adds a data item to the series and, if requested, sends a
+     * {@link SeriesChangeEvent} to all registered listeners.  The unusual
+     * pairing of parameter types is to make it easier to add null y-values.
+     *
+     * @param x  the x value.
+     * @param y  the y value (&lt;code&gt;null&lt;/code&gt; permitted).
+     * @param notify  a flag that controls whether or not a
+     *                {@link SeriesChangeEvent} is sent to all registered
+     *                listeners.
+     */
+    public void add(double x, Number y, boolean notify) {
+<span class="nc" id="L456">        add(new Double(x), y, notify);</span>
+<span class="nc" id="L457">    }</span>
+
+    /**
+     * Adds a new data item to the series (in the correct position if the
+     * &lt;code&gt;autoSort&lt;/code&gt; flag is set for the series) and sends a
+     * {@link SeriesChangeEvent} to all registered listeners.
+     * &lt;P&gt;
+     * Throws an exception if the x-value is a duplicate AND the
+     * allowDuplicateXValues flag is false.
+     *
+     * @param x  the x-value (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param y  the y-value (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @throws SeriesException if the x-value is a duplicate and the
+     *     &lt;code&gt;allowDuplicateXValues&lt;/code&gt; flag is not set for this series.
+     */
+    public void add(Number x, Number y) {
+        // argument checking delegated...
+<span class="fc" id="L475">        add(x, y, true);</span>
+<span class="fc" id="L476">    }</span>
+
+    /**
+     * Adds new data to the series and, if requested, sends a
+     * {@link SeriesChangeEvent} to all registered listeners.
+     * &lt;P&gt;
+     * Throws an exception if the x-value is a duplicate AND the
+     * allowDuplicateXValues flag is false.
+     *
+     * @param x  the x-value (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param y  the y-value (&lt;code&gt;null&lt;/code&gt; permitted).
+     * @param notify  a flag the controls whether or not a
+     *                {@link SeriesChangeEvent} is sent to all registered
+     *                listeners.
+     */
+    public void add(Number x, Number y, boolean notify) {
+        // delegate argument checking to XYDataItem...
+<span class="fc" id="L493">        XYDataItem item = new XYDataItem(x, y);</span>
+<span class="fc" id="L494">        add(item, notify);</span>
+<span class="fc" id="L495">    }</span>
+
+    /**
+     * Adds a data item to the series and, if requested, sends a
+     * {@link SeriesChangeEvent} to all registered listeners.
+     *
+     * @param item  the (x, y) item (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param notify  a flag that controls whether or not a
+     *                {@link SeriesChangeEvent} is sent to all registered
+     *                listeners.
+     */
+    public void add(XYDataItem item, boolean notify) {
+<span class="fc" id="L507">        ParamChecks.nullNotPermitted(item, &quot;item&quot;);</span>
+<span class="fc" id="L508">        item = (XYDataItem) item.clone();</span>
+<span class="fc bfc" id="L509" title="All 2 branches covered.">        if (this.autoSort) {</span>
+<span class="fc" id="L510">            int index = Collections.binarySearch(this.data, item);</span>
+<span class="fc bfc" id="L511" title="All 2 branches covered.">            if (index &lt; 0) {</span>
+<span class="fc" id="L512">                this.data.add(-index - 1, item);</span>
+            }
+            else {
+<span class="pc bpc" id="L515" title="1 of 2 branches missed.">                if (this.allowDuplicateXValues) {</span>
+                    // need to make sure we are adding *after* any duplicates
+<span class="fc" id="L517">                    int size = this.data.size();</span>
+<span class="fc bfc" id="L518" title="All 4 branches covered.">                    while (index &lt; size &amp;&amp; item.compareTo(</span>
+                            this.data.get(index)) == 0) {
+<span class="fc" id="L520">                        index++;</span>
+                    }
+<span class="fc bfc" id="L522" title="All 2 branches covered.">                    if (index &lt; this.data.size()) {</span>
+<span class="fc" id="L523">                        this.data.add(index, item);</span>
+                    }
+                    else {
+<span class="fc" id="L526">                        this.data.add(item);</span>
+                    }
+<span class="fc" id="L528">                }</span>
+                else {
+<span class="nc" id="L530">                    throw new SeriesException(&quot;X-value already exists.&quot;);</span>
+                }
+            }
+<span class="fc" id="L533">        }</span>
+        else {
+<span class="fc bfc" id="L535" title="All 2 branches covered.">            if (!this.allowDuplicateXValues) {</span>
+                // can't allow duplicate values, so we need to check whether
+                // there is an item with the given x-value already
+<span class="fc" id="L538">                int index = indexOf(item.getX());</span>
+<span class="pc bpc" id="L539" title="1 of 2 branches missed.">                if (index &gt;= 0) {</span>
+<span class="nc" id="L540">                    throw new SeriesException(&quot;X-value already exists.&quot;);</span>
+                }
+            }
+<span class="fc" id="L543">            this.data.add(item);</span>
+        }
+<span class="fc" id="L545">        updateBoundsForAddedItem(item);</span>
+<span class="fc bfc" id="L546" title="All 2 branches covered.">        if (getItemCount() &gt; this.maximumItemCount) {</span>
+<span class="fc" id="L547">            XYDataItem removed = (XYDataItem) this.data.remove(0);</span>
+<span class="fc" id="L548">            updateBoundsForRemovedItem(removed);</span>
+        }
+<span class="pc bpc" id="L550" title="1 of 2 branches missed.">        if (notify) {</span>
+<span class="fc" id="L551">            fireSeriesChanged();</span>
+        }
+<span class="fc" id="L553">    }</span>
+
+    /**
+     * Deletes a range of items from the series and sends a
+     * {@link SeriesChangeEvent} to all registered listeners.
+     *
+     * @param start  the start index (zero-based).
+     * @param end  the end index (zero-based).
+     */
+    public void delete(int start, int end) {
+<span class="fc" id="L563">        this.data.subList(start, end + 1).clear();</span>
+<span class="fc" id="L564">        findBoundsByIteration();</span>
+<span class="fc" id="L565">        fireSeriesChanged();</span>
+<span class="fc" id="L566">    }</span>
+
+    /**
+     * Removes the item at the specified index and sends a
+     * {@link SeriesChangeEvent} to all registered listeners.
+     *
+     * @param index  the index.
+     *
+     * @return The item removed.
+     */
+    public XYDataItem remove(int index) {
+<span class="fc" id="L577">        XYDataItem removed = (XYDataItem) this.data.remove(index);</span>
+<span class="fc" id="L578">        updateBoundsForRemovedItem(removed);</span>
+<span class="fc" id="L579">        fireSeriesChanged();</span>
+<span class="fc" id="L580">        return removed;</span>
+    }
+
+    /**
+     * Removes an item with the specified x-value and sends a
+     * {@link SeriesChangeEvent} to all registered listeners.  Note that when
+     * a series permits multiple items with the same x-value, this method
+     * could remove any one of the items with that x-value.
+     *
+     * @param x  the x-value.
+
+     * @return The item removed.
+     */
+    public XYDataItem remove(Number x) {
+<span class="fc" id="L594">        return remove(indexOf(x));</span>
+    }
+
+    /**
+     * Removes all data items from the series and sends a
+     * {@link SeriesChangeEvent} to all registered listeners.
+     */
+    public void clear() {
+<span class="pc bpc" id="L602" title="1 of 2 branches missed.">        if (this.data.size() &gt; 0) {</span>
+<span class="fc" id="L603">            this.data.clear();</span>
+<span class="fc" id="L604">            this.minX = Double.NaN;</span>
+<span class="fc" id="L605">            this.maxX = Double.NaN;</span>
+<span class="fc" id="L606">            this.minY = Double.NaN;</span>
+<span class="fc" id="L607">            this.maxY = Double.NaN;</span>
+<span class="fc" id="L608">            fireSeriesChanged();</span>
+        }
+<span class="fc" id="L610">    }</span>
+
+    /**
+     * Return the data item with the specified index.
+     *
+     * @param index  the index.
+     *
+     * @return The data item with the specified index.
+     */
+    public XYDataItem getDataItem(int index) {
+<span class="nc" id="L620">        XYDataItem item = (XYDataItem) this.data.get(index);</span>
+<span class="nc" id="L621">        return (XYDataItem) item.clone();</span>
+    }
+
+    /**
+     * Return the data item with the specified index.
+     *
+     * @param index  the index.
+     *
+     * @return The data item with the specified index.
+     *
+     * @since 1.0.14
+     */
+    XYDataItem getRawDataItem(int index) {
+<span class="fc" id="L634">        return (XYDataItem) this.data.get(index);</span>
+    }
+
+    /**
+     * Returns the x-value at the specified index.
+     *
+     * @param index  the index (zero-based).
+     *
+     * @return The x-value (never &lt;code&gt;null&lt;/code&gt;).
+     */
+    public Number getX(int index) {
+<span class="fc" id="L645">        return getRawDataItem(index).getX();</span>
+    }
+
+    /**
+     * Returns the y-value at the specified index.
+     *
+     * @param index  the index (zero-based).
+     *
+     * @return The y-value (possibly &lt;code&gt;null&lt;/code&gt;).
+     */
+    public Number getY(int index) {
+<span class="fc" id="L656">        return getRawDataItem(index).getY();</span>
+    }
+
+    /**
+     * Updates the value of an item in the series and sends a
+     * {@link SeriesChangeEvent} to all registered listeners.
+     *
+     * @param index  the item (zero based index).
+     * @param y  the new value (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @deprecated Renamed {@link #updateByIndex(int, Number)} to avoid
+     *         confusion with the {@link #update(Number, Number)} method.
+     */
+    public void update(int index, Number y) {
+<span class="fc" id="L670">        XYDataItem item = getRawDataItem(index);</span>
+
+        // figure out if we need to iterate through all the y-values
+<span class="fc" id="L673">        boolean iterate = false;</span>
+<span class="fc" id="L674">        double oldY = item.getYValue();</span>
+<span class="fc bfc" id="L675" title="All 2 branches covered.">        if (!Double.isNaN(oldY)) {</span>
+<span class="fc bfc" id="L676" title="All 4 branches covered.">            iterate = oldY &lt;= this.minY || oldY &gt;= this.maxY;</span>
+        }
+<span class="fc" id="L678">        item.setY(y);</span>
+
+<span class="fc bfc" id="L680" title="All 2 branches covered.">        if (iterate) {</span>
+<span class="fc" id="L681">            findBoundsByIteration();</span>
+        }
+<span class="pc bpc" id="L683" title="1 of 2 branches missed.">        else if (y != null) {</span>
+<span class="fc" id="L684">            double yy = y.doubleValue();</span>
+<span class="fc" id="L685">            this.minY = minIgnoreNaN(this.minY, yy);</span>
+<span class="fc" id="L686">            this.maxY = maxIgnoreNaN(this.maxY, yy);</span>
+        }
+<span class="fc" id="L688">        fireSeriesChanged();</span>
+<span class="fc" id="L689">    }</span>
+
+    /**
+     * A function to find the minimum of two values, but ignoring any
+     * Double.NaN values.
+     *
+     * @param a  the first value.
+     * @param b  the second value.
+     *
+     * @return The minimum of the two values.
+     */
+    private double minIgnoreNaN(double a, double b) {
+<span class="fc bfc" id="L701" title="All 2 branches covered.">        if (Double.isNaN(a)) {</span>
+<span class="fc" id="L702">            return b;</span>
+        }
+<span class="fc bfc" id="L704" title="All 2 branches covered.">        if (Double.isNaN(b)) {</span>
+<span class="fc" id="L705">            return a;</span>
+        }
+<span class="fc" id="L707">        return Math.min(a, b);</span>
+    }
+
+    /**
+     * A function to find the maximum of two values, but ignoring any
+     * Double.NaN values.
+     *
+     * @param a  the first value.
+     * @param b  the second value.
+     *
+     * @return The maximum of the two values.
+     */
+    private double maxIgnoreNaN(double a, double b) {
+<span class="fc bfc" id="L720" title="All 2 branches covered.">        if (Double.isNaN(a)) {</span>
+<span class="fc" id="L721">            return b;</span>
+        }
+<span class="fc bfc" id="L723" title="All 2 branches covered.">        if (Double.isNaN(b)) {</span>
+<span class="fc" id="L724">            return a;</span>
+        }
+<span class="fc" id="L726">        return Math.max(a, b);</span>
+    }
+
+    /**
+     * Updates the value of an item in the series and sends a
+     * {@link SeriesChangeEvent} to all registered listeners.
+     *
+     * @param index  the item (zero based index).
+     * @param y  the new value (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @since 1.0.1
+     */
+    public void updateByIndex(int index, Number y) {
+<span class="fc" id="L739">        update(index, y);</span>
+<span class="fc" id="L740">    }</span>
+
+    /**
+     * Updates an item in the series.
+     *
+     * @param x  the x-value (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param y  the y-value (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @throws SeriesException if there is no existing item with the specified
+     *         x-value.
+     */
+    public void update(Number x, Number y) {
+<span class="fc" id="L752">        int index = indexOf(x);</span>
+<span class="fc bfc" id="L753" title="All 2 branches covered.">        if (index &lt; 0) {</span>
+<span class="fc" id="L754">            throw new SeriesException(&quot;No observation for x = &quot; + x);</span>
+        }
+<span class="fc" id="L756">        updateByIndex(index, y);</span>
+<span class="fc" id="L757">    }</span>
+
+    /**
+     * Adds or updates an item in the series and sends a
+     * {@link SeriesChangeEvent} to all registered listeners.
+     *
+     * @param x  the x-value.
+     * @param y  the y-value.
+     *
+     * @return The item that was overwritten, if any.
+     *
+     * @since 1.0.10
+     */
+    public XYDataItem addOrUpdate(double x, double y) {
+<span class="fc" id="L771">        return addOrUpdate(new Double(x), new Double(y));</span>
+    }
+
+    /**
+     * Adds or updates an item in the series and sends a
+     * {@link SeriesChangeEvent} to all registered listeners.
+     *
+     * @param x  the x-value (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param y  the y-value (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A copy of the overwritten data item, or &lt;code&gt;null&lt;/code&gt; if no
+     *         item was overwritten.
+     */
+    public XYDataItem addOrUpdate(Number x, Number y) {
+        // defer argument checking
+<span class="fc" id="L786">        return addOrUpdate(new XYDataItem(x, y));</span>
+    }
+
+    /**
+     * Adds or updates an item in the series and sends a
+     * {@link SeriesChangeEvent} to all registered listeners.
+     *
+     * @param item  the data item (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return A copy of the overwritten data item, or &lt;code&gt;null&lt;/code&gt; if no
+     *         item was overwritten.
+     *
+     * @since 1.0.14
+     */
+    public XYDataItem addOrUpdate(XYDataItem item) {
+<span class="fc" id="L801">        ParamChecks.nullNotPermitted(item, &quot;item&quot;);</span>
+<span class="fc bfc" id="L802" title="All 2 branches covered.">        if (this.allowDuplicateXValues) {</span>
+<span class="fc" id="L803">            add(item);</span>
+<span class="fc" id="L804">            return null;</span>
+        }
+
+        // if we get to here, we know that duplicate X values are not permitted
+<span class="fc" id="L808">        XYDataItem overwritten = null;</span>
+<span class="fc" id="L809">        int index = indexOf(item.getX());</span>
+<span class="fc bfc" id="L810" title="All 2 branches covered.">        if (index &gt;= 0) {</span>
+<span class="fc" id="L811">            XYDataItem existing = (XYDataItem) this.data.get(index);</span>
+<span class="fc" id="L812">            overwritten = (XYDataItem) existing.clone();</span>
+            // figure out if we need to iterate through all the y-values
+<span class="fc" id="L814">            boolean iterate = false;</span>
+<span class="fc" id="L815">            double oldY = existing.getYValue();</span>
+<span class="pc bpc" id="L816" title="1 of 2 branches missed.">            if (!Double.isNaN(oldY)) {</span>
+<span class="pc bpc" id="L817" title="1 of 4 branches missed.">                iterate = oldY &lt;= this.minY || oldY &gt;= this.maxY;</span>
+            }
+<span class="fc" id="L819">            existing.setY(item.getY());</span>
+
+<span class="fc bfc" id="L821" title="All 2 branches covered.">            if (iterate) {</span>
+<span class="fc" id="L822">                findBoundsByIteration();</span>
+            }
+<span class="pc bpc" id="L824" title="1 of 2 branches missed.">            else if (item.getY() != null) {</span>
+<span class="fc" id="L825">                double yy = item.getY().doubleValue();</span>
+<span class="fc" id="L826">                this.minY = minIgnoreNaN(this.minY, yy);</span>
+<span class="fc" id="L827">                this.maxY = maxIgnoreNaN(this.maxY, yy);</span>
+            }
+<span class="fc" id="L829">        }</span>
+        else {
+            // if the series is sorted, the negative index is a result from
+            // Collections.binarySearch() and tells us where to insert the
+            // new item...otherwise it will be just -1 and we should just
+            // append the value to the list...
+<span class="fc" id="L835">            item = (XYDataItem) item.clone();</span>
+<span class="pc bpc" id="L836" title="1 of 2 branches missed.">            if (this.autoSort) {</span>
+<span class="fc" id="L837">                this.data.add(-index - 1, item);</span>
+            }
+            else {
+<span class="nc" id="L840">                this.data.add(item);</span>
+            }
+<span class="fc" id="L842">            updateBoundsForAddedItem(item);</span>
+
+            // check if this addition will exceed the maximum item count...
+<span class="pc bpc" id="L845" title="1 of 2 branches missed.">            if (getItemCount() &gt; this.maximumItemCount) {</span>
+<span class="nc" id="L846">                XYDataItem removed = (XYDataItem) this.data.remove(0);</span>
+<span class="nc" id="L847">                updateBoundsForRemovedItem(removed);</span>
+            }
+        }
+<span class="fc" id="L850">        fireSeriesChanged();</span>
+<span class="fc" id="L851">        return overwritten;</span>
+    }
+
+    /**
+     * Returns the index of the item with the specified x-value, or a negative
+     * index if the series does not contain an item with that x-value.  Be
+     * aware that for an unsorted series, the index is found by iterating
+     * through all items in the series.
+     *
+     * @param x  the x-value (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return The index.
+     */
+    public int indexOf(Number x) {
+<span class="fc bfc" id="L865" title="All 2 branches covered.">        if (this.autoSort) {</span>
+<span class="fc" id="L866">            return Collections.binarySearch(this.data, new XYDataItem(x, null));</span>
+        }
+        else {
+<span class="fc bfc" id="L869" title="All 2 branches covered.">            for (int i = 0; i &lt; this.data.size(); i++) {</span>
+<span class="fc" id="L870">                XYDataItem item = (XYDataItem) this.data.get(i);</span>
+<span class="fc bfc" id="L871" title="All 2 branches covered.">                if (item.getX().equals(x)) {</span>
+<span class="fc" id="L872">                    return i;</span>
+                }
+            }
+<span class="fc" id="L875">            return -1;</span>
+        }
+    }
+
+    /**
+     * Returns a new array containing the x and y values from this series.
+     *
+     * @return A new array containing the x and y values from this series.
+     *
+     * @since 1.0.4
+     */
+    public double[][] toArray() {
+<span class="fc" id="L887">        int itemCount = getItemCount();</span>
+<span class="fc" id="L888">        double[][] result = new double[2][itemCount];</span>
+<span class="fc bfc" id="L889" title="All 2 branches covered.">        for (int i = 0; i &lt; itemCount; i++) {</span>
+<span class="fc" id="L890">            result[0][i] = this.getX(i).doubleValue();</span>
+<span class="fc" id="L891">            Number y = getY(i);</span>
+<span class="fc bfc" id="L892" title="All 2 branches covered.">            if (y != null) {</span>
+<span class="fc" id="L893">                result[1][i] = y.doubleValue();</span>
+            }
+            else {
+<span class="fc" id="L896">                result[1][i] = Double.NaN;</span>
+            }
+        }
+<span class="fc" id="L899">        return result;</span>
+    }
+
+    /**
+     * Returns a clone of the series.
+     *
+     * @return A clone of the series.
+     *
+     * @throws CloneNotSupportedException if there is a cloning problem.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L911">        XYSeries clone = (XYSeries) super.clone();</span>
+<span class="fc" id="L912">        clone.data = (List) ObjectUtilities.deepClone(this.data);</span>
+<span class="fc" id="L913">        return clone;</span>
+    }
+
+    /**
+     * Creates a new series by copying a subset of the data in this time series.
+     *
+     * @param start  the index of the first item to copy.
+     * @param end  the index of the last item to copy.
+     *
+     * @return A series containing a copy of this series from start until end.
+     *
+     * @throws CloneNotSupportedException if there is a cloning problem.
+     */
+    public XYSeries createCopy(int start, int end)
+            throws CloneNotSupportedException {
+
+<span class="nc" id="L929">        XYSeries copy = (XYSeries) super.clone();</span>
+<span class="nc" id="L930">        copy.data = new java.util.ArrayList();</span>
+<span class="nc bnc" id="L931" title="All 2 branches missed.">        if (this.data.size() &gt; 0) {</span>
+<span class="nc bnc" id="L932" title="All 2 branches missed.">            for (int index = start; index &lt;= end; index++) {</span>
+<span class="nc" id="L933">                XYDataItem item = (XYDataItem) this.data.get(index);</span>
+<span class="nc" id="L934">                XYDataItem clone = (XYDataItem) item.clone();</span>
+                try {
+<span class="nc" id="L936">                    copy.add(clone);</span>
+                }
+<span class="nc" id="L938">                catch (SeriesException e) {</span>
+<span class="nc" id="L939">                    System.err.println(&quot;Unable to add cloned data item.&quot;);</span>
+<span class="nc" id="L940">                }</span>
+            }
+        }
+<span class="nc" id="L943">        return copy;</span>
+
+    }
+
+    /**
+     * Tests this series for equality with an arbitrary object.
+     *
+     * @param obj  the object to test against for equality
+     *             (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L957" title="All 2 branches covered.">        if (obj == this) {</span>
+<span class="fc" id="L958">            return true;</span>
+        }
+<span class="pc bpc" id="L960" title="1 of 2 branches missed.">        if (!(obj instanceof XYSeries)) {</span>
+<span class="nc" id="L961">            return false;</span>
+        }
+<span class="fc bfc" id="L963" title="All 2 branches covered.">        if (!super.equals(obj)) {</span>
+<span class="fc" id="L964">            return false;</span>
+        }
+<span class="fc" id="L966">        XYSeries that = (XYSeries) obj;</span>
+<span class="pc bpc" id="L967" title="1 of 2 branches missed.">        if (this.maximumItemCount != that.maximumItemCount) {</span>
+<span class="nc" id="L968">            return false;</span>
+        }
+<span class="pc bpc" id="L970" title="1 of 2 branches missed.">        if (this.autoSort != that.autoSort) {</span>
+<span class="nc" id="L971">            return false;</span>
+        }
+<span class="pc bpc" id="L973" title="1 of 2 branches missed.">        if (this.allowDuplicateXValues != that.allowDuplicateXValues) {</span>
+<span class="nc" id="L974">            return false;</span>
+        }
+<span class="fc bfc" id="L976" title="All 2 branches covered.">        if (!ObjectUtilities.equal(this.data, that.data)) {</span>
+<span class="fc" id="L977">            return false;</span>
+        }
+<span class="fc" id="L979">        return true;</span>
+    }
+
+    /**
+     * Returns a hash code.
+     *
+     * @return A hash code.
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L989">        int result = super.hashCode();</span>
+        // it is too slow to look at every data item, so let's just look at
+        // the first, middle and last items...
+<span class="fc" id="L992">        int count = getItemCount();</span>
+<span class="fc bfc" id="L993" title="All 2 branches covered.">        if (count &gt; 0) {</span>
+<span class="fc" id="L994">            XYDataItem item = getRawDataItem(0);</span>
+<span class="fc" id="L995">            result = 29 * result + item.hashCode();</span>
+        }
+<span class="fc bfc" id="L997" title="All 2 branches covered.">        if (count &gt; 1) {</span>
+<span class="fc" id="L998">            XYDataItem item = getRawDataItem(count - 1);</span>
+<span class="fc" id="L999">            result = 29 * result + item.hashCode();</span>
+        }
+<span class="fc bfc" id="L1001" title="All 2 branches covered.">        if (count &gt; 2) {</span>
+<span class="fc" id="L1002">            XYDataItem item = getRawDataItem(count / 2);</span>
+<span class="fc" id="L1003">            result = 29 * result + item.hashCode();</span>
+        }
+<span class="fc" id="L1005">        result = 29 * result + this.maximumItemCount;</span>
+<span class="pc bpc" id="L1006" title="1 of 2 branches missed.">        result = 29 * result + (this.autoSort ? 1 : 0);</span>
+<span class="pc bpc" id="L1007" title="1 of 2 branches missed.">        result = 29 * result + (this.allowDuplicateXValues ? 1 : 0);</span>
+<span class="fc" id="L1008">        return result;</span>
+    }
+
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

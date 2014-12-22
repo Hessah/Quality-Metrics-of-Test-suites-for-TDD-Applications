@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>TestClass.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Junit-r4.11</a> &gt; <a href="index.source.html" class="el_package">org.junit.runners.model</a> &gt; <span class="el_source">TestClass.java</span></div><h1>TestClass.java</h1><pre class="source lang-java linenums">package org.junit.runners.model;
+
+import static java.lang.reflect.Modifier.isStatic;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.internal.MethodSorter;
+
+/**
+ * Wraps a class to be run, providing method validation and annotation searching
+ *
+ * @since 4.5
+ */
+public class TestClass {
+    private final Class&lt;?&gt; fClass;
+
+<span class="fc" id="L27">    private Map&lt;Class&lt;?&gt;, List&lt;FrameworkMethod&gt;&gt; fMethodsForAnnotations = new HashMap&lt;Class&lt;?&gt;, List&lt;FrameworkMethod&gt;&gt;();</span>
+
+<span class="fc" id="L29">    private Map&lt;Class&lt;?&gt;, List&lt;FrameworkField&gt;&gt; fFieldsForAnnotations = new HashMap&lt;Class&lt;?&gt;, List&lt;FrameworkField&gt;&gt;();</span>
+
+    /**
+     * Creates a {@code TestClass} wrapping {@code klass}. Each time this
+     * constructor executes, the class is scanned for annotations, which can be
+     * an expensive process (we hope in future JDK's it will not be.) Therefore,
+     * try to share instances of {@code TestClass} where possible.
+     */
+<span class="fc" id="L37">    public TestClass(Class&lt;?&gt; klass) {</span>
+<span class="fc" id="L38">        fClass = klass;</span>
+<span class="pc bpc" id="L39" title="1 of 4 branches missed.">        if (klass != null &amp;&amp; klass.getConstructors().length &gt; 1) {</span>
+<span class="nc" id="L40">            throw new IllegalArgumentException(</span>
+                    &quot;Test class can only have one constructor&quot;);
+        }
+
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        for (Class&lt;?&gt; eachClass : getSuperClasses(fClass)) {</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">            for (Method eachMethod : MethodSorter.getDeclaredMethods(eachClass)) {</span>
+<span class="fc" id="L46">                addToAnnotationLists(new FrameworkMethod(eachMethod),</span>
+                        fMethodsForAnnotations);
+            }
+<span class="fc bfc" id="L49" title="All 2 branches covered.">            for (Field eachField : eachClass.getDeclaredFields()) {</span>
+<span class="fc" id="L50">                addToAnnotationLists(new FrameworkField(eachField),</span>
+                        fFieldsForAnnotations);
+            }
+<span class="fc" id="L53">        }</span>
+<span class="fc" id="L54">    }</span>
+
+    private &lt;T extends FrameworkMember&lt;T&gt;&gt; void addToAnnotationLists(T member,
+            Map&lt;Class&lt;?&gt;, List&lt;T&gt;&gt; map) {
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        for (Annotation each : member.getAnnotations()) {</span>
+<span class="fc" id="L59">            Class&lt;? extends Annotation&gt; type = each.annotationType();</span>
+<span class="fc" id="L60">            List&lt;T&gt; members = getAnnotatedMembers(map, type);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (member.isShadowedBy(members)) {</span>
+<span class="fc" id="L62">                return;</span>
+            }
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            if (runsTopToBottom(type)) {</span>
+<span class="fc" id="L65">                members.add(0, member);</span>
+            } else {
+<span class="fc" id="L67">                members.add(member);</span>
+            }
+        }
+<span class="fc" id="L70">    }</span>
+
+    /**
+     * Returns, efficiently, all the non-overridden methods in this class and
+     * its superclasses that are annotated with {@code annotationClass}.
+     */
+    public List&lt;FrameworkMethod&gt; getAnnotatedMethods(
+            Class&lt;? extends Annotation&gt; annotationClass) {
+<span class="fc" id="L78">        return getAnnotatedMembers(fMethodsForAnnotations, annotationClass);</span>
+    }
+
+    /**
+     * Returns, efficiently, all the non-overridden fields in this class and its
+     * superclasses that are annotated with {@code annotationClass}.
+     */
+    public List&lt;FrameworkField&gt; getAnnotatedFields(
+            Class&lt;? extends Annotation&gt; annotationClass) {
+<span class="fc" id="L87">        return getAnnotatedMembers(fFieldsForAnnotations, annotationClass);</span>
+    }
+
+    private &lt;T&gt; List&lt;T&gt; getAnnotatedMembers(Map&lt;Class&lt;?&gt;, List&lt;T&gt;&gt; map,
+            Class&lt;? extends Annotation&gt; type) {
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (!map.containsKey(type)) {</span>
+<span class="fc" id="L93">            map.put(type, new ArrayList&lt;T&gt;());</span>
+        }
+<span class="fc" id="L95">        return map.get(type);</span>
+    }
+
+    private boolean runsTopToBottom(Class&lt;? extends Annotation&gt; annotation) {
+<span class="fc bfc" id="L99" title="All 4 branches covered.">        return annotation.equals(Before.class)</span>
+                || annotation.equals(BeforeClass.class);
+    }
+
+    private List&lt;Class&lt;?&gt;&gt; getSuperClasses(Class&lt;?&gt; testClass) {
+<span class="fc" id="L104">        ArrayList&lt;Class&lt;?&gt;&gt; results = new ArrayList&lt;Class&lt;?&gt;&gt;();</span>
+<span class="fc" id="L105">        Class&lt;?&gt; current = testClass;</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        while (current != null) {</span>
+<span class="fc" id="L107">            results.add(current);</span>
+<span class="fc" id="L108">            current = current.getSuperclass();</span>
+        }
+<span class="fc" id="L110">        return results;</span>
+    }
+
+    /**
+     * Returns the underlying Java class.
+     */
+    public Class&lt;?&gt; getJavaClass() {
+<span class="fc" id="L117">        return fClass;</span>
+    }
+
+    /**
+     * Returns the class's name.
+     */
+    public String getName() {
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (fClass == null) {</span>
+<span class="fc" id="L125">            return &quot;null&quot;;</span>
+        }
+<span class="fc" id="L127">        return fClass.getName();</span>
+    }
+
+    /**
+     * Returns the only public constructor in the class, or throws an {@code
+     * AssertionError} if there are more or less than one.
+     */
+
+    public Constructor&lt;?&gt; getOnlyConstructor() {
+<span class="fc" id="L136">        Constructor&lt;?&gt;[] constructors = fClass.getConstructors();</span>
+<span class="fc" id="L137">        Assert.assertEquals(1, constructors.length);</span>
+<span class="fc" id="L138">        return constructors[0];</span>
+    }
+
+    /**
+     * Returns the annotations on this class
+     */
+    public Annotation[] getAnnotations() {
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        if (fClass == null) {</span>
+<span class="fc" id="L146">            return new Annotation[0];</span>
+        }
+<span class="fc" id="L148">        return fClass.getAnnotations();</span>
+    }
+
+    public &lt;T&gt; List&lt;T&gt; getAnnotatedFieldValues(Object test,
+            Class&lt;? extends Annotation&gt; annotationClass, Class&lt;T&gt; valueClass) {
+<span class="fc" id="L153">        List&lt;T&gt; results = new ArrayList&lt;T&gt;();</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        for (FrameworkField each : getAnnotatedFields(annotationClass)) {</span>
+            try {
+<span class="fc" id="L156">                Object fieldValue = each.get(test);</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                if (valueClass.isInstance(fieldValue)) {</span>
+<span class="fc" id="L158">                    results.add(valueClass.cast(fieldValue));</span>
+                }
+<span class="nc" id="L160">            } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L161">                throw new RuntimeException(</span>
+                        &quot;How did getFields return a field we couldn't access?&quot;, e);
+<span class="fc" id="L163">            }</span>
+<span class="fc" id="L164">        }</span>
+<span class="fc" id="L165">        return results;</span>
+    }
+
+    public &lt;T&gt; List&lt;T&gt; getAnnotatedMethodValues(Object test,
+            Class&lt;? extends Annotation&gt; annotationClass, Class&lt;T&gt; valueClass) {
+<span class="fc" id="L170">        List&lt;T&gt; results = new ArrayList&lt;T&gt;();</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">        for (FrameworkMethod each : getAnnotatedMethods(annotationClass)) {</span>
+            try {
+<span class="nc" id="L173">                Object fieldValue = each.invokeExplosively(test, new Object[]{});</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">                if (valueClass.isInstance(fieldValue)) {</span>
+<span class="nc" id="L175">                    results.add(valueClass.cast(fieldValue));</span>
+                }
+<span class="nc" id="L177">            } catch (Throwable e) {</span>
+<span class="nc" id="L178">                throw new RuntimeException(</span>
+                        &quot;Exception in &quot; + each.getName(), e);
+<span class="nc" id="L180">            }</span>
+<span class="nc" id="L181">        }</span>
+<span class="fc" id="L182">        return results;</span>
+    }
+
+    public boolean isANonStaticInnerClass() {
+<span class="pc bpc" id="L186" title="1 of 4 branches missed.">        return fClass.isMemberClass() &amp;&amp; !isStatic(fClass.getModifiers());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

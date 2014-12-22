@@ -1,0 +1,332 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>GuiPlayer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">twfbplayer</a> &gt; <a href="index.source.html" class="el_package">de.outstare.fortbattleplayer.gui</a> &gt; <span class="el_source">GuiPlayer.java</span></div><h1>GuiPlayer.java</h1><pre class="source lang-java linenums">package de.outstare.fortbattleplayer.gui;
+
+/*
+ Copyright (c) 2010 Daniel Raap
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the &quot;Software&quot;), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ */
+
+import java.awt.BorderLayout;
+import java.awt.Component;
+import java.awt.GridLayout;
+import java.awt.LayoutManager;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
+import java.util.logging.Logger;
+
+import javax.swing.JButton;
+import javax.swing.JComponent;
+import javax.swing.JFrame;
+import javax.swing.JInternalFrame;
+import javax.swing.JPanel;
+
+import org.json.JSONException;
+
+import de.outstare.fortbattleplayer.gui.battlefield.BattlefieldDrawing;
+import de.outstare.fortbattleplayer.gui.battlefield.PlayerDrawing;
+import de.outstare.fortbattleplayer.gui.battlefield.PlayerDrawingDB;
+import de.outstare.fortbattleplayer.gui.search.SearchPanel;
+import de.outstare.fortbattleplayer.gui.statistics.DataPanel;
+import de.outstare.fortbattleplayer.gui.statistics.StatisticsPanel;
+import de.outstare.fortbattleplayer.model.Battlefield;
+import de.outstare.fortbattleplayer.model.Combatant;
+import de.outstare.fortbattleplayer.model.Fortbattle;
+import de.outstare.fortbattleplayer.player.Battleplan;
+import de.outstare.fortbattleplayer.player.Battleplayer;
+import de.outstare.fortbattleplayer.player.CombatantEventDispatcher;
+import de.outstare.fortbattleplayer.statistics.AllStatistics;
+
+/**
+ * A GuiPlayer shows a FortBattle. During execution the player visualizes the
+ * battle. Meaning all events have to be handled to the gui.
+ * 
+ * @author daniel
+ */
+public class GuiPlayer extends JInternalFrame implements PlayerDrawingDB {
+	/**
+	 * shows either only the Center of the given panel or all parts
+	 * 
+	 * @author daniel
+	 */
+	private static class FullscreenSwitcher implements ActionListener {
+		private final JPanel _panel;
+		private final JButton _fsButton;
+
+		/**
+		 * @param panel
+		 *            with {@link BorderLayout}
+		 * @param fsButton
+		 */
+<span class="nc" id="L79">		FullscreenSwitcher(final JPanel panel, final JButton fsButton) {</span>
+<span class="nc" id="L80">			_panel = panel;</span>
+<span class="nc" id="L81">			_fsButton = fsButton;</span>
+<span class="nc" id="L82">		}</span>
+
+		public void actionPerformed(final ActionEvent e) {
+			boolean othersVisible;
+<span class="nc bnc" id="L86" title="All 2 branches missed.">			if (Messages.getString(&quot;GuiPlayer.fullscreen&quot;).equals(_fsButton.getText())) { //$NON-NLS-1$</span>
+<span class="nc" id="L87">				othersVisible = false;</span>
+<span class="nc" id="L88">				_fsButton.setText(Messages.getString(&quot;GuiPlayer.showAll&quot;)); //$NON-NLS-1$</span>
+			} else {
+<span class="nc" id="L90">				othersVisible = true;</span>
+<span class="nc" id="L91">				_fsButton.setText(Messages.getString(&quot;GuiPlayer.fullscreen&quot;)); //$NON-NLS-1$</span>
+			}
+<span class="nc" id="L93">			final LayoutManager mainLayout = _panel.getLayout();</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">			if (mainLayout instanceof BorderLayout) {</span>
+<span class="nc" id="L95">				final BorderLayout layout = (BorderLayout) mainLayout;</span>
+<span class="nc" id="L96">				final String[] directions = new String[] { BorderLayout.NORTH, BorderLayout.LINE_START,</span>
+				        BorderLayout.LINE_END, BorderLayout.SOUTH };
+<span class="nc bnc" id="L98" title="All 2 branches missed.">				for (final String direction : directions) {</span>
+<span class="nc" id="L99">					final Component comp = layout.getLayoutComponent(direction);</span>
+<span class="nc" id="L100">					setVisible(comp, othersVisible);</span>
+				}
+			}
+<span class="nc" id="L103">		}</span>
+
+		/**
+		 * checks if comp may be &lt;code&gt;null&lt;/code&gt;
+		 * 
+		 * @param comp
+		 * @param isVisible
+		 */
+		private void setVisible(final Component comp, final boolean isVisible) {
+<span class="nc bnc" id="L112" title="All 2 branches missed.">			if (comp != null) {</span>
+<span class="nc" id="L113">				comp.setVisible(isVisible);</span>
+			}
+<span class="nc" id="L115">		}</span>
+	}
+
+	private static final long serialVersionUID = -3770016315108490794L;
+<span class="nc" id="L119">	private static final transient Logger LOG = Logger.getLogger(GuiPlayer.class.getName());</span>
+	private final Battleplayer controller;
+<span class="nc" id="L121">	private final Set&lt;PlayerDrawing&gt; players = new HashSet&lt;PlayerDrawing&gt;();</span>
+
+	/**
+	 * creates a new player for the given data
+	 * 
+	 * @param battle
+	 * @param version
+	 *            to show to the user
+	 * @throws JSONException
+	 */
+	public GuiPlayer(final Fortbattle battle, final String version) {
+<span class="nc" id="L132">		super(Messages.getString(&quot;GuiPlayer.title&quot;) + battle.getFortname() + &quot; - v&quot; + version); //$NON-NLS-1$ //$NON-NLS-2$</span>
+<span class="nc" id="L133">		final Battlefield battlefield = battle.getBattlefield();</span>
+<span class="nc" id="L134">		final Set&lt;Combatant&gt; combatants = loadCombatants(battle);</span>
+<span class="nc" id="L135">		final Battleplan plan = battle.getActions();</span>
+<span class="nc" id="L136">		final CombatantEventDispatcher combatantEvents = new CombatantEventDispatcher(combatants);</span>
+
+<span class="nc" id="L138">		final AllStatistics stats = battle.getStatistic();</span>
+<span class="nc" id="L139">		final StatisticsPanel statsPanel = new StatisticsPanel(stats);</span>
+<span class="nc" id="L140">		final DataPanel dataPanel = new DataPanel(stats);</span>
+
+<span class="nc" id="L142">		controller = new Battleplayer(plan);</span>
+<span class="nc" id="L143">		final JPanel statusPanel = createStatusPanel(combatants, combatantEvents);</span>
+<span class="nc" id="L144">		final BattlefieldDrawing gui = new BattlefieldDrawing(battlefield, battle.getMapImage(), controller.config,</span>
+		        stats.battle.getFieldStatistics());
+<span class="nc" id="L146">		final JPanel log = new LogPanel(controller, combatantEvents);</span>
+<span class="nc" id="L147">		createCombatantDrawings(combatants, gui);</span>
+
+<span class="nc" id="L149">		controller.addRoundListener(gui);</span>
+
+<span class="nc" id="L151">		initFrame(gui, statusPanel, log, statsPanel, dataPanel);</span>
+<span class="nc" id="L152">	}</span>
+
+	/**
+	 * @param combatants
+	 * @param combatantEvents
+	 * @return
+	 */
+	private JPanel createStatusPanel(final Set&lt;Combatant&gt; combatants, final CombatantEventDispatcher combatantEvents) {
+<span class="nc" id="L160">		int countAttacker = 0;</span>
+<span class="nc" id="L161">		int countDefenders = 0;</span>
+<span class="nc" id="L162">		int hpAttackers = 0;</span>
+<span class="nc" id="L163">		int hpDefenders = 0;</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">		for (final Combatant combatant : combatants) {</span>
+<span class="nc bnc" id="L165" title="All 3 branches missed.">			switch (combatant.getSide()) {</span>
+			case ATTACKER:
+<span class="nc" id="L167">				countAttacker++;</span>
+<span class="nc" id="L168">				hpAttackers += combatant._health();</span>
+<span class="nc" id="L169">				break;</span>
+			case DEFENDER:
+<span class="nc" id="L171">				countDefenders++;</span>
+<span class="nc" id="L172">				hpDefenders += combatant._health();</span>
+<span class="nc" id="L173">				break;</span>
+			default:
+<span class="nc" id="L175">				LOG.warning(&quot;unknown combatant side: &quot; + combatant.getSide()); //$NON-NLS-1$</span>
+			}
+<span class="nc" id="L177">		}</span>
+
+<span class="nc" id="L179">		final StatusPanel status = new StatusPanel(countAttacker, countDefenders, hpAttackers, hpDefenders);</span>
+<span class="nc" id="L180">		combatantEvents.addCombatantObserver(status);</span>
+
+<span class="nc" id="L182">		return status;</span>
+	}
+
+	/**
+	 * sets the gui stuff
+	 * 
+	 * @param gui
+	 * @param statusPanel
+	 * @param log2
+	 * @param statsPanel
+	 */
+	private void initFrame(final BattlefieldDrawing gui, final JPanel statusPanel, final JPanel log,
+	        final JComponent statsPanel, final JPanel dataPanel) {
+<span class="nc" id="L195">		final JButton statsButton = new JButton(Messages.getString(&quot;GuiPlayer.statisticButton&quot;)); //$NON-NLS-1$</span>
+<span class="nc" id="L196">		statsButton.addActionListener(new ActionListener() {</span>
+			public void actionPerformed(final ActionEvent e) {
+<span class="nc" id="L198">				final JFrame popup = new PopupWindow(Messages.getString(&quot;GuiPlayer.statisticTitle&quot;), GuiPlayer.this); //$NON-NLS-1$</span>
+<span class="nc" id="L199">				popup.setContentPane(statsPanel);</span>
+<span class="nc" id="L200">				popup.pack();</span>
+				// move to center after resize
+<span class="nc" id="L202">				popup.setLocationRelativeTo(GuiPlayer.this);</span>
+<span class="nc" id="L203">			}</span>
+		});
+<span class="nc" id="L205">		final JPanel rightSide = new JPanel(new GridLayout(2, 1));</span>
+<span class="nc" id="L206">		rightSide.add(statsButton);</span>
+<span class="nc" id="L207">		rightSide.add(dataPanel);</span>
+
+<span class="nc" id="L209">		setClosable(true);</span>
+<span class="nc" id="L210">		setResizable(true);</span>
+<span class="nc" id="L211">		setMaximizable(true);</span>
+<span class="nc" id="L212">		final JPanel leftSide = new JPanel(new BorderLayout());</span>
+<span class="nc" id="L213">		leftSide.add(statusPanel, BorderLayout.NORTH);</span>
+<span class="nc" id="L214">		leftSide.add(new SearchPanel(this), BorderLayout.SOUTH);</span>
+		// the panel is needed for correct repainting of the BattlefieldDrawing
+<span class="nc" id="L216">		final JPanel panel = new JPanel(new BorderLayout());</span>
+<span class="nc" id="L217">		final JPanel center = new JPanel(new BorderLayout());</span>
+<span class="nc" id="L218">		center.add(createFullscreenButton(panel), BorderLayout.NORTH);</span>
+<span class="nc" id="L219">		center.add(gui, BorderLayout.CENTER);</span>
+<span class="nc" id="L220">		panel.add(center, BorderLayout.CENTER);</span>
+<span class="nc" id="L221">		panel.add(new ControlPanel(controller), BorderLayout.NORTH);</span>
+<span class="nc" id="L222">		panel.add(rightSide, BorderLayout.LINE_END);</span>
+<span class="nc" id="L223">		panel.add(leftSide, BorderLayout.LINE_START);</span>
+<span class="nc" id="L224">		panel.add(log, BorderLayout.SOUTH);</span>
+<span class="nc" id="L225">		setContentPane(panel);</span>
+<span class="nc" id="L226">		setSize(600, 450);</span>
+<span class="nc" id="L227">		setVisible(true);</span>
+<span class="nc" id="L228">	}</span>
+
+	/**
+	 * @param panel
+	 *            where only the center or all should be visible
+	 * @return
+	 */
+	private JComponent createFullscreenButton(final JPanel panel) {
+<span class="nc" id="L236">		final JButton fsButton = new JButton(Messages.getString(&quot;GuiPlayer.fullscreen&quot;)); //$NON-NLS-1$</span>
+<span class="nc" id="L237">		fsButton.addActionListener(new FullscreenSwitcher(panel, fsButton));</span>
+<span class="nc" id="L238">		return fsButton;</span>
+	}
+
+	private Set&lt;Combatant&gt; loadCombatants(final Fortbattle battle) {
+<span class="nc" id="L242">		final Set&lt;Combatant&gt; allCombatants = new HashSet&lt;Combatant&gt;();</span>
+<span class="nc" id="L243">		final Set&lt;Combatant&gt; attackers = battle.getAttackers();</span>
+<span class="nc bnc" id="L244" title="All 2 branches missed.">		for (final Combatant attacker : attackers) {</span>
+<span class="nc" id="L245">			allCombatants.add(attacker);</span>
+<span class="nc" id="L246">		}</span>
+<span class="nc" id="L247">		final Set&lt;Combatant&gt; defenders = battle.getDefenders();</span>
+<span class="nc bnc" id="L248" title="All 2 branches missed.">		for (final Combatant defender : defenders) {</span>
+<span class="nc" id="L249">			allCombatants.add(defender);</span>
+<span class="nc" id="L250">		}</span>
+<span class="nc" id="L251">		return allCombatants;</span>
+	}
+
+	/**
+	 * @param combatants
+	 * @param battlefield
+	 * @throws JSONException
+	 */
+	private void createCombatantDrawings(final Set&lt;Combatant&gt; combatants, final BattlefieldDrawing battlefield) {
+<span class="nc" id="L260">		PlayerDrawing drawing = null;</span>
+<span class="nc bnc" id="L261" title="All 2 branches missed.">		for (final Combatant combatant : combatants) {</span>
+			// the instance binds itself to the battlefield
+<span class="nc" id="L263">			drawing = new PlayerDrawing(combatant, battlefield);</span>
+<span class="nc" id="L264">			addPlayer(drawing);</span>
+<span class="nc" id="L265">		}</span>
+<span class="nc" id="L266">	}</span>
+
+	/**
+	 * show the complete battle
+	 */
+	public void play() {
+<span class="nc" id="L272">		controller.play();</span>
+<span class="nc" id="L273">	}</span>
+
+	/**
+	 * stop the animation
+	 */
+	public void stop() {
+<span class="nc" id="L279">		controller.stop();</span>
+<span class="nc" id="L280">	}</span>
+
+	/**
+	 * @see javax.swing.JInternalFrame#dispose()
+	 */
+	@Override
+	public void dispose() {
+<span class="nc" id="L287">		stop();</span>
+<span class="nc" id="L288">		super.dispose();</span>
+<span class="nc" id="L289">	}</span>
+
+	/**
+	 * @see de.outstare.fortbattleplayer.gui.battlefield.PlayerDrawingDB#addPlayer(de.outstare.fortbattleplayer.gui.battlefield.PlayerDrawing)
+	 */
+	public void addPlayer(final PlayerDrawing drawing) {
+<span class="nc" id="L295">		players.add(drawing);</span>
+<span class="nc" id="L296">	}</span>
+
+	/**
+	 * @see de.outstare.fortbattleplayer.gui.battlefield.PlayerDrawingDB#findUsers(java.lang.String)
+	 */
+	public Set&lt;PlayerDrawing&gt; findUsers(final String namePart) {
+<span class="nc" id="L302">		final Set&lt;PlayerDrawing&gt; result = new HashSet&lt;PlayerDrawing&gt;();</span>
+<span class="nc" id="L303">		final Locale locale = Locale.getDefault();</span>
+<span class="nc" id="L304">		final String lowerCaseSearch = namePart.toLowerCase(locale);</span>
+<span class="nc" id="L305">		LOG.info(&quot;searching user with &quot; + lowerCaseSearch);</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">		for (final PlayerDrawing drawing : players) {</span>
+<span class="nc" id="L307">			final String lowerCaseName = drawing.getCombatantName().toLowerCase(locale);</span>
+<span class="nc bnc" id="L308" title="All 2 branches missed.">			if (lowerCaseName.contains(lowerCaseSearch)) {</span>
+<span class="nc" id="L309">				result.add(drawing);</span>
+			}
+<span class="nc" id="L311">		}</span>
+<span class="nc" id="L312">		return result;</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.gui.battlefield.PlayerDrawingDB#findUsersWithWeapon(java.lang.String)
+	 */
+	public Set&lt;PlayerDrawing&gt; findUsersWithWeapon(final String namePart) {
+<span class="nc" id="L319">		final Set&lt;PlayerDrawing&gt; result = new HashSet&lt;PlayerDrawing&gt;();</span>
+<span class="nc" id="L320">		final Locale locale = Locale.getDefault();</span>
+<span class="nc" id="L321">		final String lowerCaseSearch = namePart.toLowerCase(locale);</span>
+<span class="nc" id="L322">		LOG.fine(&quot;searching weapon with &quot; + lowerCaseSearch);</span>
+<span class="nc bnc" id="L323" title="All 2 branches missed.">		for (final PlayerDrawing drawing : players) {</span>
+<span class="nc" id="L324">			final String lowerCaseName = drawing.getGun().name().toLowerCase(locale);</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">			if (lowerCaseName.contains(lowerCaseSearch)) {</span>
+<span class="nc" id="L326">				result.add(drawing);</span>
+			}
+<span class="nc" id="L328">		}</span>
+<span class="nc" id="L329">		return result;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

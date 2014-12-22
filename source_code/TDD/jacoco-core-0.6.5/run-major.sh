@@ -1,7 +1,9 @@
 #!/bin/sh
 # By: Hessah Alkaoud
 
-ant -DmutOp=":ALL" clean compile compile.tests mutation-test
+echo "Compiling and mutating tyburn using: MAJOR"
+ant -DmutOp=":ALL" clean compile compile.tests 
+ant mutation-test
 
 time_stamp=$(date +%Y_%m_%d_%H_%M_%S)
 mkdir -p "majorReports/${time_stamp}"

@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>TeeInputStream.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-io-2.4</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.io.input</a> &gt; <span class="el_source">TeeInputStream.java</span></div><h1>TeeInputStream.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ * 
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.io.input;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+
+/**
+ * InputStream proxy that transparently writes a copy of all bytes read
+ * from the proxied stream to a given OutputStream. Using {@link #skip(long)}
+ * or {@link #mark(int)}/{@link #reset()} on the stream will result on some
+ * bytes from the input stream being skipped or duplicated in the output
+ * stream.
+ * &lt;p&gt;
+ * The proxied input stream is closed when the {@link #close()} method is
+ * called on this proxy. It is configurable whether the associated output
+ * stream will also closed.
+ *
+ * @version $Id: TeeInputStream.java 1307461 2012-03-30 15:12:29Z ggregory $
+ * @since 1.4
+ */
+public class TeeInputStream extends ProxyInputStream {
+
+    /**
+     * The output stream that will receive a copy of all bytes read from the
+     * proxied input stream.
+     */
+    private final OutputStream branch;
+
+    /**
+     * Flag for closing also the associated output stream when this
+     * stream is closed.
+     */
+    private final boolean closeBranch;
+
+    /**
+     * Creates a TeeInputStream that proxies the given {@link InputStream}
+     * and copies all read bytes to the given {@link OutputStream}. The given
+     * output stream will not be closed when this stream gets closed.
+     *
+     * @param input input stream to be proxied
+     * @param branch output stream that will receive a copy of all bytes read
+     */
+    public TeeInputStream(InputStream input, OutputStream branch) {
+<span class="fc" id="L60">        this(input, branch, false);</span>
+<span class="fc" id="L61">    }</span>
+
+    /**
+     * Creates a TeeInputStream that proxies the given {@link InputStream}
+     * and copies all read bytes to the given {@link OutputStream}. The given
+     * output stream will be closed when this stream gets closed if the
+     * closeBranch parameter is {@code true}.
+     *
+     * @param input input stream to be proxied
+     * @param branch output stream that will receive a copy of all bytes read
+     * @param closeBranch flag for closing also the output stream when this
+     *                    stream is closed
+     */
+    public TeeInputStream(
+            InputStream input, OutputStream branch, boolean closeBranch) {
+<span class="fc" id="L76">        super(input);</span>
+<span class="fc" id="L77">        this.branch = branch;</span>
+<span class="fc" id="L78">        this.closeBranch = closeBranch;</span>
+<span class="fc" id="L79">    }</span>
+
+    /**
+     * Closes the proxied input stream and, if so configured, the associated
+     * output stream. An exception thrown from one stream will not prevent
+     * closing of the other stream.
+     *
+     * @throws IOException if either of the streams could not be closed
+     */
+    @Override
+    public void close() throws IOException {
+        try {
+<span class="nc" id="L91">            super.close();</span>
+        } finally {
+<span class="nc bnc" id="L93" title="All 4 branches missed.">            if (closeBranch) {</span>
+<span class="nc" id="L94">                branch.close();</span>
+            }
+        }
+<span class="nc" id="L97">    }</span>
+
+    /**
+     * Reads a single byte from the proxied input stream and writes it to
+     * the associated output stream.
+     *
+     * @return next byte from the stream, or -1 if the stream has ended
+     * @throws IOException if the stream could not be read (or written) 
+     */
+    @Override
+    public int read() throws IOException {
+<span class="fc" id="L108">        int ch = super.read();</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (ch != -1) {</span>
+<span class="fc" id="L110">            branch.write(ch);</span>
+        }
+<span class="fc" id="L112">        return ch;</span>
+    }
+
+    /**
+     * Reads bytes from the proxied input stream and writes the read bytes
+     * to the associated output stream.
+     *
+     * @param bts byte buffer
+     * @param st start offset within the buffer
+     * @param end maximum number of bytes to read
+     * @return number of bytes read, or -1 if the stream has ended
+     * @throws IOException if the stream could not be read (or written) 
+     */
+    @Override
+    public int read(byte[] bts, int st, int end) throws IOException {
+<span class="fc" id="L127">        int n = super.read(bts, st, end);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (n != -1) {</span>
+<span class="fc" id="L129">            branch.write(bts, st, n);</span>
+        }
+<span class="fc" id="L131">        return n;</span>
+    }
+
+    /**
+     * Reads bytes from the proxied input stream and writes the read bytes
+     * to the associated output stream.
+     *
+     * @param bts byte buffer
+     * @return number of bytes read, or -1 if the stream has ended
+     * @throws IOException if the stream could not be read (or written) 
+     */
+    @Override
+    public int read(byte[] bts) throws IOException {
+<span class="fc" id="L144">        int n = super.read(bts);</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        if (n != -1) {</span>
+<span class="fc" id="L146">            branch.write(bts, 0, n);</span>
+        }
+<span class="fc" id="L148">        return n;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

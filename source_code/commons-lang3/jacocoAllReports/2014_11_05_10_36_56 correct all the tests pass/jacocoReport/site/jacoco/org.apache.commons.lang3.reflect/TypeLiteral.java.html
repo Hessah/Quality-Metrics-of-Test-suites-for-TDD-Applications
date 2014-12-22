@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>TypeLiteral.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-lang3</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.reflect</a> &gt; <span class="el_source">TypeLiteral.java</span></div><h1>TypeLiteral.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.reflect;
+
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
+
+import org.apache.commons.lang3.Validate;
+
+/**
+ * &lt;p&gt;Type literal comparable to {@code javax.enterprise.util.TypeLiteral},
+ * made generally available outside the JEE context. Allows the passing around of
+ * a &quot;token&quot; that represents a type in a typesafe manner, as opposed to
+ * passing the (non-parameterized) {@link Type} object itself. Consider:&lt;/p&gt;
+ * &lt;p&gt;
+ * You might see such a typesafe API as:
+ * &lt;pre&gt;
+ * class Typesafe {
+ *   &amp;lt;T&amp;gt; T obtain(Class&amp;lt;T&amp;gt; type, ...);
+ * }
+ * &lt;/pre&gt;
+ * Consumed in the manner of:
+ * &lt;pre&gt;
+ * Foo foo = typesafe.obtain(Foo.class, ...);
+ * &lt;/pre&gt;
+ * Yet, you run into problems when you want to do this with a parameterized type:
+ * &lt;pre&gt;
+ * List&amp;lt;String&amp;gt; listOfString = typesafe.obtain(List.class, ...); // could only give us a raw List
+ * &lt;/pre&gt;
+ * {@code java.lang.reflect.Type} might provide some value:
+ * &lt;pre&gt;
+ * Type listOfStringType = ...; // firstly, how to obtain this? Doable, but not straightforward.
+ * List&amp;lt;String&amp;gt; listOfString = (List&amp;lt;String&amp;gt;) typesafe.obtain(listOfStringType, ...); // nongeneric Type would necessitate a cast
+ * &lt;/pre&gt;
+ * The &quot;type literal&quot; concept was introduced to provide an alternative, i.e.:
+ * &lt;pre&gt;
+ * class Typesafe {
+ *   &amp;lt;T&amp;gt; T obtain(TypeLiteral&amp;lt;T&amp;gt; type, ...);
+ * }
+ * &lt;/pre&gt;
+ * Consuming code looks like:
+ * &lt;pre&gt;
+ * List&amp;lt;String&amp;gt; listOfString = typesafe.obtain(new TypeLiteral&amp;lt;List&amp;lt;String&amp;gt;&amp;gt;() {}, ...);
+ * &lt;/pre&gt;
+ * This has the effect of &quot;jumping up&quot; a level to tie a {@code java.lang.reflect.Type}
+ * to a type variable while simultaneously making it short work to obtain a
+ * {@code Type} instance for any given type, inline.
+ * &lt;/p&gt;
+ * &lt;p&gt;Additionally {@link TypeLiteral} implements the {@link Typed} interface which
+ * is a generalization of this concept, and which may be implemented in custom classes.
+ * It is suggested that APIs be defined in terms of the interface, in the following manner:
+ * &lt;pre&gt;
+ *   &amp;lt;T&amp;gt; T obtain(Typed&amp;lt;T&amp;gt; typed, ...);
+ * &lt;/pre&gt;
+ * &lt;/p&gt;
+ */
+public abstract class TypeLiteral&lt;T&gt; implements Typed&lt;T&gt; {
+
+    @SuppressWarnings(&quot;rawtypes&quot;)
+<span class="fc" id="L74">    private static final TypeVariable&lt;Class&lt;TypeLiteral&gt;&gt; T = TypeLiteral.class.getTypeParameters()[0];</span>
+
+    /**
+     * Represented type.
+     */
+    public final Type value;
+
+    private final String toString;
+
+    /**
+     * The default constructor.
+     */
+<span class="fc" id="L86">    protected TypeLiteral() {</span>
+<span class="fc" id="L87">        this.value =</span>
+            Validate.notNull(TypeUtils.getTypeArguments(getClass(), TypeLiteral.class).get(T),
+                &quot;%s does not assign type parameter %s&quot;, getClass(), TypeUtils.toLongString(T));
+
+<span class="fc" id="L91">        this.toString = String.format(&quot;%s&lt;%s&gt;&quot;, TypeLiteral.class.getSimpleName(), TypeUtils.toString(value));</span>
+<span class="fc" id="L92">    }</span>
+
+    @Override
+    public final boolean equals(Object obj) {
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L97">            return true;</span>
+        }
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        if (obj instanceof TypeLiteral == false) {</span>
+<span class="nc" id="L100">            return false;</span>
+        }
+<span class="fc" id="L102">        final TypeLiteral&lt;?&gt; other = (TypeLiteral&lt;?&gt;) obj;</span>
+<span class="fc" id="L103">        return TypeUtils.equals(value, other.value);</span>
+    }
+
+    @Override 
+    public int hashCode() {
+<span class="nc" id="L108">        return 37 &lt;&lt; 4 | value.hashCode();</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L113">        return toString;</span>
+    }
+
+    @Override
+    public Type getType() {
+<span class="fc" id="L118">        return value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

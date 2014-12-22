@@ -1,0 +1,1117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>BoxAndWhiskerRenderer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.renderer.category</a> &gt; <span class="el_source">BoxAndWhiskerRenderer.java</span></div><h1>BoxAndWhiskerRenderer.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * --------------------------
+ * BoxAndWhiskerRenderer.java
+ * --------------------------
+ * (C) Copyright 2003-2013, by David Browning and Contributors.
+ *
+ * Original Author:  David Browning (for the Australian Institute of Marine
+ *                   Science);
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *                   Tim Bardzil;
+ *                   Rob Van der Sanden (patches 1866446 and 1888422);
+ *                   Peter Becker (patches 2868585 and 2868608);
+ *                   Martin Krauskopf (patch 3421088);
+ *                   Martin Hoeller;
+ *
+ * Changes
+ * -------
+ * 21-Aug-2003 : Version 1, contributed by David Browning (for the Australian
+ *               Institute of Marine Science);
+ * 01-Sep-2003 : Incorporated outlier and farout symbols for low values
+ *               also (DG);
+ * 08-Sep-2003 : Changed ValueAxis API (DG);
+ * 16-Sep-2003 : Changed ChartRenderingInfo --&gt; PlotRenderingInfo (DG);
+ * 07-Oct-2003 : Added renderer state (DG);
+ * 12-Nov-2003 : Fixed casting bug reported by Tim Bardzil (DG);
+ * 13-Nov-2003 : Added drawHorizontalItem() method contributed by Tim
+ *               Bardzil (DG);
+ * 25-Apr-2004 : Added fillBox attribute, equals() method and added
+ *               serialization code (DG);
+ * 29-Apr-2004 : Changed drawing of upper and lower shadows - see bug report
+ *               944011 (DG);
+ * 05-Nov-2004 : Modified drawItem() signature (DG);
+ * 09-Mar-2005 : Override getLegendItem() method so that legend item shapes
+ *               are shown as blocks (DG);
+ * 20-Apr-2005 : Generate legend labels, tooltips and URLs (DG);
+ * 09-Jun-2005 : Updated equals() to handle GradientPaint (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 12-Oct-2006 : Source reformatting and API doc updates (DG);
+ * 12-Oct-2006 : Fixed bug 1572478, potential NullPointerException (DG);
+ * 05-Feb-2006 : Added event notifications to a couple of methods (DG);
+ * 20-Apr-2007 : Updated getLegendItem() for renderer change (DG);
+ * 11-May-2007 : Added check for visibility in getLegendItem() (DG);
+ * 17-May-2007 : Set datasetIndex and seriesIndex in getLegendItem() (DG);
+ * 18-May-2007 : Set dataset and seriesKey for LegendItem (DG);
+ * 03-Jan-2008 : Check visibility of average marker before drawing it (DG);
+ * 15-Jan-2008 : Add getMaximumBarWidth() and setMaximumBarWidth()
+ *               methods (RVdS);
+ * 14-Feb-2008 : Fix bar position for horizontal chart, see patch
+ *               1888422 (RVdS);
+ * 27-Mar-2008 : Boxes should use outlinePaint/Stroke settings (DG);
+ * 17-Jun-2008 : Apply legend shape, font and paint attributes (DG);
+ * 02-Oct-2008 : Check item visibility in drawItem() method (DG);
+ * 21-Jan-2009 : Added flags to control visibility of mean and median
+ *               indicators (DG);
+ * 28-Sep-2009 : Added fireChangeEvent() to setMedianVisible (DG);
+ * 28-Sep-2009 : Added useOutlinePaintForWhiskers flag, see patch 2868585
+ *               by Peter Becker (DG);
+ * 28-Sep-2009 : Added whiskerWidth attribute, see patch 2868608 by Peter
+ *               Becker (DG);
+ * 11-Oct-2011 : applied patch #3421088 from Martin Krauskopf to fix bug (MH);
+ * 03-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.chart.renderer.category;
+
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Line2D;
+import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+
+import org.jfree.chart.LegendItem;
+import org.jfree.chart.axis.CategoryAxis;
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.entity.EntityCollection;
+import org.jfree.chart.event.RendererChangeEvent;
+import org.jfree.chart.plot.CategoryPlot;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.plot.PlotRenderingInfo;
+import org.jfree.chart.renderer.Outlier;
+import org.jfree.chart.renderer.OutlierList;
+import org.jfree.chart.renderer.OutlierListCollection;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.data.Range;
+import org.jfree.data.category.CategoryDataset;
+import org.jfree.data.statistics.BoxAndWhiskerCategoryDataset;
+import org.jfree.io.SerialUtilities;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.util.PaintUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A box-and-whisker renderer.  This renderer requires a
+ * {@link BoxAndWhiskerCategoryDataset} and is for use with the
+ * {@link CategoryPlot} class.  The example shown here is generated
+ * by the &lt;code&gt;BoxAndWhiskerChartDemo1.java&lt;/code&gt; program included in the
+ * JFreeChart Demo Collection:
+ * &lt;br&gt;&lt;br&gt;
+ * &lt;img src=&quot;../../../../../images/BoxAndWhiskerRendererSample.png&quot;
+ * alt=&quot;BoxAndWhiskerRendererSample.png&quot; /&gt;
+ */
+public class BoxAndWhiskerRenderer extends AbstractCategoryItemRenderer
+        implements Cloneable, PublicCloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = 632027470694481177L;
+
+    /** The color used to paint the median line and average marker. */
+    private transient Paint artifactPaint;
+
+    /** A flag that controls whether or not the box is filled. */
+    private boolean fillBox;
+
+    /** The margin between items (boxes) within a category. */
+    private double itemMargin;
+
+    /**
+     * The maximum bar width as percentage of the available space in the plot.
+     * Take care with the encoding - for example, 0.05 is five percent.
+     */
+    private double maximumBarWidth;
+
+    /**
+     * A flag that controls whether or not the median indicator is drawn.
+     * 
+     * @since 1.0.13
+     */
+    private boolean medianVisible;
+
+    /**
+     * A flag that controls whether or not the mean indicator is drawn.
+     *
+     * @since 1.0.13
+     */
+    private boolean meanVisible;
+
+    /**
+     * A flag that, if &lt;code&gt;true&lt;/code&gt;, causes the whiskers to be drawn
+     * using the outline paint for the series.  The default value is
+     * &lt;code&gt;false&lt;/code&gt; and in that case the regular series paint is used.
+     *
+     * @since 1.0.14
+     */
+    private boolean useOutlinePaintForWhiskers;
+
+    /**
+     * The width of the whiskers as fraction of the bar width.
+     *
+     * @since 1.0.14
+     */
+    private double whiskerWidth;
+
+    /**
+     * Default constructor.
+     */
+<span class="fc" id="L194">    public BoxAndWhiskerRenderer() {</span>
+<span class="fc" id="L195">        this.artifactPaint = Color.black;</span>
+<span class="fc" id="L196">        this.fillBox = true;</span>
+<span class="fc" id="L197">        this.itemMargin = 0.20;</span>
+<span class="fc" id="L198">        this.maximumBarWidth = 1.0;</span>
+<span class="fc" id="L199">        this.medianVisible = true;</span>
+<span class="fc" id="L200">        this.meanVisible = true;</span>
+<span class="fc" id="L201">        this.useOutlinePaintForWhiskers = false;</span>
+<span class="fc" id="L202">        this.whiskerWidth = 1.0;</span>
+<span class="fc" id="L203">        setBaseLegendShape(new Rectangle2D.Double(-4.0, -4.0, 8.0, 8.0));</span>
+<span class="fc" id="L204">    }</span>
+
+    /**
+     * Returns the paint used to color the median and average markers.
+     *
+     * @return The paint used to draw the median and average markers (never
+     *     &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setArtifactPaint(Paint)
+     */
+    public Paint getArtifactPaint() {
+<span class="nc" id="L215">        return this.artifactPaint;</span>
+    }
+
+    /**
+     * Sets the paint used to color the median and average markers and sends
+     * a {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getArtifactPaint()
+     */
+    public void setArtifactPaint(Paint paint) {
+<span class="fc" id="L227">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L228">        this.artifactPaint = paint;</span>
+<span class="fc" id="L229">        fireChangeEvent();</span>
+<span class="fc" id="L230">    }</span>
+
+    /**
+     * Returns the flag that controls whether or not the box is filled.
+     *
+     * @return A boolean.
+     *
+     * @see #setFillBox(boolean)
+     */
+    public boolean getFillBox() {
+<span class="fc" id="L240">        return this.fillBox;</span>
+    }
+
+    /**
+     * Sets the flag that controls whether or not the box is filled and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param flag  the flag.
+     *
+     * @see #getFillBox()
+     */
+    public void setFillBox(boolean flag) {
+<span class="fc" id="L252">        this.fillBox = flag;</span>
+<span class="fc" id="L253">        fireChangeEvent();</span>
+<span class="fc" id="L254">    }</span>
+
+    /**
+     * Returns the item margin.  This is a percentage of the available space
+     * that is allocated to the space between items in the chart.
+     *
+     * @return The margin.
+     *
+     * @see #setItemMargin(double)
+     */
+    public double getItemMargin() {
+<span class="nc" id="L265">        return this.itemMargin;</span>
+    }
+
+    /**
+     * Sets the item margin and sends a {@link RendererChangeEvent} to all
+     * registered listeners.
+     *
+     * @param margin  the margin (a percentage).
+     *
+     * @see #getItemMargin()
+     */
+    public void setItemMargin(double margin) {
+<span class="fc" id="L277">        this.itemMargin = margin;</span>
+<span class="fc" id="L278">        fireChangeEvent();</span>
+<span class="fc" id="L279">    }</span>
+
+    /**
+     * Returns the maximum bar width as a percentage of the available drawing
+     * space.  Take care with the encoding, for example 0.10 is ten percent.
+     *
+     * @return The maximum bar width.
+     *
+     * @see #setMaximumBarWidth(double)
+     *
+     * @since 1.0.10
+     */
+    public double getMaximumBarWidth() {
+<span class="fc" id="L292">        return this.maximumBarWidth;</span>
+    }
+
+    /**
+     * Sets the maximum bar width, which is specified as a percentage of the
+     * available space for all bars, and sends a {@link RendererChangeEvent}
+     * to all registered listeners.
+     *
+     * @param percent  the maximum bar width (a percentage, where 0.10 is ten
+     *     percent).
+     *
+     * @see #getMaximumBarWidth()
+     *
+     * @since 1.0.10
+     */
+    public void setMaximumBarWidth(double percent) {
+<span class="fc" id="L308">        this.maximumBarWidth = percent;</span>
+<span class="fc" id="L309">        fireChangeEvent();</span>
+<span class="fc" id="L310">    }</span>
+
+    /**
+     * Returns the flag that controls whether or not the mean indicator is
+     * draw for each item.
+     *
+     * @return A boolean.
+     *
+     * @see #setMeanVisible(boolean)
+     *
+     * @since 1.0.13
+     */
+    public boolean isMeanVisible() {
+<span class="nc" id="L323">        return this.meanVisible;</span>
+    }
+
+    /**
+     * Sets the flag that controls whether or not the mean indicator is drawn
+     * for each item, and sends a {@link RendererChangeEvent} to all
+     * registered listeners.
+     *
+     * @param visible  the new flag value.
+     *
+     * @see #isMeanVisible()
+     *
+     * @since 1.0.13
+     */
+    public void setMeanVisible(boolean visible) {
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">        if (this.meanVisible == visible) {</span>
+<span class="nc" id="L339">            return;</span>
+        }
+<span class="fc" id="L341">        this.meanVisible = visible;</span>
+<span class="fc" id="L342">        fireChangeEvent();</span>
+<span class="fc" id="L343">    }</span>
+
+    /**
+     * Returns the flag that controls whether or not the median indicator is
+     * draw for each item.
+     *
+     * @return A boolean.
+     *
+     * @see #setMedianVisible(boolean)
+     *
+     * @since 1.0.13
+     */
+    public boolean isMedianVisible() {
+<span class="nc" id="L356">        return this.medianVisible;</span>
+    }
+
+    /**
+     * Sets the flag that controls whether or not the median indicator is drawn
+     * for each item, and sends a {@link RendererChangeEvent} to all
+     * registered listeners.
+     *
+     * @param visible  the new flag value.
+     *
+     * @see #isMedianVisible()
+     *
+     * @since 1.0.13
+     */
+    public void setMedianVisible(boolean visible) {
+<span class="pc bpc" id="L371" title="1 of 2 branches missed.">        if (this.medianVisible == visible) {</span>
+<span class="nc" id="L372">            return;</span>
+        }
+<span class="fc" id="L374">        this.medianVisible = visible;</span>
+<span class="fc" id="L375">        fireChangeEvent();</span>
+<span class="fc" id="L376">    }</span>
+
+    /**
+     * Returns the flag that, if &lt;code&gt;true&lt;/code&gt;, causes the whiskers to
+     * be drawn using the series outline paint.
+     *
+     * @return A boolean.
+     *
+     * @since 1.0.14
+     */
+    public boolean getUseOutlinePaintForWhiskers() {
+<span class="nc" id="L387">        return this.useOutlinePaintForWhiskers;</span>
+    }
+
+    /**
+     * Sets the flag that, if &lt;code&gt;true&lt;/code&gt;, causes the whiskers to
+     * be drawn using the series outline paint, and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param flag  the new flag value.
+     *
+     * @since 1.0.14
+     */
+    public void setUseOutlinePaintForWhiskers(boolean flag) {
+<span class="nc bnc" id="L400" title="All 2 branches missed.">        if (this.useOutlinePaintForWhiskers == flag) {</span>
+<span class="nc" id="L401">            return;</span>
+        }
+<span class="nc" id="L403">        this.useOutlinePaintForWhiskers = flag;</span>
+<span class="nc" id="L404">        fireChangeEvent();</span>
+<span class="nc" id="L405">    }</span>
+
+    /**
+     * Returns the width of the whiskers as fraction of the bar width.
+     *
+     * @return The width of the whiskers.
+     *
+     * @see #setWhiskerWidth(double)
+     *
+     * @since 1.0.14
+     */
+    public double getWhiskerWidth() {
+<span class="nc" id="L417">        return this.whiskerWidth;</span>
+    }
+
+    /**
+     * Sets the width of the whiskers as a fraction of the bar width and sends
+     * a {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param width  a value between 0 and 1 indicating how wide the
+     *     whisker is supposed to be compared to the bar.
+     * @see #getWhiskerWidth()
+     * @see CategoryItemRendererState#getBarWidth()
+     *
+     * @since 1.0.14
+     */
+    public void setWhiskerWidth(double width) {
+<span class="nc bnc" id="L432" title="All 4 branches missed.">        if (width &lt; 0 || width &gt; 1) {</span>
+<span class="nc" id="L433">            throw new IllegalArgumentException(</span>
+                    &quot;Value for whisker width out of range&quot;);
+        }
+<span class="nc bnc" id="L436" title="All 2 branches missed.">        if (width == this.whiskerWidth) {</span>
+<span class="nc" id="L437">            return;</span>
+        }
+<span class="nc" id="L439">        this.whiskerWidth = width;</span>
+<span class="nc" id="L440">        fireChangeEvent();</span>
+<span class="nc" id="L441">    }</span>
+
+    /**
+     * Returns a legend item for a series.
+     *
+     * @param datasetIndex  the dataset index (zero-based).
+     * @param series  the series index (zero-based).
+     *
+     * @return The legend item (possibly &lt;code&gt;null&lt;/code&gt;).
+     */
+    @Override
+    public LegendItem getLegendItem(int datasetIndex, int series) {
+
+<span class="fc" id="L454">        CategoryPlot cp = getPlot();</span>
+<span class="pc bpc" id="L455" title="1 of 2 branches missed.">        if (cp == null) {</span>
+<span class="nc" id="L456">            return null;</span>
+        }
+
+        // check that a legend item needs to be displayed...
+<span class="pc bpc" id="L460" title="1 of 4 branches missed.">        if (!isSeriesVisible(series) || !isSeriesVisibleInLegend(series)) {</span>
+<span class="fc" id="L461">            return null;</span>
+        }
+
+<span class="fc" id="L464">        CategoryDataset dataset = cp.getDataset(datasetIndex);</span>
+<span class="fc" id="L465">        String label = getLegendItemLabelGenerator().generateLabel(dataset,</span>
+                series);
+<span class="fc" id="L467">        String description = label;</span>
+<span class="fc" id="L468">        String toolTipText = null;</span>
+<span class="pc bpc" id="L469" title="1 of 2 branches missed.">        if (getLegendItemToolTipGenerator() != null) {</span>
+<span class="nc" id="L470">            toolTipText = getLegendItemToolTipGenerator().generateLabel(</span>
+                    dataset, series);
+        }
+<span class="fc" id="L473">        String urlText = null;</span>
+<span class="pc bpc" id="L474" title="1 of 2 branches missed.">        if (getLegendItemURLGenerator() != null) {</span>
+<span class="nc" id="L475">            urlText = getLegendItemURLGenerator().generateLabel(dataset,</span>
+                    series);
+        }
+<span class="fc" id="L478">        Shape shape = lookupLegendShape(series);</span>
+<span class="fc" id="L479">        Paint paint = lookupSeriesPaint(series);</span>
+<span class="fc" id="L480">        Paint outlinePaint = lookupSeriesOutlinePaint(series);</span>
+<span class="fc" id="L481">        Stroke outlineStroke = lookupSeriesOutlineStroke(series);</span>
+<span class="fc" id="L482">        LegendItem result = new LegendItem(label, description, toolTipText,</span>
+                urlText, shape, paint, outlineStroke, outlinePaint);
+<span class="fc" id="L484">        result.setLabelFont(lookupLegendTextFont(series));</span>
+<span class="fc" id="L485">        Paint labelPaint = lookupLegendTextPaint(series);</span>
+<span class="pc bpc" id="L486" title="1 of 2 branches missed.">        if (labelPaint != null) {</span>
+<span class="nc" id="L487">            result.setLabelPaint(labelPaint);</span>
+        }
+<span class="fc" id="L489">        result.setDataset(dataset);</span>
+<span class="fc" id="L490">        result.setDatasetIndex(datasetIndex);</span>
+<span class="fc" id="L491">        result.setSeriesKey(dataset.getRowKey(series));</span>
+<span class="fc" id="L492">        result.setSeriesIndex(series);</span>
+<span class="fc" id="L493">        return result;</span>
+
+    }
+
+    /**
+     * Returns the range of values from the specified dataset that the
+     * renderer will require to display all the data.
+     *
+     * @param dataset  the dataset.
+     *
+     * @return The range.
+     */
+    @Override
+    public Range findRangeBounds(CategoryDataset dataset) {
+<span class="fc" id="L507">        return super.findRangeBounds(dataset, true);</span>
+    }
+
+    /**
+     * Initialises the renderer.  This method gets called once at the start of
+     * the process of drawing a chart.
+     *
+     * @param g2  the graphics device.
+     * @param dataArea  the area in which the data is to be plotted.
+     * @param plot  the plot.
+     * @param rendererIndex  the renderer index.
+     * @param info  collects chart rendering information for return to caller.
+     *
+     * @return The renderer state.
+     */
+    @Override
+    public CategoryItemRendererState initialise(Graphics2D g2, 
+            Rectangle2D dataArea, CategoryPlot plot, int rendererIndex,
+            PlotRenderingInfo info) {
+
+<span class="fc" id="L527">        CategoryItemRendererState state = super.initialise(g2, dataArea, plot,</span>
+                rendererIndex, info);
+        // calculate the box width
+<span class="fc" id="L530">        CategoryAxis domainAxis = getDomainAxis(plot, rendererIndex);</span>
+<span class="fc" id="L531">        CategoryDataset dataset = plot.getDataset(rendererIndex);</span>
+<span class="pc bpc" id="L532" title="1 of 2 branches missed.">        if (dataset != null) {</span>
+<span class="fc" id="L533">            int columns = dataset.getColumnCount();</span>
+<span class="fc" id="L534">            int rows = dataset.getRowCount();</span>
+<span class="fc" id="L535">            double space = 0.0;</span>
+<span class="fc" id="L536">            PlotOrientation orientation = plot.getOrientation();</span>
+<span class="fc bfc" id="L537" title="All 2 branches covered.">            if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="fc" id="L538">                space = dataArea.getHeight();</span>
+            }
+<span class="pc bpc" id="L540" title="1 of 2 branches missed.">            else if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="fc" id="L541">                space = dataArea.getWidth();</span>
+            }
+<span class="fc" id="L543">            double maxWidth = space * getMaximumBarWidth();</span>
+<span class="fc" id="L544">            double categoryMargin = 0.0;</span>
+<span class="fc" id="L545">            double currentItemMargin = 0.0;</span>
+<span class="pc bpc" id="L546" title="1 of 2 branches missed.">            if (columns &gt; 1) {</span>
+<span class="nc" id="L547">                categoryMargin = domainAxis.getCategoryMargin();</span>
+            }
+<span class="pc bpc" id="L549" title="1 of 2 branches missed.">            if (rows &gt; 1) {</span>
+<span class="nc" id="L550">                currentItemMargin = getItemMargin();</span>
+            }
+<span class="fc" id="L552">            double used = space * (1 - domainAxis.getLowerMargin()</span>
+                                     - domainAxis.getUpperMargin()
+                                     - categoryMargin - currentItemMargin);
+<span class="pc bpc" id="L555" title="1 of 2 branches missed.">            if ((rows * columns) &gt; 0) {</span>
+<span class="fc" id="L556">                state.setBarWidth(Math.min(used / (dataset.getColumnCount()</span>
+                        * dataset.getRowCount()), maxWidth));
+            }
+            else {
+<span class="nc" id="L560">                state.setBarWidth(Math.min(used, maxWidth));</span>
+            }
+        }
+<span class="fc" id="L563">        return state;</span>
+
+    }
+
+    /**
+     * Draw a single data item.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the area in which the data is drawn.
+     * @param plot  the plot.
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the data (must be an instance of
+     *                 {@link BoxAndWhiskerCategoryDataset}).
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     * @param pass  the pass index.
+     */
+    @Override
+    public void drawItem(Graphics2D g2, CategoryItemRendererState state,
+        Rectangle2D dataArea, CategoryPlot plot, CategoryAxis domainAxis,
+        ValueAxis rangeAxis, CategoryDataset dataset, int row, int column,
+        int pass) {
+
+        // do nothing if item is not visible
+<span class="pc bpc" id="L589" title="1 of 2 branches missed.">        if (!getItemVisible(row, column)) {</span>
+<span class="nc" id="L590">            return;</span>
+        }
+
+<span class="pc bpc" id="L593" title="1 of 2 branches missed.">        if (!(dataset instanceof BoxAndWhiskerCategoryDataset)) {</span>
+<span class="nc" id="L594">            throw new IllegalArgumentException(</span>
+                    &quot;BoxAndWhiskerRenderer.drawItem() : the data should be &quot;
+                    + &quot;of type BoxAndWhiskerCategoryDataset only.&quot;);
+        }
+
+<span class="fc" id="L599">        PlotOrientation orientation = plot.getOrientation();</span>
+
+<span class="fc bfc" id="L601" title="All 2 branches covered.">        if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="fc" id="L602">            drawHorizontalItem(g2, state, dataArea, plot, domainAxis,</span>
+                    rangeAxis, dataset, row, column);
+        }
+<span class="pc bpc" id="L605" title="1 of 2 branches missed.">        else if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="fc" id="L606">            drawVerticalItem(g2, state, dataArea, plot, domainAxis,</span>
+                    rangeAxis, dataset, row, column);
+        }
+
+<span class="fc" id="L610">    }</span>
+
+    /**
+     * Draws the visual representation of a single data item when the plot has
+     * a horizontal orientation.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the area within which the plot is being drawn.
+     * @param plot  the plot (can be used to obtain standard color
+     *              information etc).
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the dataset (must be an instance of
+     *                 {@link BoxAndWhiskerCategoryDataset}).
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     */
+    public void drawHorizontalItem(Graphics2D g2, 
+            CategoryItemRendererState state, Rectangle2D dataArea,
+            CategoryPlot plot, CategoryAxis domainAxis, ValueAxis rangeAxis,
+            CategoryDataset dataset, int row, int column) {
+
+<span class="fc" id="L633">        BoxAndWhiskerCategoryDataset bawDataset</span>
+                = (BoxAndWhiskerCategoryDataset) dataset;
+
+<span class="fc" id="L636">        double categoryEnd = domainAxis.getCategoryEnd(column,</span>
+                getColumnCount(), dataArea, plot.getDomainAxisEdge());
+<span class="fc" id="L638">        double categoryStart = domainAxis.getCategoryStart(column,</span>
+                getColumnCount(), dataArea, plot.getDomainAxisEdge());
+<span class="fc" id="L640">        double categoryWidth = Math.abs(categoryEnd - categoryStart);</span>
+
+<span class="fc" id="L642">        double yy = categoryStart;</span>
+<span class="fc" id="L643">        int seriesCount = getRowCount();</span>
+<span class="fc" id="L644">        int categoryCount = getColumnCount();</span>
+
+<span class="pc bpc" id="L646" title="1 of 2 branches missed.">        if (seriesCount &gt; 1) {</span>
+<span class="nc" id="L647">            double seriesGap = dataArea.getHeight() * getItemMargin()</span>
+                               / (categoryCount * (seriesCount - 1));
+<span class="nc" id="L649">            double usedWidth = (state.getBarWidth() * seriesCount)</span>
+                               + (seriesGap * (seriesCount - 1));
+            // offset the start of the boxes if the total width used is smaller
+            // than the category width
+<span class="nc" id="L653">            double offset = (categoryWidth - usedWidth) / 2;</span>
+<span class="nc" id="L654">            yy = yy + offset + (row * (state.getBarWidth() + seriesGap));</span>
+<span class="nc" id="L655">        }</span>
+        else {
+            // offset the start of the box if the box width is smaller than
+            // the category width
+<span class="fc" id="L659">            double offset = (categoryWidth - state.getBarWidth()) / 2;</span>
+<span class="fc" id="L660">            yy = yy + offset;</span>
+        }
+
+<span class="fc" id="L663">        g2.setPaint(getItemPaint(row, column));</span>
+<span class="fc" id="L664">        Stroke s = getItemStroke(row, column);</span>
+<span class="fc" id="L665">        g2.setStroke(s);</span>
+
+<span class="fc" id="L667">        RectangleEdge location = plot.getRangeAxisEdge();</span>
+
+<span class="fc" id="L669">        Number xQ1 = bawDataset.getQ1Value(row, column);</span>
+<span class="fc" id="L670">        Number xQ3 = bawDataset.getQ3Value(row, column);</span>
+<span class="fc" id="L671">        Number xMax = bawDataset.getMaxRegularValue(row, column);</span>
+<span class="fc" id="L672">        Number xMin = bawDataset.getMinRegularValue(row, column);</span>
+
+<span class="fc" id="L674">        Shape box = null;</span>
+<span class="pc bpc" id="L675" title="7 of 8 branches missed.">        if (xQ1 != null &amp;&amp; xQ3 != null &amp;&amp; xMax != null &amp;&amp; xMin != null) {</span>
+
+<span class="nc" id="L677">            double xxQ1 = rangeAxis.valueToJava2D(xQ1.doubleValue(), dataArea,</span>
+                    location);
+<span class="nc" id="L679">            double xxQ3 = rangeAxis.valueToJava2D(xQ3.doubleValue(), dataArea,</span>
+                    location);
+<span class="nc" id="L681">            double xxMax = rangeAxis.valueToJava2D(xMax.doubleValue(), dataArea,</span>
+                    location);
+<span class="nc" id="L683">            double xxMin = rangeAxis.valueToJava2D(xMin.doubleValue(), dataArea,</span>
+                    location);
+<span class="nc" id="L685">            double yymid = yy + state.getBarWidth() / 2.0;</span>
+<span class="nc" id="L686">            double halfW = (state.getBarWidth() / 2.0) * this.whiskerWidth;</span>
+
+            // draw the box...
+<span class="nc" id="L689">            box = new Rectangle2D.Double(Math.min(xxQ1, xxQ3), yy,</span>
+                    Math.abs(xxQ1 - xxQ3), state.getBarWidth());
+<span class="nc bnc" id="L691" title="All 2 branches missed.">            if (this.fillBox) {</span>
+<span class="nc" id="L692">                g2.fill(box);</span>
+            }
+
+<span class="nc" id="L695">            Paint outlinePaint = getItemOutlinePaint(row, column);</span>
+<span class="nc bnc" id="L696" title="All 2 branches missed.">            if (this.useOutlinePaintForWhiskers) {</span>
+<span class="nc" id="L697">                g2.setPaint(outlinePaint);</span>
+            }
+            // draw the upper shadow...
+<span class="nc" id="L700">            g2.draw(new Line2D.Double(xxMax, yymid, xxQ3, yymid));</span>
+<span class="nc" id="L701">            g2.draw(new Line2D.Double(xxMax, yymid - halfW, xxMax,</span>
+                    yymid + halfW));
+
+            // draw the lower shadow...
+<span class="nc" id="L705">            g2.draw(new Line2D.Double(xxMin, yymid, xxQ1, yymid));</span>
+<span class="nc" id="L706">            g2.draw(new Line2D.Double(xxMin, yymid - halfW, xxMin,</span>
+                    yy + halfW));
+
+<span class="nc" id="L709">            g2.setStroke(getItemOutlineStroke(row, column));</span>
+<span class="nc" id="L710">            g2.setPaint(outlinePaint);</span>
+<span class="nc" id="L711">            g2.draw(box);</span>
+        }
+
+        // draw mean - SPECIAL AIMS REQUIREMENT...
+<span class="fc" id="L715">        g2.setPaint(this.artifactPaint);</span>
+        double aRadius;                 // average radius
+<span class="pc bpc" id="L717" title="1 of 2 branches missed.">        if (this.meanVisible) {</span>
+<span class="fc" id="L718">            Number xMean = bawDataset.getMeanValue(row, column);</span>
+<span class="pc bpc" id="L719" title="1 of 2 branches missed.">            if (xMean != null) {</span>
+<span class="fc" id="L720">                double xxMean = rangeAxis.valueToJava2D(xMean.doubleValue(),</span>
+                        dataArea, location);
+<span class="fc" id="L722">                aRadius = state.getBarWidth() / 4;</span>
+                // here we check that the average marker will in fact be
+                // visible before drawing it...
+<span class="pc bpc" id="L725" title="2 of 4 branches missed.">                if ((xxMean &gt; (dataArea.getMinX() - aRadius))</span>
+                        &amp;&amp; (xxMean &lt; (dataArea.getMaxX() + aRadius))) {
+<span class="fc" id="L727">                    Ellipse2D.Double avgEllipse = new Ellipse2D.Double(xxMean</span>
+                            - aRadius, yy + aRadius, aRadius * 2, aRadius * 2);
+<span class="fc" id="L729">                    g2.fill(avgEllipse);</span>
+<span class="fc" id="L730">                    g2.draw(avgEllipse);</span>
+                }
+            }
+        }
+
+        // draw median...
+<span class="pc bpc" id="L736" title="1 of 2 branches missed.">        if (this.medianVisible) {</span>
+<span class="fc" id="L737">            Number xMedian = bawDataset.getMedianValue(row, column);</span>
+<span class="pc bpc" id="L738" title="1 of 2 branches missed.">            if (xMedian != null) {</span>
+<span class="fc" id="L739">                double xxMedian = rangeAxis.valueToJava2D(xMedian.doubleValue(),</span>
+                        dataArea, location);
+<span class="fc" id="L741">                g2.draw(new Line2D.Double(xxMedian, yy, xxMedian,</span>
+                        yy + state.getBarWidth()));
+            }
+        }
+
+        // collect entity and tool tip information...
+<span class="pc bpc" id="L747" title="2 of 4 branches missed.">        if (state.getInfo() != null &amp;&amp; box != null) {</span>
+<span class="nc" id="L748">            EntityCollection entities = state.getEntityCollection();</span>
+<span class="nc bnc" id="L749" title="All 2 branches missed.">            if (entities != null) {</span>
+<span class="nc" id="L750">                addItemEntity(entities, dataset, row, column, box);</span>
+            }
+        }
+
+<span class="fc" id="L754">    }</span>
+
+    /**
+     * Draws the visual representation of a single data item when the plot has
+     * a vertical orientation.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the area within which the plot is being drawn.
+     * @param plot  the plot (can be used to obtain standard color information
+     *              etc).
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the dataset (must be an instance of
+     *                 {@link BoxAndWhiskerCategoryDataset}).
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     */
+    public void drawVerticalItem(Graphics2D g2, CategoryItemRendererState state,
+        Rectangle2D dataArea, CategoryPlot plot, CategoryAxis domainAxis,
+        ValueAxis rangeAxis, CategoryDataset dataset, int row, int column) {
+
+<span class="fc" id="L776">        BoxAndWhiskerCategoryDataset bawDataset</span>
+                = (BoxAndWhiskerCategoryDataset) dataset;
+
+<span class="fc" id="L779">        double categoryEnd = domainAxis.getCategoryEnd(column,</span>
+                getColumnCount(), dataArea, plot.getDomainAxisEdge());
+<span class="fc" id="L781">        double categoryStart = domainAxis.getCategoryStart(column,</span>
+                getColumnCount(), dataArea, plot.getDomainAxisEdge());
+<span class="fc" id="L783">        double categoryWidth = categoryEnd - categoryStart;</span>
+
+<span class="fc" id="L785">        double xx = categoryStart;</span>
+<span class="fc" id="L786">        int seriesCount = getRowCount();</span>
+<span class="fc" id="L787">        int categoryCount = getColumnCount();</span>
+
+<span class="pc bpc" id="L789" title="1 of 2 branches missed.">        if (seriesCount &gt; 1) {</span>
+<span class="nc" id="L790">            double seriesGap = dataArea.getWidth() * getItemMargin()</span>
+                               / (categoryCount * (seriesCount - 1));
+<span class="nc" id="L792">            double usedWidth = (state.getBarWidth() * seriesCount)</span>
+                               + (seriesGap * (seriesCount - 1));
+            // offset the start of the boxes if the total width used is smaller
+            // than the category width
+<span class="nc" id="L796">            double offset = (categoryWidth - usedWidth) / 2;</span>
+<span class="nc" id="L797">            xx = xx + offset + (row * (state.getBarWidth() + seriesGap));</span>
+<span class="nc" id="L798">        }</span>
+        else {
+            // offset the start of the box if the box width is smaller than the
+            // category width
+<span class="fc" id="L802">            double offset = (categoryWidth - state.getBarWidth()) / 2;</span>
+<span class="fc" id="L803">            xx = xx + offset;</span>
+        }
+
+        double yyAverage;
+        double yyOutlier;
+
+<span class="fc" id="L809">        Paint itemPaint = getItemPaint(row, column);</span>
+<span class="fc" id="L810">        g2.setPaint(itemPaint);</span>
+<span class="fc" id="L811">        Stroke s = getItemStroke(row, column);</span>
+<span class="fc" id="L812">        g2.setStroke(s);</span>
+
+<span class="fc" id="L814">        double aRadius = 0;                 // average radius</span>
+
+<span class="fc" id="L816">        RectangleEdge location = plot.getRangeAxisEdge();</span>
+
+<span class="fc" id="L818">        Number yQ1 = bawDataset.getQ1Value(row, column);</span>
+<span class="fc" id="L819">        Number yQ3 = bawDataset.getQ3Value(row, column);</span>
+<span class="fc" id="L820">        Number yMax = bawDataset.getMaxRegularValue(row, column);</span>
+<span class="fc" id="L821">        Number yMin = bawDataset.getMinRegularValue(row, column);</span>
+<span class="fc" id="L822">        Shape box = null;</span>
+<span class="fc bfc" id="L823" title="All 8 branches covered.">        if (yQ1 != null &amp;&amp; yQ3 != null &amp;&amp; yMax != null &amp;&amp; yMin != null) {</span>
+
+<span class="fc" id="L825">            double yyQ1 = rangeAxis.valueToJava2D(yQ1.doubleValue(), dataArea,</span>
+                    location);
+<span class="fc" id="L827">            double yyQ3 = rangeAxis.valueToJava2D(yQ3.doubleValue(), dataArea,</span>
+                    location);
+<span class="fc" id="L829">            double yyMax = rangeAxis.valueToJava2D(yMax.doubleValue(),</span>
+                    dataArea, location);
+<span class="fc" id="L831">            double yyMin = rangeAxis.valueToJava2D(yMin.doubleValue(),</span>
+                    dataArea, location);
+<span class="fc" id="L833">            double xxmid = xx + state.getBarWidth() / 2.0;</span>
+<span class="fc" id="L834">            double halfW = (state.getBarWidth() / 2.0) * this.whiskerWidth;</span>
+
+            // draw the body...
+<span class="fc" id="L837">            box = new Rectangle2D.Double(xx, Math.min(yyQ1, yyQ3),</span>
+                    state.getBarWidth(), Math.abs(yyQ1 - yyQ3));
+<span class="pc bpc" id="L839" title="1 of 2 branches missed.">            if (this.fillBox) {</span>
+<span class="fc" id="L840">                g2.fill(box);</span>
+            }
+
+<span class="fc" id="L843">            Paint outlinePaint = getItemOutlinePaint(row, column);</span>
+<span class="pc bpc" id="L844" title="1 of 2 branches missed.">            if (this.useOutlinePaintForWhiskers) {</span>
+<span class="nc" id="L845">                g2.setPaint(outlinePaint);</span>
+            }
+            // draw the upper shadow...
+<span class="fc" id="L848">            g2.draw(new Line2D.Double(xxmid, yyMax, xxmid, yyQ3));</span>
+<span class="fc" id="L849">            g2.draw(new Line2D.Double(xxmid - halfW, yyMax, xxmid + halfW, yyMax));</span>
+
+            // draw the lower shadow...
+<span class="fc" id="L852">            g2.draw(new Line2D.Double(xxmid, yyMin, xxmid, yyQ1));</span>
+<span class="fc" id="L853">            g2.draw(new Line2D.Double(xxmid - halfW, yyMin, xxmid + halfW, yyMin));</span>
+
+<span class="fc" id="L855">            g2.setStroke(getItemOutlineStroke(row, column));</span>
+<span class="fc" id="L856">            g2.setPaint(outlinePaint);</span>
+<span class="fc" id="L857">            g2.draw(box);</span>
+        }
+
+<span class="fc" id="L860">        g2.setPaint(this.artifactPaint);</span>
+
+        // draw mean - SPECIAL AIMS REQUIREMENT...
+<span class="pc bpc" id="L863" title="1 of 2 branches missed.">        if (this.meanVisible) {</span>
+<span class="fc" id="L864">            Number yMean = bawDataset.getMeanValue(row, column);</span>
+<span class="fc bfc" id="L865" title="All 2 branches covered.">            if (yMean != null) {</span>
+<span class="fc" id="L866">                yyAverage = rangeAxis.valueToJava2D(yMean.doubleValue(),</span>
+                        dataArea, location);
+<span class="fc" id="L868">                aRadius = state.getBarWidth() / 4;</span>
+                // here we check that the average marker will in fact be
+                // visible before drawing it...
+<span class="pc bpc" id="L871" title="2 of 4 branches missed.">                if ((yyAverage &gt; (dataArea.getMinY() - aRadius))</span>
+                        &amp;&amp; (yyAverage &lt; (dataArea.getMaxY() + aRadius))) {
+<span class="fc" id="L873">                    Ellipse2D.Double avgEllipse = new Ellipse2D.Double(</span>
+                            xx + aRadius, yyAverage - aRadius, aRadius * 2,
+                            aRadius * 2);
+<span class="fc" id="L876">                    g2.fill(avgEllipse);</span>
+<span class="fc" id="L877">                    g2.draw(avgEllipse);</span>
+                }
+            }
+        }
+
+        // draw median...
+<span class="pc bpc" id="L883" title="1 of 2 branches missed.">        if (this.medianVisible) {</span>
+<span class="fc" id="L884">            Number yMedian = bawDataset.getMedianValue(row, column);</span>
+<span class="pc bpc" id="L885" title="1 of 2 branches missed.">            if (yMedian != null) {</span>
+<span class="fc" id="L886">                double yyMedian = rangeAxis.valueToJava2D(</span>
+                        yMedian.doubleValue(), dataArea, location);
+<span class="fc" id="L888">                g2.draw(new Line2D.Double(xx, yyMedian, </span>
+                        xx + state.getBarWidth(), yyMedian));
+            }
+        }
+
+        // draw yOutliers...
+<span class="fc" id="L894">        double maxAxisValue = rangeAxis.valueToJava2D(</span>
+                rangeAxis.getUpperBound(), dataArea, location) + aRadius;
+<span class="fc" id="L896">        double minAxisValue = rangeAxis.valueToJava2D(</span>
+                rangeAxis.getLowerBound(), dataArea, location) - aRadius;
+
+<span class="fc" id="L899">        g2.setPaint(itemPaint);</span>
+
+        // draw outliers
+<span class="fc" id="L902">        double oRadius = state.getBarWidth() / 3;    // outlier radius</span>
+<span class="fc" id="L903">        List outliers = new ArrayList();</span>
+<span class="fc" id="L904">        OutlierListCollection outlierListCollection</span>
+                = new OutlierListCollection();
+
+        // From outlier array sort out which are outliers and put these into a
+        // list If there are any farouts, set the flag on the
+        // OutlierListCollection
+<span class="fc" id="L910">        List yOutliers = bawDataset.getOutliers(row, column);</span>
+<span class="fc bfc" id="L911" title="All 2 branches covered.">        if (yOutliers != null) {</span>
+<span class="pc bpc" id="L912" title="1 of 2 branches missed.">            for (int i = 0; i &lt; yOutliers.size(); i++) {</span>
+<span class="nc" id="L913">                double outlier = ((Number) yOutliers.get(i)).doubleValue();</span>
+<span class="nc" id="L914">                Number minOutlier = bawDataset.getMinOutlier(row, column);</span>
+<span class="nc" id="L915">                Number maxOutlier = bawDataset.getMaxOutlier(row, column);</span>
+<span class="nc" id="L916">                Number minRegular = bawDataset.getMinRegularValue(row, column);</span>
+<span class="nc" id="L917">                Number maxRegular = bawDataset.getMaxRegularValue(row, column);</span>
+<span class="nc bnc" id="L918" title="All 2 branches missed.">                if (outlier &gt; maxOutlier.doubleValue()) {</span>
+<span class="nc" id="L919">                    outlierListCollection.setHighFarOut(true);</span>
+                }
+<span class="nc bnc" id="L921" title="All 2 branches missed.">                else if (outlier &lt; minOutlier.doubleValue()) {</span>
+<span class="nc" id="L922">                    outlierListCollection.setLowFarOut(true);</span>
+                }
+<span class="nc bnc" id="L924" title="All 2 branches missed.">                else if (outlier &gt; maxRegular.doubleValue()) {</span>
+<span class="nc" id="L925">                    yyOutlier = rangeAxis.valueToJava2D(outlier, dataArea,</span>
+                            location);
+<span class="nc" id="L927">                    outliers.add(new Outlier(xx + state.getBarWidth() / 2.0,</span>
+                            yyOutlier, oRadius));
+                }
+<span class="nc bnc" id="L930" title="All 2 branches missed.">                else if (outlier &lt; minRegular.doubleValue()) {</span>
+<span class="nc" id="L931">                    yyOutlier = rangeAxis.valueToJava2D(outlier, dataArea,</span>
+                            location);
+<span class="nc" id="L933">                    outliers.add(new Outlier(xx + state.getBarWidth() / 2.0,</span>
+                            yyOutlier, oRadius));
+                }
+<span class="nc" id="L936">                Collections.sort(outliers);</span>
+            }
+
+            // Process outliers. Each outlier is either added to the
+            // appropriate outlier list or a new outlier list is made
+<span class="pc bpc" id="L941" title="1 of 2 branches missed.">            for (Iterator iterator = outliers.iterator(); iterator.hasNext();) {</span>
+<span class="nc" id="L942">                Outlier outlier = (Outlier) iterator.next();</span>
+<span class="nc" id="L943">                outlierListCollection.add(outlier);</span>
+<span class="nc" id="L944">            }</span>
+
+<span class="fc" id="L946">            for (Iterator iterator = outlierListCollection.iterator();</span>
+<span class="pc bpc" id="L947" title="1 of 2 branches missed.">                     iterator.hasNext();) {</span>
+<span class="nc" id="L948">                OutlierList list = (OutlierList) iterator.next();</span>
+<span class="nc" id="L949">                Outlier outlier = list.getAveragedOutlier();</span>
+<span class="nc" id="L950">                Point2D point = outlier.getPoint();</span>
+
+<span class="nc bnc" id="L952" title="All 2 branches missed.">                if (list.isMultiple()) {</span>
+<span class="nc" id="L953">                    drawMultipleEllipse(point, state.getBarWidth(), oRadius,</span>
+                            g2);
+                }
+                else {
+<span class="nc" id="L957">                    drawEllipse(point, oRadius, g2);</span>
+                }
+<span class="nc" id="L959">            }</span>
+
+            // draw farout indicators
+<span class="pc bpc" id="L962" title="1 of 2 branches missed.">            if (outlierListCollection.isHighFarOut()) {</span>
+<span class="nc" id="L963">                drawHighFarOut(aRadius / 2.0, g2,</span>
+                        xx + state.getBarWidth() / 2.0, maxAxisValue);
+            }
+
+<span class="pc bpc" id="L967" title="1 of 2 branches missed.">            if (outlierListCollection.isLowFarOut()) {</span>
+<span class="nc" id="L968">                drawLowFarOut(aRadius / 2.0, g2,</span>
+                        xx + state.getBarWidth() / 2.0, minAxisValue);
+            }
+        }
+        // collect entity and tool tip information...
+<span class="pc bpc" id="L973" title="1 of 4 branches missed.">        if (state.getInfo() != null &amp;&amp; box != null) {</span>
+<span class="fc" id="L974">            EntityCollection entities = state.getEntityCollection();</span>
+<span class="fc bfc" id="L975" title="All 2 branches covered.">            if (entities != null) {</span>
+<span class="fc" id="L976">                addItemEntity(entities, dataset, row, column, box);</span>
+            }
+        }
+
+<span class="fc" id="L980">    }</span>
+
+    /**
+     * Draws a dot to represent an outlier.
+     *
+     * @param point  the location.
+     * @param oRadius  the radius.
+     * @param g2  the graphics device.
+     */
+    private void drawEllipse(Point2D point, double oRadius, Graphics2D g2) {
+<span class="nc" id="L990">        Ellipse2D dot = new Ellipse2D.Double(point.getX() + oRadius / 2,</span>
+                point.getY(), oRadius, oRadius);
+<span class="nc" id="L992">        g2.draw(dot);</span>
+<span class="nc" id="L993">    }</span>
+
+    /**
+     * Draws two dots to represent the average value of more than one outlier.
+     *
+     * @param point  the location
+     * @param boxWidth  the box width.
+     * @param oRadius  the radius.
+     * @param g2  the graphics device.
+     */
+    private void drawMultipleEllipse(Point2D point, double boxWidth,
+                                     double oRadius, Graphics2D g2)  {
+
+<span class="nc" id="L1006">        Ellipse2D dot1 = new Ellipse2D.Double(point.getX() - (boxWidth / 2)</span>
+                + oRadius, point.getY(), oRadius, oRadius);
+<span class="nc" id="L1008">        Ellipse2D dot2 = new Ellipse2D.Double(point.getX() + (boxWidth / 2),</span>
+                point.getY(), oRadius, oRadius);
+<span class="nc" id="L1010">        g2.draw(dot1);</span>
+<span class="nc" id="L1011">        g2.draw(dot2);</span>
+<span class="nc" id="L1012">    }</span>
+
+    /**
+     * Draws a triangle to indicate the presence of far-out values.
+     *
+     * @param aRadius  the radius.
+     * @param g2  the graphics device.
+     * @param xx  the x coordinate.
+     * @param m  the y coordinate.
+     */
+    private void drawHighFarOut(double aRadius, Graphics2D g2, double xx,
+                                double m) {
+<span class="nc" id="L1024">        double side = aRadius * 2;</span>
+<span class="nc" id="L1025">        g2.draw(new Line2D.Double(xx - side, m + side, xx + side, m + side));</span>
+<span class="nc" id="L1026">        g2.draw(new Line2D.Double(xx - side, m + side, xx, m));</span>
+<span class="nc" id="L1027">        g2.draw(new Line2D.Double(xx + side, m + side, xx, m));</span>
+<span class="nc" id="L1028">    }</span>
+
+    /**
+     * Draws a triangle to indicate the presence of far-out values.
+     *
+     * @param aRadius  the radius.
+     * @param g2  the graphics device.
+     * @param xx  the x coordinate.
+     * @param m  the y coordinate.
+     */
+    private void drawLowFarOut(double aRadius, Graphics2D g2, double xx,
+                               double m) {
+<span class="nc" id="L1040">        double side = aRadius * 2;</span>
+<span class="nc" id="L1041">        g2.draw(new Line2D.Double(xx - side, m - side, xx + side, m - side));</span>
+<span class="nc" id="L1042">        g2.draw(new Line2D.Double(xx - side, m - side, xx, m));</span>
+<span class="nc" id="L1043">        g2.draw(new Line2D.Double(xx + side, m - side, xx, m));</span>
+<span class="nc" id="L1044">    }</span>
+
+    /**
+     * Tests this renderer for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L1055" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L1056">            return true;</span>
+        }
+<span class="pc bpc" id="L1058" title="1 of 2 branches missed.">        if (!(obj instanceof BoxAndWhiskerRenderer)) {</span>
+<span class="nc" id="L1059">            return false;</span>
+        }
+<span class="fc" id="L1061">        BoxAndWhiskerRenderer that = (BoxAndWhiskerRenderer) obj;</span>
+<span class="fc bfc" id="L1062" title="All 2 branches covered.">        if (this.fillBox != that.fillBox) {</span>
+<span class="fc" id="L1063">            return false;</span>
+        }
+<span class="fc bfc" id="L1065" title="All 2 branches covered.">        if (this.itemMargin != that.itemMargin) {</span>
+<span class="fc" id="L1066">            return false;</span>
+        }
+<span class="fc bfc" id="L1068" title="All 2 branches covered.">        if (this.maximumBarWidth != that.maximumBarWidth) {</span>
+<span class="fc" id="L1069">            return false;</span>
+        }
+<span class="fc bfc" id="L1071" title="All 2 branches covered.">        if (this.meanVisible != that.meanVisible) {</span>
+<span class="fc" id="L1072">            return false;</span>
+        }
+<span class="fc bfc" id="L1074" title="All 2 branches covered.">        if (this.medianVisible != that.medianVisible) {</span>
+<span class="fc" id="L1075">            return false;</span>
+        }
+<span class="pc bpc" id="L1077" title="1 of 2 branches missed.">        if (this.useOutlinePaintForWhiskers</span>
+                != that.useOutlinePaintForWhiskers) {
+<span class="nc" id="L1079">            return false;</span>
+        }
+<span class="pc bpc" id="L1081" title="1 of 2 branches missed.">        if (this.whiskerWidth != that.whiskerWidth) {</span>
+<span class="nc" id="L1082">            return false;</span>
+        }
+<span class="fc bfc" id="L1084" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.artifactPaint, that.artifactPaint)) {</span>
+<span class="fc" id="L1085">            return false;</span>
+        }
+<span class="fc" id="L1087">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L1098">        stream.defaultWriteObject();</span>
+<span class="fc" id="L1099">        SerialUtilities.writePaint(this.artifactPaint, stream);</span>
+<span class="fc" id="L1100">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+            throws IOException, ClassNotFoundException {
+<span class="fc" id="L1112">        stream.defaultReadObject();</span>
+<span class="fc" id="L1113">        this.artifactPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L1114">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

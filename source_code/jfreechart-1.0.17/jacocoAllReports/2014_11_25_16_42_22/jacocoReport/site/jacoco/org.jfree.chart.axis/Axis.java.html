@@ -1,0 +1,1725 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Axis.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.axis</a> &gt; <span class="el_source">Axis.java</span></div><h1>Axis.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ---------
+ * Axis.java
+ * ---------
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   Bill Kelemen;
+ *                   Nicolas Brodu;
+ *                   Peter Kolb (patches 1934255 and 2603321);
+ *                   Andrew Mickish (patch 1870189);
+ *
+ * Changes
+ * -------
+ * 21-Aug-2001 : Added standard header, fixed DOS encoding problem (DG);
+ * 18-Sep-2001 : Updated header (DG);
+ * 07-Nov-2001 : Allow null axis labels (DG);
+ *             : Added default font values (DG);
+ * 13-Nov-2001 : Modified the setPlot() method to check compatibility between
+ *               the axis and the plot (DG);
+ * 30-Nov-2001 : Changed default font from &quot;Arial&quot; --&gt; &quot;SansSerif&quot; (DG);
+ * 06-Dec-2001 : Allow null in setPlot() method (BK);
+ * 06-Mar-2002 : Added AxisConstants interface (DG);
+ * 23-Apr-2002 : Added a visible property.  Moved drawVerticalString to
+ *               RefineryUtilities.  Added fixedDimension property for use in
+ *               combined plots (DG);
+ * 25-Jun-2002 : Removed unnecessary imports (DG);
+ * 05-Sep-2002 : Added attribute for tick mark paint (DG);
+ * 18-Sep-2002 : Fixed errors reported by Checkstyle (DG);
+ * 07-Nov-2002 : Added attributes to control the inside and outside length of
+ *               the tick marks (DG);
+ * 08-Nov-2002 : Moved to new package com.jrefinery.chart.axis (DG);
+ * 18-Nov-2002 : Added axis location to refreshTicks() parameters (DG);
+ * 15-Jan-2003 : Removed monolithic constructor (DG);
+ * 17-Jan-2003 : Moved plot classes to separate package (DG);
+ * 26-Mar-2003 : Implemented Serializable (DG);
+ * 03-Jul-2003 : Modified reserveSpace method (DG);
+ * 13-Aug-2003 : Implemented Cloneable (DG);
+ * 11-Sep-2003 : Took care of listeners while cloning (NB);
+ * 29-Oct-2003 : Added workaround for font alignment in PDF output (DG);
+ * 06-Nov-2003 : Modified refreshTicks() signature (DG);
+ * 06-Jan-2004 : Added axis line attributes (DG);
+ * 16-Mar-2004 : Added plot state to draw() method (DG);
+ * 07-Apr-2004 : Modified text bounds calculation (DG);
+ * 18-May-2004 : Eliminated AxisConstants.java (DG);
+ * 30-Sep-2004 : Moved drawRotatedString() from RefineryUtilities --&gt;
+ *               TextUtilities (DG);
+ * 04-Oct-2004 : Modified getLabelEnclosure() method to treat an empty String
+ *               the same way as a null string - see bug 1026521 (DG);
+ * 21-Apr-2005 : Replaced Insets with RectangleInsets (DG);
+ * 26-Apr-2005 : Removed LOGGER (DG);
+ * 01-Jun-2005 : Added hasListener() method for unit testing (DG);
+ * 08-Jun-2005 : Fixed equals() method to handle GradientPaint (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 22-Aug-2006 : API doc updates (DG);
+ * 06-Jun-2008 : Added setTickLabelInsets(RectangleInsets, boolean) (DG);
+ * 25-Sep-2008 : Added minor tick support, see patch 1934255 by Peter Kolb (DG);
+ * 26-Sep-2008 : Added fireChangeEvent() method (DG);
+ * 19-Mar-2009 : Added entity support - see patch 2603321 by Peter Kolb (DG);
+ * 02-Jul-2013 : Use ParamChecks (DG);
+ * 01-Aug-2013 : Added attributedLabel override to support superscripts,
+ *               subscripts and more (DG);
+ */
+
+package org.jfree.chart.axis;
+
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.font.TextLayout;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.Line2D;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.text.AttributedString;
+import java.util.Arrays;
+import java.util.EventListener;
+import java.util.List;
+
+import javax.swing.event.EventListenerList;
+
+import org.jfree.chart.entity.AxisEntity;
+import org.jfree.chart.entity.EntityCollection;
+import org.jfree.chart.event.AxisChangeEvent;
+import org.jfree.chart.event.AxisChangeListener;
+import org.jfree.chart.plot.Plot;
+import org.jfree.chart.plot.PlotRenderingInfo;
+import org.jfree.chart.util.AttrStringUtils;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.io.SerialUtilities;
+import org.jfree.text.TextUtilities;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.ui.RectangleInsets;
+import org.jfree.ui.TextAnchor;
+import org.jfree.util.AttributedStringUtilities;
+import org.jfree.util.ObjectUtilities;
+import org.jfree.util.PaintUtilities;
+
+/**
+ * The base class for all axes in JFreeChart.  Subclasses are divided into
+ * those that display values ({@link ValueAxis}) and those that display
+ * categories ({@link CategoryAxis}).
+ */
+public abstract class Axis implements Cloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = 7719289504573298271L;
+
+    /** The default axis visibility. */
+    public static final boolean DEFAULT_AXIS_VISIBLE = true;
+
+    /** The default axis label font. */
+<span class="fc" id="L146">    public static final Font DEFAULT_AXIS_LABEL_FONT = new Font(</span>
+            &quot;SansSerif&quot;, Font.PLAIN, 12);
+
+    /** The default axis label paint. */
+<span class="fc" id="L150">    public static final Paint DEFAULT_AXIS_LABEL_PAINT = Color.black;</span>
+
+    /** The default axis label insets. */
+<span class="fc" id="L153">    public static final RectangleInsets DEFAULT_AXIS_LABEL_INSETS</span>
+            = new RectangleInsets(3.0, 3.0, 3.0, 3.0);
+
+    /** The default axis line paint. */
+<span class="fc" id="L157">    public static final Paint DEFAULT_AXIS_LINE_PAINT = Color.gray;</span>
+
+    /** The default axis line stroke. */
+<span class="fc" id="L160">    public static final Stroke DEFAULT_AXIS_LINE_STROKE = new BasicStroke(1.0f);</span>
+
+    /** The default tick labels visibility. */
+    public static final boolean DEFAULT_TICK_LABELS_VISIBLE = true;
+
+    /** The default tick label font. */
+<span class="fc" id="L166">    public static final Font DEFAULT_TICK_LABEL_FONT = new Font(&quot;SansSerif&quot;,</span>
+            Font.PLAIN, 10);
+
+    /** The default tick label paint. */
+<span class="fc" id="L170">    public static final Paint DEFAULT_TICK_LABEL_PAINT = Color.black;</span>
+
+    /** The default tick label insets. */
+<span class="fc" id="L173">    public static final RectangleInsets DEFAULT_TICK_LABEL_INSETS</span>
+            = new RectangleInsets(2.0, 4.0, 2.0, 4.0);
+
+    /** The default tick marks visible. */
+    public static final boolean DEFAULT_TICK_MARKS_VISIBLE = true;
+
+    /** The default tick stroke. */
+<span class="fc" id="L180">    public static final Stroke DEFAULT_TICK_MARK_STROKE = new BasicStroke(1);</span>
+
+    /** The default tick paint. */
+<span class="fc" id="L183">    public static final Paint DEFAULT_TICK_MARK_PAINT = Color.gray;</span>
+
+    /** The default tick mark inside length. */
+    public static final float DEFAULT_TICK_MARK_INSIDE_LENGTH = 0.0f;
+
+    /** The default tick mark outside length. */
+    public static final float DEFAULT_TICK_MARK_OUTSIDE_LENGTH = 2.0f;
+
+    /** A flag indicating whether or not the axis is visible. */
+    private boolean visible;
+
+    /** The label for the axis. */
+    private String label;
+    
+    /** 
+     * An attributed label for the axis (overrides label if non-null).
+     * We have to use this override method to preserve the API compatibility.
+     */
+    private transient AttributedString attributedLabel;
+
+    /** The font for displaying the axis label. */
+    private Font labelFont;
+
+    /** The paint for drawing the axis label. */
+    private transient Paint labelPaint;
+
+    /** The insets for the axis label. */
+    private RectangleInsets labelInsets;
+
+    /** The label angle. */
+    private double labelAngle;
+    
+    /** The axis label location (new in 1.0.16). */
+    private AxisLabelLocation labelLocation;
+
+    /** A flag that controls whether or not the axis line is visible. */
+    private boolean axisLineVisible;
+
+    /** The stroke used for the axis line. */
+    private transient Stroke axisLineStroke;
+
+    /** The paint used for the axis line. */
+    private transient Paint axisLinePaint;
+
+    /**
+     * A flag that indicates whether or not tick labels are visible for the
+     * axis.
+     */
+    private boolean tickLabelsVisible;
+
+    /** The font used to display the tick labels. */
+    private Font tickLabelFont;
+
+    /** The color used to display the tick labels. */
+    private transient Paint tickLabelPaint;
+
+    /** The blank space around each tick label. */
+    private RectangleInsets tickLabelInsets;
+
+    /**
+     * A flag that indicates whether or not major tick marks are visible for
+     * the axis.
+     */
+    private boolean tickMarksVisible;
+
+    /**
+     * The length of the major tick mark inside the data area (zero
+     * permitted).
+     */
+    private float tickMarkInsideLength;
+
+    /**
+     * The length of the major tick mark outside the data area (zero
+     * permitted).
+     */
+    private float tickMarkOutsideLength;
+
+    /**
+     * A flag that indicates whether or not minor tick marks are visible for the
+     * axis.
+     *
+     * @since 1.0.12
+     */
+    private boolean minorTickMarksVisible;
+
+    /**
+     * The length of the minor tick mark inside the data area (zero permitted).
+     *
+     * @since 1.0.12
+     */
+    private float minorTickMarkInsideLength;
+
+    /**
+     * The length of the minor tick mark outside the data area (zero permitted).
+     *
+     * @since 1.0.12
+     */
+    private float minorTickMarkOutsideLength;
+
+    /** The stroke used to draw tick marks. */
+    private transient Stroke tickMarkStroke;
+
+    /** The paint used to draw tick marks. */
+    private transient Paint tickMarkPaint;
+
+    /** The fixed (horizontal or vertical) dimension for the axis. */
+    private double fixedDimension;
+
+    /**
+     * A reference back to the plot that the axis is assigned to (can be
+     * &lt;code&gt;null&lt;/code&gt;).
+     */
+    private transient Plot plot;
+
+    /** Storage for registered listeners. */
+    private transient EventListenerList listenerList;
+
+    /**
+     * Constructs an axis, using default values where necessary.
+     *
+     * @param label  the axis label (&lt;code&gt;null&lt;/code&gt; permitted).
+     */
+<span class="fc" id="L305">    protected Axis(String label) {</span>
+
+<span class="fc" id="L307">        this.label = label;</span>
+<span class="fc" id="L308">        this.visible = DEFAULT_AXIS_VISIBLE;</span>
+<span class="fc" id="L309">        this.labelFont = DEFAULT_AXIS_LABEL_FONT;</span>
+<span class="fc" id="L310">        this.labelPaint = DEFAULT_AXIS_LABEL_PAINT;</span>
+<span class="fc" id="L311">        this.labelInsets = DEFAULT_AXIS_LABEL_INSETS;</span>
+<span class="fc" id="L312">        this.labelAngle = 0.0;</span>
+<span class="fc" id="L313">        this.labelLocation = AxisLabelLocation.MIDDLE;</span>
+
+<span class="fc" id="L315">        this.axisLineVisible = true;</span>
+<span class="fc" id="L316">        this.axisLinePaint = DEFAULT_AXIS_LINE_PAINT;</span>
+<span class="fc" id="L317">        this.axisLineStroke = DEFAULT_AXIS_LINE_STROKE;</span>
+
+<span class="fc" id="L319">        this.tickLabelsVisible = DEFAULT_TICK_LABELS_VISIBLE;</span>
+<span class="fc" id="L320">        this.tickLabelFont = DEFAULT_TICK_LABEL_FONT;</span>
+<span class="fc" id="L321">        this.tickLabelPaint = DEFAULT_TICK_LABEL_PAINT;</span>
+<span class="fc" id="L322">        this.tickLabelInsets = DEFAULT_TICK_LABEL_INSETS;</span>
+
+<span class="fc" id="L324">        this.tickMarksVisible = DEFAULT_TICK_MARKS_VISIBLE;</span>
+<span class="fc" id="L325">        this.tickMarkStroke = DEFAULT_TICK_MARK_STROKE;</span>
+<span class="fc" id="L326">        this.tickMarkPaint = DEFAULT_TICK_MARK_PAINT;</span>
+<span class="fc" id="L327">        this.tickMarkInsideLength = DEFAULT_TICK_MARK_INSIDE_LENGTH;</span>
+<span class="fc" id="L328">        this.tickMarkOutsideLength = DEFAULT_TICK_MARK_OUTSIDE_LENGTH;</span>
+
+<span class="fc" id="L330">        this.minorTickMarksVisible = false;</span>
+<span class="fc" id="L331">        this.minorTickMarkInsideLength = 0.0f;</span>
+<span class="fc" id="L332">        this.minorTickMarkOutsideLength = 2.0f;</span>
+
+<span class="fc" id="L334">        this.plot = null;</span>
+
+<span class="fc" id="L336">        this.listenerList = new EventListenerList();</span>
+<span class="fc" id="L337">    }</span>
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; if the axis is visible, and
+     * &lt;code&gt;false&lt;/code&gt; otherwise.
+     *
+     * @return A boolean.
+     *
+     * @see #setVisible(boolean)
+     */
+    public boolean isVisible() {
+<span class="fc" id="L348">        return this.visible;</span>
+    }
+
+    /**
+     * Sets a flag that controls whether or not the axis is visible and sends
+     * an {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param flag  the flag.
+     *
+     * @see #isVisible()
+     */
+    public void setVisible(boolean flag) {
+<span class="nc bnc" id="L360" title="All 2 branches missed.">        if (flag != this.visible) {</span>
+<span class="nc" id="L361">            this.visible = flag;</span>
+<span class="nc" id="L362">            fireChangeEvent();</span>
+        }
+<span class="nc" id="L364">    }</span>
+
+    /**
+     * Returns the label for the axis.
+     *
+     * @return The label for the axis (&lt;code&gt;null&lt;/code&gt; possible).
+     *
+     * @see #getLabelFont()
+     * @see #getLabelPaint()
+     * @see #setLabel(String)
+     */
+    public String getLabel() {
+<span class="fc" id="L376">        return this.label;</span>
+    }
+
+    /**
+     * Sets the label for the axis and sends an {@link AxisChangeEvent} to all
+     * registered listeners.
+     *
+     * @param label  the new label (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @see #getLabel()
+     * @see #setLabelFont(Font)
+     * @see #setLabelPaint(Paint)
+     */
+    public void setLabel(String label) {
+<span class="fc" id="L390">        this.label = label;</span>
+<span class="fc" id="L391">        fireChangeEvent();</span>
+<span class="fc" id="L392">    }</span>
+
+    /**
+     * Returns the attributed label (the returned value is a copy, so 
+     * modifying it will not impact the state of the axis).  The default value 
+     * is &lt;code&gt;null&lt;/code&gt;.
+     * 
+     * @return The attributed label (possibly &lt;code&gt;null&lt;/code&gt;).
+     * 
+     * @since 1.0.16
+     */
+    public AttributedString getAttributedLabel() {
+<span class="pc bpc" id="L404" title="1 of 2 branches missed.">        if (this.attributedLabel != null) {</span>
+<span class="nc" id="L405">            return new AttributedString(this.attributedLabel.getIterator());</span>
+        } else {
+<span class="fc" id="L407">            return null;</span>
+        }
+    }
+    
+    /**
+     * Sets the attributed label for the axis and sends an 
+     * {@link AxisChangeEvent} to all registered listeners.  This is a 
+     * convenience method that converts the string into an 
+     * &lt;code&gt;AttributedString&lt;/code&gt; using the current font attributes.
+     * 
+     * @param label  the label (&lt;code&gt;null&lt;/&lt;code&gt; permitted).
+     * 
+     * @since 1.0.16
+     */
+    public void setAttributedLabel(String label) {
+<span class="nc" id="L422">        setAttributedLabel(createAttributedLabel(label));    </span>
+<span class="nc" id="L423">    }</span>
+    
+    /**
+     * Sets the attributed label for the axis and sends an 
+     * {@link AxisChangeEvent} to all registered listeners.
+     * 
+     * @param label  the label (&lt;code&gt;null&lt;/code&gt; permitted).
+     * 
+     * @since 1.0.16
+     */
+    public void setAttributedLabel(AttributedString label) {
+<span class="nc bnc" id="L434" title="All 2 branches missed.">        if (label != null) {</span>
+<span class="nc" id="L435">            this.attributedLabel = new AttributedString(label.getIterator());</span>
+        } else {
+<span class="nc" id="L437">            this.attributedLabel = null;</span>
+        }
+<span class="nc" id="L439">        fireChangeEvent();</span>
+<span class="nc" id="L440">    }</span>
+    
+    /**
+     * Creates and returns an &lt;code&gt;AttributedString&lt;/code&gt; with the specified
+     * text and the labelFont and labelPaint applied as attributes.
+     * 
+     * @param label  the label (&lt;code&gt;null&lt;/code&gt; permitted).
+     * 
+     * @return An attributed string or &lt;code&gt;null&lt;/code&gt;.
+     * 
+     * @since 1.0.16
+     */
+    public AttributedString createAttributedLabel(String label) {
+<span class="nc bnc" id="L453" title="All 2 branches missed.">        if (label == null) {</span>
+<span class="nc" id="L454">            return null;</span>
+        }
+<span class="nc" id="L456">        AttributedString s = new AttributedString(label);</span>
+<span class="nc" id="L457">        s.addAttributes(this.labelFont.getAttributes(), 0, label.length());</span>
+<span class="nc" id="L458">        return s;</span>
+    }
+    
+    /**
+     * Returns the font for the axis label.
+     *
+     * @return The font (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setLabelFont(Font)
+     */
+    public Font getLabelFont() {
+<span class="fc" id="L469">        return this.labelFont;</span>
+    }
+
+    /**
+     * Sets the font for the axis label and sends an {@link AxisChangeEvent}
+     * to all registered listeners.
+     *
+     * @param font  the font (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getLabelFont()
+     */
+    public void setLabelFont(Font font) {
+<span class="fc" id="L481">        ParamChecks.nullNotPermitted(font, &quot;font&quot;);</span>
+<span class="pc bpc" id="L482" title="1 of 2 branches missed.">        if (!this.labelFont.equals(font)) {</span>
+<span class="fc" id="L483">            this.labelFont = font;</span>
+<span class="fc" id="L484">            fireChangeEvent();</span>
+        }
+<span class="fc" id="L486">    }</span>
+
+    /**
+     * Returns the color/shade used to draw the axis label.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setLabelPaint(Paint)
+     */
+    public Paint getLabelPaint() {
+<span class="fc" id="L496">        return this.labelPaint;</span>
+    }
+
+    /**
+     * Sets the paint used to draw the axis label and sends an
+     * {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getLabelPaint()
+     */
+    public void setLabelPaint(Paint paint) {
+<span class="fc" id="L508">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L509">        this.labelPaint = paint;</span>
+<span class="fc" id="L510">        fireChangeEvent();</span>
+<span class="fc" id="L511">    }</span>
+
+    /**
+     * Returns the insets for the label (that is, the amount of blank space
+     * that should be left around the label).
+     *
+     * @return The label insets (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setLabelInsets(RectangleInsets)
+     */
+    public RectangleInsets getLabelInsets() {
+<span class="fc" id="L522">        return this.labelInsets;</span>
+    }
+
+    /**
+     * Sets the insets for the axis label, and sends an {@link AxisChangeEvent}
+     * to all registered listeners.
+     *
+     * @param insets  the insets (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getLabelInsets()
+     */
+    public void setLabelInsets(RectangleInsets insets) {
+<span class="nc" id="L534">        setLabelInsets(insets, true);</span>
+<span class="nc" id="L535">    }</span>
+
+    /**
+     * Sets the insets for the axis label, and sends an {@link AxisChangeEvent}
+     * to all registered listeners.
+     *
+     * @param insets  the insets (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param notify  notify listeners?
+     *
+     * @since 1.0.10
+     */
+    public void setLabelInsets(RectangleInsets insets, boolean notify) {
+<span class="nc" id="L547">        ParamChecks.nullNotPermitted(insets, &quot;insets&quot;);</span>
+<span class="nc bnc" id="L548" title="All 2 branches missed.">        if (!insets.equals(this.labelInsets)) {</span>
+<span class="nc" id="L549">            this.labelInsets = insets;</span>
+<span class="nc bnc" id="L550" title="All 2 branches missed.">            if (notify) {</span>
+<span class="nc" id="L551">                fireChangeEvent();</span>
+            }
+        }
+<span class="nc" id="L554">    }</span>
+
+    /**
+     * Returns the angle of the axis label.
+     *
+     * @return The angle (in radians).
+     *
+     * @see #setLabelAngle(double)
+     */
+    public double getLabelAngle() {
+<span class="fc" id="L564">        return this.labelAngle;</span>
+    }
+
+    /**
+     * Sets the angle for the label and sends an {@link AxisChangeEvent} to all
+     * registered listeners.
+     *
+     * @param angle  the angle (in radians).
+     *
+     * @see #getLabelAngle()
+     */
+    public void setLabelAngle(double angle) {
+<span class="nc" id="L576">        this.labelAngle = angle;</span>
+<span class="nc" id="L577">        fireChangeEvent();</span>
+<span class="nc" id="L578">    }</span>
+    
+    /**
+     * Returns the location of the axis label.  The default is
+     * {@link AxisLabelLocation#MIDDLE}.
+     * 
+     * @return The location of the axis label (never &lt;code&gt;null&lt;/code&gt;). 
+     * 
+     * @since 1.0.16
+     */
+    public AxisLabelLocation getLabelLocation() {
+<span class="nc" id="L589">        return this.labelLocation;</span>
+    }
+    
+    /**
+     * Sets the axis label location and sends an {@link AxisChangeEvent} to
+     * all registered listeners.
+     * 
+     * @param location  the new location (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * 
+     * @since 1.0.16
+     */
+    public void setLabelLocation(AxisLabelLocation location) {
+<span class="nc" id="L601">        ParamChecks.nullNotPermitted(location, &quot;location&quot;);</span>
+<span class="nc" id="L602">        this.labelLocation = location;</span>
+<span class="nc" id="L603">        fireChangeEvent();</span>
+<span class="nc" id="L604">    }</span>
+
+    /**
+     * A flag that controls whether or not the axis line is drawn.
+     *
+     * @return A boolean.
+     *
+     * @see #getAxisLinePaint()
+     * @see #getAxisLineStroke()
+     * @see #setAxisLineVisible(boolean)
+     */
+    public boolean isAxisLineVisible() {
+<span class="fc" id="L616">        return this.axisLineVisible;</span>
+    }
+
+    /**
+     * Sets a flag that controls whether or not the axis line is visible and
+     * sends an {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param visible  the flag.
+     *
+     * @see #isAxisLineVisible()
+     * @see #setAxisLinePaint(Paint)
+     * @see #setAxisLineStroke(Stroke)
+     */
+    public void setAxisLineVisible(boolean visible) {
+<span class="fc" id="L630">        this.axisLineVisible = visible;</span>
+<span class="fc" id="L631">        fireChangeEvent();</span>
+<span class="fc" id="L632">    }</span>
+
+    /**
+     * Returns the paint used to draw the axis line.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setAxisLinePaint(Paint)
+     */
+    public Paint getAxisLinePaint() {
+<span class="fc" id="L642">        return this.axisLinePaint;</span>
+    }
+
+    /**
+     * Sets the paint used to draw the axis line and sends an
+     * {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getAxisLinePaint()
+     */
+    public void setAxisLinePaint(Paint paint) {
+<span class="fc" id="L654">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L655">        this.axisLinePaint = paint;</span>
+<span class="fc" id="L656">        fireChangeEvent();</span>
+<span class="fc" id="L657">    }</span>
+
+    /**
+     * Returns the stroke used to draw the axis line.
+     *
+     * @return The stroke (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setAxisLineStroke(Stroke)
+     */
+    public Stroke getAxisLineStroke() {
+<span class="fc" id="L667">        return this.axisLineStroke;</span>
+    }
+
+    /**
+     * Sets the stroke used to draw the axis line and sends an
+     * {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param stroke  the stroke (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getAxisLineStroke()
+     */
+    public void setAxisLineStroke(Stroke stroke) {
+<span class="fc" id="L679">        ParamChecks.nullNotPermitted(stroke, &quot;stroke&quot;);</span>
+<span class="fc" id="L680">        this.axisLineStroke = stroke;</span>
+<span class="fc" id="L681">        fireChangeEvent();</span>
+<span class="fc" id="L682">    }</span>
+
+    /**
+     * Returns a flag indicating whether or not the tick labels are visible.
+     *
+     * @return The flag.
+     *
+     * @see #getTickLabelFont()
+     * @see #getTickLabelPaint()
+     * @see #setTickLabelsVisible(boolean)
+     */
+    public boolean isTickLabelsVisible() {
+<span class="fc" id="L694">        return this.tickLabelsVisible;</span>
+    }
+
+    /**
+     * Sets the flag that determines whether or not the tick labels are
+     * visible and sends an {@link AxisChangeEvent} to all registered
+     * listeners.
+     *
+     * @param flag  the flag.
+     *
+     * @see #isTickLabelsVisible()
+     * @see #setTickLabelFont(Font)
+     * @see #setTickLabelPaint(Paint)
+     */
+    public void setTickLabelsVisible(boolean flag) {
+
+<span class="nc bnc" id="L710" title="All 2 branches missed.">        if (flag != this.tickLabelsVisible) {</span>
+<span class="nc" id="L711">            this.tickLabelsVisible = flag;</span>
+<span class="nc" id="L712">            fireChangeEvent();</span>
+        }
+
+<span class="nc" id="L715">    }</span>
+
+    /**
+     * Returns the flag that indicates whether or not the minor tick marks are
+     * showing.
+     *
+     * @return The flag that indicates whether or not the minor tick marks are
+     *         showing.
+     *
+     * @see #setMinorTickMarksVisible(boolean)
+     *
+     * @since 1.0.12
+     */
+    public boolean isMinorTickMarksVisible() {
+<span class="fc" id="L729">        return this.minorTickMarksVisible;</span>
+    }
+
+    /**
+     * Sets the flag that indicates whether or not the minor tick marks are 
+     * showing and sends an {@link AxisChangeEvent} to all registered
+     * listeners.
+     *
+     * @param flag  the flag.
+     *
+     * @see #isMinorTickMarksVisible()
+     *
+     * @since 1.0.12
+     */
+    public void setMinorTickMarksVisible(boolean flag) {
+<span class="nc bnc" id="L744" title="All 2 branches missed.">        if (flag != this.minorTickMarksVisible) {</span>
+<span class="nc" id="L745">            this.minorTickMarksVisible = flag;</span>
+<span class="nc" id="L746">            fireChangeEvent();</span>
+        }
+<span class="nc" id="L748">    }</span>
+
+    /**
+     * Returns the font used for the tick labels (if showing).
+     *
+     * @return The font (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setTickLabelFont(Font)
+     */
+    public Font getTickLabelFont() {
+<span class="fc" id="L758">        return this.tickLabelFont;</span>
+    }
+
+    /**
+     * Sets the font for the tick labels and sends an {@link AxisChangeEvent}
+     * to all registered listeners.
+     *
+     * @param font  the font (&lt;code&gt;null&lt;/code&gt; not allowed).
+     *
+     * @see #getTickLabelFont()
+     */
+    public void setTickLabelFont(Font font) {
+<span class="fc" id="L770">        ParamChecks.nullNotPermitted(font, &quot;font&quot;);</span>
+<span class="pc bpc" id="L771" title="1 of 2 branches missed.">        if (!this.tickLabelFont.equals(font)) {</span>
+<span class="fc" id="L772">            this.tickLabelFont = font;</span>
+<span class="fc" id="L773">            fireChangeEvent();</span>
+        }
+<span class="fc" id="L775">    }</span>
+
+    /**
+     * Returns the color/shade used for the tick labels.
+     *
+     * @return The paint used for the tick labels.
+     *
+     * @see #setTickLabelPaint(Paint)
+     */
+    public Paint getTickLabelPaint() {
+<span class="fc" id="L785">        return this.tickLabelPaint;</span>
+    }
+
+    /**
+     * Sets the paint used to draw tick labels (if they are showing) and
+     * sends an {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getTickLabelPaint()
+     */
+    public void setTickLabelPaint(Paint paint) {
+<span class="fc" id="L797">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L798">        this.tickLabelPaint = paint;</span>
+<span class="fc" id="L799">        fireChangeEvent();</span>
+<span class="fc" id="L800">    }</span>
+
+    /**
+     * Returns the insets for the tick labels.
+     *
+     * @return The insets (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setTickLabelInsets(RectangleInsets)
+     */
+    public RectangleInsets getTickLabelInsets() {
+<span class="fc" id="L810">        return this.tickLabelInsets;</span>
+    }
+
+    /**
+     * Sets the insets for the tick labels and sends an {@link AxisChangeEvent}
+     * to all registered listeners.
+     *
+     * @param insets  the insets (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getTickLabelInsets()
+     */
+    public void setTickLabelInsets(RectangleInsets insets) {
+<span class="nc" id="L822">        ParamChecks.nullNotPermitted(insets, &quot;insets&quot;);</span>
+<span class="nc bnc" id="L823" title="All 2 branches missed.">        if (!this.tickLabelInsets.equals(insets)) {</span>
+<span class="nc" id="L824">            this.tickLabelInsets = insets;</span>
+<span class="nc" id="L825">            fireChangeEvent();</span>
+        }
+<span class="nc" id="L827">    }</span>
+
+    /**
+     * Returns the flag that indicates whether or not the tick marks are
+     * showing.
+     *
+     * @return The flag that indicates whether or not the tick marks are
+     *         showing.
+     *
+     * @see #setTickMarksVisible(boolean)
+     */
+    public boolean isTickMarksVisible() {
+<span class="fc" id="L839">        return this.tickMarksVisible;</span>
+    }
+
+    /**
+     * Sets the flag that indicates whether or not the tick marks are showing
+     * and sends an {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param flag  the flag.
+     *
+     * @see #isTickMarksVisible()
+     */
+    public void setTickMarksVisible(boolean flag) {
+<span class="nc bnc" id="L851" title="All 2 branches missed.">        if (flag != this.tickMarksVisible) {</span>
+<span class="nc" id="L852">            this.tickMarksVisible = flag;</span>
+<span class="nc" id="L853">            fireChangeEvent();</span>
+        }
+<span class="nc" id="L855">    }</span>
+
+    /**
+     * Returns the inside length of the tick marks.
+     *
+     * @return The length.
+     *
+     * @see #getTickMarkOutsideLength()
+     * @see #setTickMarkInsideLength(float)
+     */
+    public float getTickMarkInsideLength() {
+<span class="fc" id="L866">        return this.tickMarkInsideLength;</span>
+    }
+
+    /**
+     * Sets the inside length of the tick marks and sends
+     * an {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param length  the new length.
+     *
+     * @see #getTickMarkInsideLength()
+     */
+    public void setTickMarkInsideLength(float length) {
+<span class="nc" id="L878">        this.tickMarkInsideLength = length;</span>
+<span class="nc" id="L879">        fireChangeEvent();</span>
+<span class="nc" id="L880">    }</span>
+
+    /**
+     * Returns the outside length of the tick marks.
+     *
+     * @return The length.
+     *
+     * @see #getTickMarkInsideLength()
+     * @see #setTickMarkOutsideLength(float)
+     */
+    public float getTickMarkOutsideLength() {
+<span class="fc" id="L891">        return this.tickMarkOutsideLength;</span>
+    }
+
+    /**
+     * Sets the outside length of the tick marks and sends
+     * an {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param length  the new length.
+     *
+     * @see #getTickMarkInsideLength()
+     */
+    public void setTickMarkOutsideLength(float length) {
+<span class="nc" id="L903">        this.tickMarkOutsideLength = length;</span>
+<span class="nc" id="L904">        fireChangeEvent();</span>
+<span class="nc" id="L905">    }</span>
+
+    /**
+     * Returns the stroke used to draw tick marks.
+     *
+     * @return The stroke (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setTickMarkStroke(Stroke)
+     */
+    public Stroke getTickMarkStroke() {
+<span class="fc" id="L915">        return this.tickMarkStroke;</span>
+    }
+
+    /**
+     * Sets the stroke used to draw tick marks and sends
+     * an {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param stroke  the stroke (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getTickMarkStroke()
+     */
+    public void setTickMarkStroke(Stroke stroke) {
+<span class="nc" id="L927">        ParamChecks.nullNotPermitted(stroke, &quot;stroke&quot;);</span>
+<span class="nc bnc" id="L928" title="All 2 branches missed.">        if (!this.tickMarkStroke.equals(stroke)) {</span>
+<span class="nc" id="L929">            this.tickMarkStroke = stroke;</span>
+<span class="nc" id="L930">            fireChangeEvent();</span>
+        }
+<span class="nc" id="L932">    }</span>
+
+    /**
+     * Returns the paint used to draw tick marks (if they are showing).
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setTickMarkPaint(Paint)
+     */
+    public Paint getTickMarkPaint() {
+<span class="fc" id="L942">        return this.tickMarkPaint;</span>
+    }
+
+    /**
+     * Sets the paint used to draw tick marks and sends an
+     * {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getTickMarkPaint()
+     */
+    public void setTickMarkPaint(Paint paint) {
+<span class="nc" id="L954">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="nc" id="L955">        this.tickMarkPaint = paint;</span>
+<span class="nc" id="L956">        fireChangeEvent();</span>
+<span class="nc" id="L957">    }</span>
+
+    /**
+     * Returns the inside length of the minor tick marks.
+     *
+     * @return The length.
+     *
+     * @see #getMinorTickMarkOutsideLength()
+     * @see #setMinorTickMarkInsideLength(float)
+     *
+     * @since 1.0.12
+     */
+    public float getMinorTickMarkInsideLength() {
+<span class="nc" id="L970">        return this.minorTickMarkInsideLength;</span>
+    }
+
+    /**
+     * Sets the inside length of the minor tick marks and sends
+     * an {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param length  the new length.
+     *
+     * @see #getMinorTickMarkInsideLength()
+     *
+     * @since 1.0.12
+     */
+    public void setMinorTickMarkInsideLength(float length) {
+<span class="nc" id="L984">        this.minorTickMarkInsideLength = length;</span>
+<span class="nc" id="L985">        fireChangeEvent();</span>
+<span class="nc" id="L986">    }</span>
+
+    /**
+     * Returns the outside length of the minor tick marks.
+     *
+     * @return The length.
+     *
+     * @see #getMinorTickMarkInsideLength()
+     * @see #setMinorTickMarkOutsideLength(float)
+     *
+     * @since 1.0.12
+     */
+    public float getMinorTickMarkOutsideLength() {
+<span class="nc" id="L999">        return this.minorTickMarkOutsideLength;</span>
+    }
+
+    /**
+     * Sets the outside length of the minor tick marks and sends
+     * an {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param length  the new length.
+     *
+     * @see #getMinorTickMarkInsideLength()
+     *
+     * @since 1.0.12
+     */
+    public void setMinorTickMarkOutsideLength(float length) {
+<span class="nc" id="L1013">        this.minorTickMarkOutsideLength = length;</span>
+<span class="nc" id="L1014">        fireChangeEvent();</span>
+<span class="nc" id="L1015">    }</span>
+
+    /**
+     * Returns the plot that the axis is assigned to.  This method will return
+     * &lt;code&gt;null&lt;/code&gt; if the axis is not currently assigned to a plot.
+     *
+     * @return The plot that the axis is assigned to (possibly
+     *         &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setPlot(Plot)
+     */
+    public Plot getPlot() {
+<span class="fc" id="L1027">        return this.plot;</span>
+    }
+
+    /**
+     * Sets a reference to the plot that the axis is assigned to.
+     * &lt;P&gt;
+     * This method is used internally, you shouldn't need to call it yourself.
+     *
+     * @param plot  the plot.
+     *
+     * @see #getPlot()
+     */
+    public void setPlot(Plot plot) {
+<span class="fc" id="L1040">        this.plot = plot;</span>
+<span class="fc" id="L1041">        configure();</span>
+<span class="fc" id="L1042">    }</span>
+
+    /**
+     * Returns the fixed dimension for the axis.
+     *
+     * @return The fixed dimension.
+     *
+     * @see #setFixedDimension(double)
+     */
+    public double getFixedDimension() {
+<span class="fc" id="L1052">        return this.fixedDimension;</span>
+    }
+
+    /**
+     * Sets the fixed dimension for the axis.
+     * &lt;P&gt;
+     * This is used when combining more than one plot on a chart.  In this case,
+     * there may be several axes that need to have the same height or width so
+     * that they are aligned.  This method is used to fix a dimension for the
+     * axis (the context determines whether the dimension is horizontal or
+     * vertical).
+     *
+     * @param dimension  the fixed dimension.
+     *
+     * @see #getFixedDimension()
+     */
+    public void setFixedDimension(double dimension) {
+<span class="fc" id="L1069">        this.fixedDimension = dimension;</span>
+<span class="fc" id="L1070">    }</span>
+
+    /**
+     * Configures the axis to work with the current plot.  Override this method
+     * to perform any special processing (such as auto-rescaling).
+     */
+    public abstract void configure();
+
+    /**
+     * Estimates the space (height or width) required to draw the axis.
+     *
+     * @param g2  the graphics device.
+     * @param plot  the plot that the axis belongs to.
+     * @param plotArea  the area within which the plot (including axes) should
+     *                  be drawn.
+     * @param edge  the axis location.
+     * @param space  space already reserved.
+     *
+     * @return The space required to draw the axis (including pre-reserved
+     *         space).
+     */
+    public abstract AxisSpace reserveSpace(Graphics2D g2, Plot plot,
+                                           Rectangle2D plotArea,
+                                           RectangleEdge edge,
+                                           AxisSpace space);
+
+    /**
+     * Draws the axis on a Java 2D graphics device (such as the screen or a
+     * printer).
+     *
+     * @param g2  the graphics device (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param cursor  the cursor location (determines where to draw the axis).
+     * @param plotArea  the area within which the axes and plot should be drawn.
+     * @param dataArea  the area within which the data should be drawn.
+     * @param edge  the axis location (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param plotState  collects information about the plot
+     *                   (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return The axis state (never &lt;code&gt;null&lt;/code&gt;).
+     */
+    public abstract AxisState draw(Graphics2D g2,
+                                   double cursor,
+                                   Rectangle2D plotArea,
+                                   Rectangle2D dataArea,
+                                   RectangleEdge edge,
+                                   PlotRenderingInfo plotState);
+
+    /**
+     * Calculates the positions of the ticks for the axis, storing the results
+     * in the tick list (ready for drawing).
+     *
+     * @param g2  the graphics device.
+     * @param state  the axis state.
+     * @param dataArea  the area inside the axes.
+     * @param edge  the edge on which the axis is located.
+     *
+     * @return The list of ticks.
+     */
+    public abstract List refreshTicks(Graphics2D g2, AxisState state,
+            Rectangle2D dataArea, RectangleEdge edge);
+
+    /**
+     * Created an entity for the axis.
+     *
+     * @param cursor  the initial cursor value.
+     * @param state  the axis state after completion of the drawing with a
+     *     possibly updated cursor position.
+     * @param dataArea  the data area.
+     * @param edge  the edge.
+     * @param plotState  the PlotRenderingInfo from which a reference to the
+     *     entity collection can be obtained.
+     *
+     * @since 1.0.13
+     */
+    protected void createAndAddEntity(double cursor, AxisState state,
+            Rectangle2D dataArea, RectangleEdge edge,
+            PlotRenderingInfo plotState) {
+
+<span class="fc bfc" id="L1148" title="All 4 branches covered.">        if (plotState == null || plotState.getOwner() == null) {</span>
+<span class="fc" id="L1149">            return;  // no need to create entity if we can't save it anyways...</span>
+        }
+<span class="fc" id="L1151">        Rectangle2D hotspot = null;</span>
+<span class="fc bfc" id="L1152" title="All 2 branches covered.">        if (edge.equals(RectangleEdge.TOP)) {</span>
+<span class="fc" id="L1153">            hotspot = new Rectangle2D.Double(dataArea.getX(),</span>
+                    state.getCursor(), dataArea.getWidth(),
+                    cursor - state.getCursor());
+        }
+<span class="fc bfc" id="L1157" title="All 2 branches covered.">        else if (edge.equals(RectangleEdge.BOTTOM)) {</span>
+<span class="fc" id="L1158">            hotspot = new Rectangle2D.Double(dataArea.getX(), cursor,</span>
+                    dataArea.getWidth(), state.getCursor() - cursor);
+        }
+<span class="pc bpc" id="L1161" title="1 of 2 branches missed.">        else if (edge.equals(RectangleEdge.LEFT)) {</span>
+<span class="fc" id="L1162">            hotspot = new Rectangle2D.Double(state.getCursor(),</span>
+                    dataArea.getY(), cursor - state.getCursor(),
+                    dataArea.getHeight());
+        }
+<span class="nc bnc" id="L1166" title="All 2 branches missed.">        else if (edge.equals(RectangleEdge.RIGHT)) {</span>
+<span class="nc" id="L1167">            hotspot = new Rectangle2D.Double(cursor, dataArea.getY(),</span>
+                    state.getCursor() - cursor, dataArea.getHeight());
+        }
+<span class="fc" id="L1170">        EntityCollection e = plotState.getOwner().getEntityCollection();</span>
+<span class="pc bpc" id="L1171" title="1 of 2 branches missed.">        if (e != null) {</span>
+<span class="fc" id="L1172">            e.add(new AxisEntity(hotspot, this));</span>
+        }
+<span class="fc" id="L1174">    }</span>
+
+    /**
+     * Registers an object for notification of changes to the axis.
+     *
+     * @param listener  the object that is being registered.
+     *
+     * @see #removeChangeListener(AxisChangeListener)
+     */
+    public void addChangeListener(AxisChangeListener listener) {
+<span class="fc" id="L1184">        this.listenerList.add(AxisChangeListener.class, listener);</span>
+<span class="fc" id="L1185">    }</span>
+
+    /**
+     * Deregisters an object for notification of changes to the axis.
+     *
+     * @param listener  the object to deregister.
+     *
+     * @see #addChangeListener(AxisChangeListener)
+     */
+    public void removeChangeListener(AxisChangeListener listener) {
+<span class="fc" id="L1195">        this.listenerList.remove(AxisChangeListener.class, listener);</span>
+<span class="fc" id="L1196">    }</span>
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; if the specified object is registered with
+     * the dataset as a listener.  Most applications won't need to call this
+     * method, it exists mainly for use by unit testing code.
+     *
+     * @param listener  the listener.
+     *
+     * @return A boolean.
+     */
+    public boolean hasListener(EventListener listener) {
+<span class="fc" id="L1208">        List list = Arrays.asList(this.listenerList.getListenerList());</span>
+<span class="fc" id="L1209">        return list.contains(listener);</span>
+    }
+
+    /**
+     * Notifies all registered listeners that the axis has changed.
+     * The AxisChangeEvent provides information about the change.
+     *
+     * @param event  information about the change to the axis.
+     */
+    protected void notifyListeners(AxisChangeEvent event) {
+<span class="fc" id="L1219">        Object[] listeners = this.listenerList.getListenerList();</span>
+<span class="fc bfc" id="L1220" title="All 2 branches covered.">        for (int i = listeners.length - 2; i &gt;= 0; i -= 2) {</span>
+<span class="pc bpc" id="L1221" title="1 of 2 branches missed.">            if (listeners[i] == AxisChangeListener.class) {</span>
+<span class="fc" id="L1222">                ((AxisChangeListener) listeners[i + 1]).axisChanged(event);</span>
+            }
+        }
+<span class="fc" id="L1225">    }</span>
+
+    /**
+     * Sends an {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @since 1.0.12
+     */
+    protected void fireChangeEvent() {
+<span class="fc" id="L1233">        notifyListeners(new AxisChangeEvent(this));</span>
+<span class="fc" id="L1234">    }</span>
+
+    /**
+     * Returns a rectangle that encloses the axis label.  This is typically
+     * used for layout purposes (it gives the maximum dimensions of the label).
+     *
+     * @param g2  the graphics device.
+     * @param edge  the edge of the plot area along which the axis is measuring.
+     *
+     * @return The enclosing rectangle.
+     */
+    protected Rectangle2D getLabelEnclosure(Graphics2D g2, RectangleEdge edge) {
+<span class="fc" id="L1246">        Rectangle2D result = new Rectangle2D.Double();</span>
+<span class="fc" id="L1247">        Rectangle2D bounds = null;</span>
+<span class="pc bpc" id="L1248" title="1 of 2 branches missed.">        if (this.attributedLabel != null) {</span>
+<span class="nc" id="L1249">            TextLayout layout = new TextLayout(</span>
+                    this.attributedLabel.getIterator(), 
+                    g2.getFontRenderContext());
+<span class="nc" id="L1252">            bounds = layout.getBounds();</span>
+<span class="nc" id="L1253">        } else {</span>
+<span class="fc" id="L1254">            String axisLabel = getLabel();</span>
+<span class="pc bpc" id="L1255" title="2 of 4 branches missed.">            if (axisLabel != null &amp;&amp; !axisLabel.equals(&quot;&quot;)) {</span>
+<span class="fc" id="L1256">                FontMetrics fm = g2.getFontMetrics(getLabelFont());</span>
+<span class="fc" id="L1257">                bounds = TextUtilities.getTextBounds(axisLabel, g2, fm);</span>
+            }
+        }
+<span class="pc bpc" id="L1260" title="1 of 2 branches missed.">        if (bounds != null) {</span>
+<span class="fc" id="L1261">            RectangleInsets insets = getLabelInsets();</span>
+<span class="fc" id="L1262">            bounds = insets.createOutsetRectangle(bounds);</span>
+<span class="fc" id="L1263">            double angle = getLabelAngle();</span>
+<span class="pc bpc" id="L1264" title="1 of 4 branches missed.">            if (edge == RectangleEdge.LEFT || edge == RectangleEdge.RIGHT) {</span>
+<span class="fc" id="L1265">                angle = angle - Math.PI / 2.0;</span>
+            }
+<span class="fc" id="L1267">            double x = bounds.getCenterX();</span>
+<span class="fc" id="L1268">            double y = bounds.getCenterY();</span>
+<span class="fc" id="L1269">            AffineTransform transformer</span>
+                = AffineTransform.getRotateInstance(angle, x, y);
+<span class="fc" id="L1271">            Shape labelBounds = transformer.createTransformedShape(bounds);</span>
+<span class="fc" id="L1272">            result = labelBounds.getBounds2D();</span>
+        }
+<span class="fc" id="L1274">        return result;</span>
+    }
+
+    protected double labelLocationX(AxisLabelLocation location, 
+            Rectangle2D dataArea) {
+<span class="pc bpc" id="L1279" title="1 of 2 branches missed.">        if (location.equals(AxisLabelLocation.HIGH_END)) {</span>
+<span class="nc" id="L1280">            return dataArea.getMaxX();</span>
+        }
+<span class="pc bpc" id="L1282" title="1 of 2 branches missed.">        if (location.equals(AxisLabelLocation.MIDDLE)) {</span>
+<span class="fc" id="L1283">            return dataArea.getCenterX();</span>
+        }
+<span class="nc bnc" id="L1285" title="All 2 branches missed.">        if (location.equals(AxisLabelLocation.LOW_END)) {</span>
+<span class="nc" id="L1286">            return dataArea.getMinX();</span>
+        }
+<span class="nc" id="L1288">        throw new RuntimeException(&quot;Unexpected AxisLabelLocation: &quot; + location);</span>
+    }
+    
+    protected double labelLocationY(AxisLabelLocation location, 
+            Rectangle2D dataArea) {
+<span class="pc bpc" id="L1293" title="1 of 2 branches missed.">        if (location.equals(AxisLabelLocation.HIGH_END)) {</span>
+<span class="nc" id="L1294">            return dataArea.getMinY();</span>
+        }
+<span class="pc bpc" id="L1296" title="1 of 2 branches missed.">        if (location.equals(AxisLabelLocation.MIDDLE)) {</span>
+<span class="fc" id="L1297">            return dataArea.getCenterY();</span>
+        }
+<span class="nc bnc" id="L1299" title="All 2 branches missed.">        if (location.equals(AxisLabelLocation.LOW_END)) {</span>
+<span class="nc" id="L1300">            return dataArea.getMaxY();</span>
+        }
+<span class="nc" id="L1302">        throw new RuntimeException(&quot;Unexpected AxisLabelLocation: &quot; + location);</span>
+    }
+    
+    protected TextAnchor labelAnchorH(AxisLabelLocation location) {
+<span class="pc bpc" id="L1306" title="1 of 2 branches missed.">        if (location.equals(AxisLabelLocation.HIGH_END)) {</span>
+<span class="nc" id="L1307">            return TextAnchor.CENTER_RIGHT;</span>
+        }
+<span class="pc bpc" id="L1309" title="1 of 2 branches missed.">        if (location.equals(AxisLabelLocation.MIDDLE)) {</span>
+<span class="fc" id="L1310">            return TextAnchor.CENTER;</span>
+        }
+<span class="nc bnc" id="L1312" title="All 2 branches missed.">        if (location.equals(AxisLabelLocation.LOW_END)) {</span>
+<span class="nc" id="L1313">            return TextAnchor.CENTER_LEFT;</span>
+        }
+<span class="nc" id="L1315">        throw new RuntimeException(&quot;Unexpected AxisLabelLocation: &quot; + location);</span>
+    }
+    
+    protected TextAnchor labelAnchorV(AxisLabelLocation location) {
+<span class="pc bpc" id="L1319" title="1 of 2 branches missed.">        if (location.equals(AxisLabelLocation.HIGH_END)) {</span>
+<span class="nc" id="L1320">            return TextAnchor.CENTER_RIGHT;</span>
+        }
+<span class="pc bpc" id="L1322" title="1 of 2 branches missed.">        if (location.equals(AxisLabelLocation.MIDDLE)) {</span>
+<span class="fc" id="L1323">            return TextAnchor.CENTER;</span>
+        }
+<span class="nc bnc" id="L1325" title="All 2 branches missed.">        if (location.equals(AxisLabelLocation.LOW_END)) {</span>
+<span class="nc" id="L1326">            return TextAnchor.CENTER_LEFT;</span>
+        }
+<span class="nc" id="L1328">        throw new RuntimeException(&quot;Unexpected AxisLabelLocation: &quot; + location);</span>
+    }
+
+    /**
+     * Draws the axis label.
+     *
+     * @param label  the label text.
+     * @param g2  the graphics device.
+     * @param plotArea  the plot area.
+     * @param dataArea  the area inside the axes.
+     * @param edge  the location of the axis.
+     * @param state  the axis state (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return Information about the axis.
+     */
+    protected AxisState drawLabel(String label, Graphics2D g2,
+            Rectangle2D plotArea, Rectangle2D dataArea, RectangleEdge edge,
+            AxisState state) {
+
+        // it is unlikely that 'state' will be null, but check anyway...
+<span class="fc" id="L1348">        ParamChecks.nullNotPermitted(state, &quot;state&quot;);</span>
+
+<span class="pc bpc" id="L1350" title="2 of 4 branches missed.">        if ((label == null) || (label.equals(&quot;&quot;))) {</span>
+<span class="nc" id="L1351">            return state;</span>
+        }
+
+<span class="fc" id="L1354">        Font font = getLabelFont();</span>
+<span class="fc" id="L1355">        RectangleInsets insets = getLabelInsets();</span>
+<span class="fc" id="L1356">        g2.setFont(font);</span>
+<span class="fc" id="L1357">        g2.setPaint(getLabelPaint());</span>
+<span class="fc" id="L1358">        FontMetrics fm = g2.getFontMetrics();</span>
+<span class="fc" id="L1359">        Rectangle2D labelBounds = TextUtilities.getTextBounds(label, g2, fm);</span>
+
+<span class="fc bfc" id="L1361" title="All 2 branches covered.">        if (edge == RectangleEdge.TOP) {</span>
+<span class="fc" id="L1362">            AffineTransform t = AffineTransform.getRotateInstance(</span>
+                    getLabelAngle(), labelBounds.getCenterX(),
+                    labelBounds.getCenterY());
+<span class="fc" id="L1365">            Shape rotatedLabelBounds = t.createTransformedShape(labelBounds);</span>
+<span class="fc" id="L1366">            labelBounds = rotatedLabelBounds.getBounds2D();</span>
+<span class="fc" id="L1367">            double labelx = labelLocationX(this.labelLocation, dataArea);</span>
+<span class="fc" id="L1368">            double labely = state.getCursor() - insets.getBottom()</span>
+                            - labelBounds.getHeight() / 2.0;
+<span class="fc" id="L1370">            TextAnchor anchor = labelAnchorH(this.labelLocation);</span>
+<span class="fc" id="L1371">            TextUtilities.drawRotatedString(label, g2, (float) labelx,</span>
+                    (float) labely, anchor, getLabelAngle(), TextAnchor.CENTER);
+<span class="fc" id="L1373">            state.cursorUp(insets.getTop() + labelBounds.getHeight()</span>
+                    + insets.getBottom());
+<span class="fc" id="L1375">        }</span>
+<span class="fc bfc" id="L1376" title="All 2 branches covered.">        else if (edge == RectangleEdge.BOTTOM) {</span>
+<span class="fc" id="L1377">            AffineTransform t = AffineTransform.getRotateInstance(</span>
+                    getLabelAngle(), labelBounds.getCenterX(),
+                    labelBounds.getCenterY());
+<span class="fc" id="L1380">            Shape rotatedLabelBounds = t.createTransformedShape(labelBounds);</span>
+<span class="fc" id="L1381">            labelBounds = rotatedLabelBounds.getBounds2D();</span>
+<span class="fc" id="L1382">            double labelx = labelLocationX(this.labelLocation, dataArea);</span>
+<span class="fc" id="L1383">            double labely = state.getCursor()</span>
+                            + insets.getTop() + labelBounds.getHeight() / 2.0;
+<span class="fc" id="L1385">            TextAnchor anchor = labelAnchorH(this.labelLocation);</span>
+<span class="fc" id="L1386">            TextUtilities.drawRotatedString(label, g2, (float) labelx,</span>
+                    (float) labely, anchor, getLabelAngle(), TextAnchor.CENTER);
+<span class="fc" id="L1388">            state.cursorDown(insets.getTop() + labelBounds.getHeight()</span>
+                    + insets.getBottom());
+<span class="fc" id="L1390">        }</span>
+<span class="pc bpc" id="L1391" title="1 of 2 branches missed.">        else if (edge == RectangleEdge.LEFT) {</span>
+<span class="fc" id="L1392">            AffineTransform t = AffineTransform.getRotateInstance(</span>
+                    getLabelAngle() - Math.PI / 2.0, labelBounds.getCenterX(),
+                    labelBounds.getCenterY());
+<span class="fc" id="L1395">            Shape rotatedLabelBounds = t.createTransformedShape(labelBounds);</span>
+<span class="fc" id="L1396">            labelBounds = rotatedLabelBounds.getBounds2D();</span>
+<span class="fc" id="L1397">            double labelx = state.getCursor()</span>
+                            - insets.getRight() - labelBounds.getWidth() / 2.0;
+<span class="fc" id="L1399">            double labely = labelLocationY(this.labelLocation, dataArea);</span>
+<span class="fc" id="L1400">            TextAnchor anchor = labelAnchorV(this.labelLocation);</span>
+<span class="fc" id="L1401">            TextUtilities.drawRotatedString(label, g2, (float) labelx,</span>
+                    (float) labely, anchor, getLabelAngle() - Math.PI / 2.0, 
+                    anchor);
+<span class="fc" id="L1404">            state.cursorLeft(insets.getLeft() + labelBounds.getWidth()</span>
+                    + insets.getRight());
+<span class="fc" id="L1406">        }</span>
+<span class="nc bnc" id="L1407" title="All 2 branches missed.">        else if (edge == RectangleEdge.RIGHT) {</span>
+<span class="nc" id="L1408">            AffineTransform t = AffineTransform.getRotateInstance(</span>
+                    getLabelAngle() + Math.PI / 2.0,
+                    labelBounds.getCenterX(), labelBounds.getCenterY());
+<span class="nc" id="L1411">            Shape rotatedLabelBounds = t.createTransformedShape(labelBounds);</span>
+<span class="nc" id="L1412">            labelBounds = rotatedLabelBounds.getBounds2D();</span>
+<span class="nc" id="L1413">            double labelx = state.getCursor()</span>
+                            + insets.getLeft() + labelBounds.getWidth() / 2.0;
+<span class="nc" id="L1415">            double labely = labelLocationY(this.labelLocation, dataArea);</span>
+<span class="nc" id="L1416">            TextAnchor anchor = labelAnchorV(this.labelLocation);</span>
+<span class="nc" id="L1417">            TextUtilities.drawRotatedString(label, g2, (float) labelx,</span>
+                    (float) labely, anchor, getLabelAngle() + Math.PI / 2.0, 
+                    anchor);
+<span class="nc" id="L1420">            state.cursorRight(insets.getLeft() + labelBounds.getWidth()</span>
+                    + insets.getRight());
+        }
+
+<span class="fc" id="L1424">        return state;</span>
+
+    }
+
+    /**
+     * Draws the axis label.
+     *
+     * @param label  the label text.
+     * @param g2  the graphics device.
+     * @param plotArea  the plot area.
+     * @param dataArea  the area inside the axes.
+     * @param edge  the location of the axis.
+     * @param state  the axis state (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return Information about the axis.
+     * 
+     * @since 1.0.16
+     */
+    protected AxisState drawAttributedLabel(AttributedString label, 
+            Graphics2D g2, Rectangle2D plotArea, Rectangle2D dataArea, 
+            RectangleEdge edge, AxisState state) {
+
+        // it is unlikely that 'state' will be null, but check anyway...
+<span class="nc" id="L1447">        ParamChecks.nullNotPermitted(state, &quot;state&quot;);</span>
+
+<span class="nc bnc" id="L1449" title="All 2 branches missed.">        if (label == null) {</span>
+<span class="nc" id="L1450">            return state;</span>
+        }
+
+<span class="nc" id="L1453">        RectangleInsets insets = getLabelInsets();</span>
+<span class="nc" id="L1454">        g2.setFont(getLabelFont());</span>
+<span class="nc" id="L1455">        g2.setPaint(getLabelPaint());</span>
+<span class="nc" id="L1456">        TextLayout layout = new TextLayout(this.attributedLabel.getIterator(),</span>
+                g2.getFontRenderContext());
+<span class="nc" id="L1458">        Rectangle2D labelBounds = layout.getBounds();</span>
+
+<span class="nc bnc" id="L1460" title="All 2 branches missed.">        if (edge == RectangleEdge.TOP) {</span>
+<span class="nc" id="L1461">            AffineTransform t = AffineTransform.getRotateInstance(</span>
+                    getLabelAngle(), labelBounds.getCenterX(),
+                    labelBounds.getCenterY());
+<span class="nc" id="L1464">            Shape rotatedLabelBounds = t.createTransformedShape(labelBounds);</span>
+<span class="nc" id="L1465">            labelBounds = rotatedLabelBounds.getBounds2D();</span>
+<span class="nc" id="L1466">            double labelx = labelLocationX(this.labelLocation, dataArea);</span>
+<span class="nc" id="L1467">            double labely = state.getCursor() - insets.getBottom()</span>
+                            - labelBounds.getHeight() / 2.0;
+<span class="nc" id="L1469">            TextAnchor anchor = labelAnchorH(this.labelLocation);</span>
+<span class="nc" id="L1470">            AttrStringUtils.drawRotatedString(label, g2, (float) labelx,</span>
+                    (float) labely, anchor, getLabelAngle(), TextAnchor.CENTER);
+<span class="nc" id="L1472">            state.cursorUp(insets.getTop() + labelBounds.getHeight()</span>
+                    + insets.getBottom());
+<span class="nc" id="L1474">        }</span>
+<span class="nc bnc" id="L1475" title="All 2 branches missed.">        else if (edge == RectangleEdge.BOTTOM) {</span>
+<span class="nc" id="L1476">            AffineTransform t = AffineTransform.getRotateInstance(</span>
+                    getLabelAngle(), labelBounds.getCenterX(),
+                    labelBounds.getCenterY());
+<span class="nc" id="L1479">            Shape rotatedLabelBounds = t.createTransformedShape(labelBounds);</span>
+<span class="nc" id="L1480">            labelBounds = rotatedLabelBounds.getBounds2D();</span>
+<span class="nc" id="L1481">            double labelx = labelLocationX(this.labelLocation, dataArea);</span>
+<span class="nc" id="L1482">            double labely = state.getCursor()</span>
+                            + insets.getTop() + labelBounds.getHeight() / 2.0;
+<span class="nc" id="L1484">            TextAnchor anchor = labelAnchorH(this.labelLocation);</span>
+<span class="nc" id="L1485">            AttrStringUtils.drawRotatedString(label, g2, (float) labelx,</span>
+                    (float) labely, anchor, getLabelAngle(), TextAnchor.CENTER);
+<span class="nc" id="L1487">            state.cursorDown(insets.getTop() + labelBounds.getHeight()</span>
+                    + insets.getBottom());
+<span class="nc" id="L1489">        }</span>
+<span class="nc bnc" id="L1490" title="All 2 branches missed.">        else if (edge == RectangleEdge.LEFT) {</span>
+<span class="nc" id="L1491">            AffineTransform t = AffineTransform.getRotateInstance(</span>
+                    getLabelAngle() - Math.PI / 2.0, labelBounds.getCenterX(),
+                    labelBounds.getCenterY());
+<span class="nc" id="L1494">            Shape rotatedLabelBounds = t.createTransformedShape(labelBounds);</span>
+<span class="nc" id="L1495">            labelBounds = rotatedLabelBounds.getBounds2D();</span>
+<span class="nc" id="L1496">            double labelx = state.getCursor()</span>
+                            - insets.getRight() - labelBounds.getWidth() / 2.0;
+<span class="nc" id="L1498">            double labely = labelLocationY(this.labelLocation, dataArea);</span>
+<span class="nc" id="L1499">            TextAnchor anchor = labelAnchorV(this.labelLocation);</span>
+<span class="nc" id="L1500">            AttrStringUtils.drawRotatedString(label, g2, (float) labelx,</span>
+                    (float) labely, anchor, getLabelAngle() - Math.PI / 2.0, 
+                    anchor);
+<span class="nc" id="L1503">            state.cursorLeft(insets.getLeft() + labelBounds.getWidth()</span>
+                    + insets.getRight());
+<span class="nc" id="L1505">        }</span>
+<span class="nc bnc" id="L1506" title="All 2 branches missed.">        else if (edge == RectangleEdge.RIGHT) {</span>
+<span class="nc" id="L1507">            AffineTransform t = AffineTransform.getRotateInstance(</span>
+                    getLabelAngle() + Math.PI / 2.0,
+                    labelBounds.getCenterX(), labelBounds.getCenterY());
+<span class="nc" id="L1510">            Shape rotatedLabelBounds = t.createTransformedShape(labelBounds);</span>
+<span class="nc" id="L1511">            labelBounds = rotatedLabelBounds.getBounds2D();</span>
+<span class="nc" id="L1512">            double labelx = state.getCursor()</span>
+                            + insets.getLeft() + labelBounds.getWidth() / 2.0;
+<span class="nc" id="L1514">            double labely = labelLocationY(this.labelLocation, dataArea);</span>
+<span class="nc" id="L1515">            TextAnchor anchor = labelAnchorV(this.labelLocation);</span>
+<span class="nc" id="L1516">            AttrStringUtils.drawRotatedString(label, g2, (float) labelx,</span>
+                    (float) labely, anchor, getLabelAngle() + Math.PI / 2.0, 
+                    anchor);
+<span class="nc" id="L1519">            state.cursorRight(insets.getLeft() + labelBounds.getWidth()</span>
+                    + insets.getRight());
+        }
+<span class="nc" id="L1522">        return state;</span>
+    }
+
+    /**
+     * Draws an axis line at the current cursor position and edge.
+     *
+     * @param g2  the graphics device.
+     * @param cursor  the cursor position.
+     * @param dataArea  the data area.
+     * @param edge  the edge.
+     */
+    protected void drawAxisLine(Graphics2D g2, double cursor,
+            Rectangle2D dataArea, RectangleEdge edge) {
+
+<span class="fc" id="L1536">        Line2D axisLine = null;</span>
+<span class="pc bpc" id="L1537" title="1 of 2 branches missed.">        if (edge == RectangleEdge.TOP) {</span>
+<span class="nc" id="L1538">            axisLine = new Line2D.Double(dataArea.getX(), cursor,</span>
+                    dataArea.getMaxX(), cursor);
+        }
+<span class="fc bfc" id="L1541" title="All 2 branches covered.">        else if (edge == RectangleEdge.BOTTOM) {</span>
+<span class="fc" id="L1542">            axisLine = new Line2D.Double(dataArea.getX(), cursor,</span>
+                    dataArea.getMaxX(), cursor);
+        }
+<span class="pc bpc" id="L1545" title="1 of 2 branches missed.">        else if (edge == RectangleEdge.LEFT) {</span>
+<span class="fc" id="L1546">            axisLine = new Line2D.Double(cursor, dataArea.getY(), cursor,</span>
+                    dataArea.getMaxY());
+        }
+<span class="nc bnc" id="L1549" title="All 2 branches missed.">        else if (edge == RectangleEdge.RIGHT) {</span>
+<span class="nc" id="L1550">            axisLine = new Line2D.Double(cursor, dataArea.getY(), cursor,</span>
+                    dataArea.getMaxY());
+        }
+<span class="fc" id="L1553">        g2.setPaint(this.axisLinePaint);</span>
+<span class="fc" id="L1554">        g2.setStroke(this.axisLineStroke);</span>
+<span class="fc" id="L1555">        g2.draw(axisLine);</span>
+
+<span class="fc" id="L1557">    }</span>
+
+    /**
+     * Returns a clone of the axis.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException if some component of the axis does
+     *         not support cloning.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L1569">        Axis clone = (Axis) super.clone();</span>
+        // It's up to the plot which clones up to restore the correct references
+<span class="fc" id="L1571">        clone.plot = null;</span>
+<span class="fc" id="L1572">        clone.listenerList = new EventListenerList();</span>
+<span class="fc" id="L1573">        return clone;</span>
+    }
+
+    /**
+     * Tests this axis for equality with another object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L1585" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L1586">            return true;</span>
+        }
+<span class="pc bpc" id="L1588" title="1 of 2 branches missed.">        if (!(obj instanceof Axis)) {</span>
+<span class="nc" id="L1589">            return false;</span>
+        }
+<span class="fc" id="L1591">        Axis that = (Axis) obj;</span>
+<span class="pc bpc" id="L1592" title="1 of 2 branches missed.">        if (this.visible != that.visible) {</span>
+<span class="nc" id="L1593">            return false;</span>
+        }
+<span class="fc bfc" id="L1595" title="All 2 branches covered.">        if (!ObjectUtilities.equal(this.label, that.label)) {</span>
+<span class="fc" id="L1596">            return false;</span>
+        }
+<span class="pc bpc" id="L1598" title="1 of 2 branches missed.">        if (!AttributedStringUtilities.equal(this.attributedLabel, </span>
+                that.attributedLabel)) {
+<span class="nc" id="L1600">            return false;</span>
+        }
+<span class="pc bpc" id="L1602" title="1 of 2 branches missed.">        if (!ObjectUtilities.equal(this.labelFont, that.labelFont)) {</span>
+<span class="nc" id="L1603">            return false;</span>
+        }
+<span class="pc bpc" id="L1605" title="1 of 2 branches missed.">        if (!PaintUtilities.equal(this.labelPaint, that.labelPaint)) {</span>
+<span class="nc" id="L1606">            return false;</span>
+        }
+<span class="pc bpc" id="L1608" title="1 of 2 branches missed.">        if (!ObjectUtilities.equal(this.labelInsets, that.labelInsets)) {</span>
+<span class="nc" id="L1609">            return false;</span>
+        }
+<span class="pc bpc" id="L1611" title="1 of 2 branches missed.">        if (this.labelAngle != that.labelAngle) {</span>
+<span class="nc" id="L1612">            return false;</span>
+        }
+<span class="pc bpc" id="L1614" title="1 of 2 branches missed.">        if (!this.labelLocation.equals(that.labelLocation)) {</span>
+<span class="nc" id="L1615">            return false;</span>
+        }
+<span class="fc bfc" id="L1617" title="All 2 branches covered.">        if (this.axisLineVisible != that.axisLineVisible) {</span>
+<span class="fc" id="L1618">            return false;</span>
+        }
+<span class="fc bfc" id="L1620" title="All 2 branches covered.">        if (!ObjectUtilities.equal(this.axisLineStroke, that.axisLineStroke)) {</span>
+<span class="fc" id="L1621">            return false;</span>
+        }
+<span class="fc bfc" id="L1623" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.axisLinePaint, that.axisLinePaint)) {</span>
+<span class="fc" id="L1624">            return false;</span>
+        }
+<span class="pc bpc" id="L1626" title="1 of 2 branches missed.">        if (this.tickLabelsVisible != that.tickLabelsVisible) {</span>
+<span class="nc" id="L1627">            return false;</span>
+        }
+<span class="pc bpc" id="L1629" title="1 of 2 branches missed.">        if (!ObjectUtilities.equal(this.tickLabelFont, that.tickLabelFont)) {</span>
+<span class="nc" id="L1630">            return false;</span>
+        }
+<span class="pc bpc" id="L1632" title="1 of 2 branches missed.">        if (!PaintUtilities.equal(this.tickLabelPaint, that.tickLabelPaint)) {</span>
+<span class="nc" id="L1633">            return false;</span>
+        }
+<span class="pc bpc" id="L1635" title="1 of 2 branches missed.">        if (!ObjectUtilities.equal(</span>
+            this.tickLabelInsets, that.tickLabelInsets
+        )) {
+<span class="nc" id="L1638">            return false;</span>
+        }
+<span class="pc bpc" id="L1640" title="1 of 2 branches missed.">        if (this.tickMarksVisible != that.tickMarksVisible) {</span>
+<span class="nc" id="L1641">            return false;</span>
+        }
+<span class="pc bpc" id="L1643" title="1 of 2 branches missed.">        if (this.tickMarkInsideLength != that.tickMarkInsideLength) {</span>
+<span class="nc" id="L1644">            return false;</span>
+        }
+<span class="pc bpc" id="L1646" title="1 of 2 branches missed.">        if (this.tickMarkOutsideLength != that.tickMarkOutsideLength) {</span>
+<span class="nc" id="L1647">            return false;</span>
+        }
+<span class="pc bpc" id="L1649" title="1 of 2 branches missed.">        if (!PaintUtilities.equal(this.tickMarkPaint, that.tickMarkPaint)) {</span>
+<span class="nc" id="L1650">            return false;</span>
+        }
+<span class="pc bpc" id="L1652" title="1 of 2 branches missed.">        if (!ObjectUtilities.equal(this.tickMarkStroke, that.tickMarkStroke)) {</span>
+<span class="nc" id="L1653">            return false;</span>
+        }
+<span class="pc bpc" id="L1655" title="1 of 2 branches missed.">        if (this.minorTickMarksVisible != that.minorTickMarksVisible) {</span>
+<span class="nc" id="L1656">            return false;</span>
+        }
+<span class="pc bpc" id="L1658" title="1 of 2 branches missed.">        if (this.minorTickMarkInsideLength != that.minorTickMarkInsideLength) {</span>
+<span class="nc" id="L1659">            return false;</span>
+        }
+<span class="pc bpc" id="L1661" title="1 of 2 branches missed.">        if (this.minorTickMarkOutsideLength</span>
+                != that.minorTickMarkOutsideLength) {
+<span class="nc" id="L1663">            return false;</span>
+        }
+<span class="pc bpc" id="L1665" title="1 of 2 branches missed.">        if (this.fixedDimension != that.fixedDimension) {</span>
+<span class="nc" id="L1666">            return false;</span>
+        }
+<span class="fc" id="L1668">        return true;</span>
+    }
+
+    /**
+     * Returns a hash code for this instance.
+     * 
+     * @return A hash code. 
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L1678">        int hash = 3;</span>
+<span class="pc bpc" id="L1679" title="1 of 2 branches missed.">        if (this.label != null) {</span>
+<span class="fc" id="L1680">            hash = 83 * hash + this.label.hashCode();</span>
+        }
+<span class="fc" id="L1682">        return hash;</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L1693">        stream.defaultWriteObject();</span>
+<span class="fc" id="L1694">        SerialUtilities.writeAttributedString(this.attributedLabel, stream);</span>
+<span class="fc" id="L1695">        SerialUtilities.writePaint(this.labelPaint, stream);</span>
+<span class="fc" id="L1696">        SerialUtilities.writePaint(this.tickLabelPaint, stream);</span>
+<span class="fc" id="L1697">        SerialUtilities.writeStroke(this.axisLineStroke, stream);</span>
+<span class="fc" id="L1698">        SerialUtilities.writePaint(this.axisLinePaint, stream);</span>
+<span class="fc" id="L1699">        SerialUtilities.writeStroke(this.tickMarkStroke, stream);</span>
+<span class="fc" id="L1700">        SerialUtilities.writePaint(this.tickMarkPaint, stream);</span>
+<span class="fc" id="L1701">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+        throws IOException, ClassNotFoundException {
+<span class="fc" id="L1713">        stream.defaultReadObject();</span>
+<span class="fc" id="L1714">        this.attributedLabel = SerialUtilities.readAttributedString(stream);</span>
+<span class="fc" id="L1715">        this.labelPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L1716">        this.tickLabelPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L1717">        this.axisLineStroke = SerialUtilities.readStroke(stream);</span>
+<span class="fc" id="L1718">        this.axisLinePaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L1719">        this.tickMarkStroke = SerialUtilities.readStroke(stream);</span>
+<span class="fc" id="L1720">        this.tickMarkPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L1721">        this.listenerList = new EventListenerList();</span>
+<span class="fc" id="L1722">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

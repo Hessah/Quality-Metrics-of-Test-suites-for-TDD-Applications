@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>LineIterator.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-io-2.4</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.io</a> &gt; <span class="el_source">LineIterator.java</span></div><h1>LineIterator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ * 
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.io;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.Reader;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+
+/**
+ * An Iterator over the lines in a &lt;code&gt;Reader&lt;/code&gt;.
+ * &lt;p&gt;
+ * &lt;code&gt;LineIterator&lt;/code&gt; holds a reference to an open &lt;code&gt;Reader&lt;/code&gt;.
+ * When you have finished with the iterator you should close the reader
+ * to free internal resources. This can be done by closing the reader directly,
+ * or by calling the {@link #close()} or {@link #closeQuietly(LineIterator)}
+ * method on the iterator.
+ * &lt;p&gt;
+ * The recommended usage pattern is:
+ * &lt;pre&gt;
+ * LineIterator it = FileUtils.lineIterator(file, &quot;UTF-8&quot;);
+ * try {
+ *   while (it.hasNext()) {
+ *     String line = it.nextLine();
+ *     // do something with line
+ *   }
+ * } finally {
+ *   it.close();
+ * }
+ * &lt;/pre&gt;
+ *
+ * @version $Id: LineIterator.java 1307461 2012-03-30 15:12:29Z ggregory $
+ * @since 1.2
+ */
+public class LineIterator implements Iterator&lt;String&gt; {
+
+    // N.B. This class deliberately does not implement Iterable, see https://issues.apache.org/jira/browse/IO-181
+    
+    /** The reader that is being read. */
+    private final BufferedReader bufferedReader;
+    /** The current line. */
+    private String cachedLine;
+    /** A flag indicating if the iterator has been fully read. */
+<span class="fc" id="L59">    private boolean finished = false;</span>
+
+    /**
+     * Constructs an iterator of the lines for a &lt;code&gt;Reader&lt;/code&gt;.
+     *
+     * @param reader the &lt;code&gt;Reader&lt;/code&gt; to read from, not null
+     * @throws IllegalArgumentException if the reader is null
+     */
+<span class="fc" id="L67">    public LineIterator(final Reader reader) throws IllegalArgumentException {</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (reader == null) {</span>
+<span class="fc" id="L69">            throw new IllegalArgumentException(&quot;Reader must not be null&quot;);</span>
+        }
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (reader instanceof BufferedReader) {</span>
+<span class="fc" id="L72">            bufferedReader = (BufferedReader) reader;</span>
+        } else {
+<span class="fc" id="L74">            bufferedReader = new BufferedReader(reader);</span>
+        }
+<span class="fc" id="L76">    }</span>
+
+    //-----------------------------------------------------------------------
+    /**
+     * Indicates whether the &lt;code&gt;Reader&lt;/code&gt; has more lines.
+     * If there is an &lt;code&gt;IOException&lt;/code&gt; then {@link #close()} will
+     * be called on this instance.
+     *
+     * @return {@code true} if the Reader has more lines
+     * @throws IllegalStateException if an IO exception occurs
+     */
+    public boolean hasNext() {
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if (cachedLine != null) {</span>
+<span class="fc" id="L89">            return true;</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        } else if (finished) {</span>
+<span class="fc" id="L91">            return false;</span>
+        } else {
+            try {
+                while (true) {
+<span class="fc" id="L95">                    String line = bufferedReader.readLine();</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                    if (line == null) {</span>
+<span class="fc" id="L97">                        finished = true;</span>
+<span class="fc" id="L98">                        return false;</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                    } else if (isValidLine(line)) {</span>
+<span class="fc" id="L100">                        cachedLine = line;</span>
+<span class="fc" id="L101">                        return true;</span>
+                    }
+<span class="fc" id="L103">                }</span>
+<span class="fc" id="L104">            } catch(IOException ioe) {</span>
+<span class="fc" id="L105">                close();</span>
+<span class="fc" id="L106">                throw new IllegalStateException(ioe);</span>
+            }
+        }
+    }
+
+    /**
+     * Overridable method to validate each line that is returned.
+     * This implementation always returns true.
+     * @param line  the line that is to be validated
+     * @return true if valid, false to remove from the iterator
+     */
+    protected boolean isValidLine(String line) {
+<span class="fc" id="L118">        return true;</span>
+    }
+
+    /**
+     * Returns the next line in the wrapped &lt;code&gt;Reader&lt;/code&gt;.
+     *
+     * @return the next line from the input
+     * @throws NoSuchElementException if there is no line to return
+     */
+    public String next() {
+<span class="fc" id="L128">        return nextLine();</span>
+    }
+
+    /**
+     * Returns the next line in the wrapped &lt;code&gt;Reader&lt;/code&gt;.
+     *
+     * @return the next line from the input
+     * @throws NoSuchElementException if there is no line to return
+     */
+    public String nextLine() {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (!hasNext()) {</span>
+<span class="fc" id="L139">            throw new NoSuchElementException(&quot;No more lines&quot;);</span>
+        }
+<span class="fc" id="L141">        String currentLine = cachedLine;</span>
+<span class="fc" id="L142">        cachedLine = null;</span>
+<span class="fc" id="L143">        return currentLine;        </span>
+    }
+
+    /**
+     * Closes the underlying &lt;code&gt;Reader&lt;/code&gt; quietly.
+     * This method is useful if you only want to process the first few
+     * lines of a larger file. If you do not close the iterator
+     * then the &lt;code&gt;Reader&lt;/code&gt; remains open.
+     * This method can safely be called multiple times.
+     */
+    public void close() {
+<span class="fc" id="L154">        finished = true;</span>
+<span class="fc" id="L155">        IOUtils.closeQuietly(bufferedReader);</span>
+<span class="fc" id="L156">        cachedLine = null;</span>
+<span class="fc" id="L157">    }</span>
+
+    /**
+     * Unsupported.
+     *
+     * @throws UnsupportedOperationException always
+     */
+    public void remove() {
+<span class="fc" id="L165">        throw new UnsupportedOperationException(&quot;Remove unsupported on LineIterator&quot;);</span>
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * Closes the iterator, handling null and ignoring exceptions.
+     *
+     * @param iterator  the iterator to close
+     */
+    public static void closeQuietly(LineIterator iterator) {
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        if (iterator != null) {</span>
+<span class="fc" id="L176">            iterator.close();</span>
+        }
+<span class="fc" id="L178">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

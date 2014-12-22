@@ -1,4 +1,4 @@
-<project name="lavalamp" default="compile" basedir=".">
+<project name="lavalamp"  xmlns:jacoco="antlib:org.jacoco.ant" default="compile" basedir=".">
 
   <!-- The directories for compilation targets -->
   <property name="build.home"              value="build"/>
@@ -14,6 +14,8 @@
   <property name="compile.target"          value="1.6"/>
   <property name="compile.encoding"        value="iso-8859-1"/>
   <property name="compile.nowarn"          value="true"/>
+
+  <!-- major -->
   <property name="mutation" value=":ALL"/>
   <property name="mutator" value="-XMutator${mutation}"/>
   <property name="major" value="/home/hessahalkaoud/tools/major/bin/javac"/>
@@ -46,7 +48,10 @@
       <pathelement location="${lib.dir}/evosuite.jar" />
   </path>  
   
-    
+<!-- ====================== Jacoco task ================================== -->
+ <taskdef uri="antlib:org.jacoco.ant" resource="org/jacoco/ant/antlib.xml">
+        <classpath path="lib/jacocoant.jar"/>
+ </taskdef>
 
 <!-- ====================================================================== -->
 <!-- ========== Executable Targets ======================================== -->
@@ -79,12 +84,12 @@
            destdir="${build.classes}"
             source="${compile.source}"
             target="${compile.target}"
-             debug="${compile.debug}"
+            debug="${compile.debug}"
        deprecation="${compile.deprecation}"
           optimize="${compile.optimize}"
           encoding="${compile.encoding}"
-    		    nowarn="${compile.nowarn}" 
-                     debug="yes"
+    		    nowarn="${compile.nowarn}"
+		    includeantruntime="true" 
 	             fork="yes"
 	             executable="${major}">
             <compilerarg value="${mutator}"/>
@@ -95,8 +100,6 @@
         <fileset dir="${source.resources}" includes="**"/>
     </copy>
   </target>
-
-
 
 <!-- ====================================================================== -->
   
@@ -120,7 +123,7 @@
     </javac>
     <copy todir="${build.tests}">
         <fileset dir="${test.java}" excludes="**/*.java"/>
-        <fileset dir="${test.resources}"/>
+        <fileset dir="${test.resources}" includes="**"/>
     </copy>
   </target>
   
@@ -150,6 +153,7 @@
 
   <target name="test" depends="compile-tests"
           description="Run provided tests">
+  <jacoco:coverage destfile="jacocoReport/jacoco.exec">
      <junit printsummary="no" haltonfailure="no" fork="yes"
           showoutput="no">
         <formatter type="plain" usefile="false" />
@@ -162,28 +166,48 @@
         <batchtest fork="yes">
            <fileset dir="${test.java}">
              <include name="**/*.java"/>
+             <exclude name="**/EmbeddedWebRun.java"/>
+             <exclude name="**/LavaLoggerTest.java"/>
            </fileset>
         </batchtest>
      </junit>
+  </jacoco:coverage>
   </target> 
+
+<target name="jacoco.report" depends="test">
+   <jacoco:report>
+        <executiondata>            <file file="jacocoReport/jacoco.exec"/>
+        </executiondata>
+        <structure name="lavalamp">
+            <classfiles>
+                <fileset dir="${build.classes}"/>
+            </classfiles>
+            <sourcefiles encoding="UTF-8">
+                <fileset dir="${source.java}"/>            </sourcefiles>
+        </structure>
+
+        <html destdir="jacocoReport/site/jacoco"/>        <csv destfile="jacocoReport/site/jacoco/report.csv"/>
+    </jacoco:report>
+  </target>
+
 <!-- ====================================================================== -->
-<target name="mutation.test" depends="test"
+<target name="mutation-test"
           description="Run provided tests">
      <junit printsummary="no" haltonfailure="no"
           showoutput="no"
         	mutationAnalysis="true"
                 resultFile="results.csv" 
-                killDetailsFile="killed.csv"> >
-        <formatter type="plain" usefile="false" />
+                killDetailsFile="killed.csv" sort="sort_methods">
         <classpath>
            <pathelement path="${build.classes}"/>
            <pathelement path="${build.tests}"/>
            <path refid="source.lib" />
            <path refid="test.lib" />
         </classpath>
-        <batchtest fork="yes">
+        <batchtest fork="no">
            <fileset dir="${test.java}">
              <include name="**/*.java"/>
+             <exclude name="**/EmbeddedWebRun.java"/>
            </fileset>
         </batchtest>
      </junit>

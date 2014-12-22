@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>EmbedderClassLoader.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.embedder</a> &gt; <span class="el_source">EmbedderClassLoader.java</span></div><h1>EmbedderClassLoader.java</h1><pre class="source lang-java linenums">package org.jbehave.core.embedder;
+
+import java.io.File;
+import java.lang.reflect.Modifier;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import org.apache.commons.lang.builder.ToStringBuilder;
+import org.apache.commons.lang.builder.ToStringStyle;
+
+/**
+ * EmbedderClassLoader is a URLClassLoader with a specified list of classpath
+ * elements. It also provides a utility method
+ * {@link #newInstance(Class, String)} to instantiate generic types.
+ */
+public class EmbedderClassLoader extends URLClassLoader {
+
+    public EmbedderClassLoader(ClassLoader parent) {
+<span class="fc" id="L22">        this(Arrays.&lt;String&gt;asList(), parent);</span>
+<span class="fc" id="L23">    }</span>
+
+    public EmbedderClassLoader(List&lt;String&gt; classpathElements) {
+<span class="fc" id="L26">        this(classpathElements, Embedder.class.getClassLoader());</span>
+<span class="fc" id="L27">    }</span>
+
+    public EmbedderClassLoader(List&lt;String&gt; classpathElements, ClassLoader parent) {
+<span class="fc" id="L30">        super(classpathURLs(classpathElements), parent);</span>
+<span class="fc" id="L31">    }</span>
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public &lt;T&gt; T newInstance(Class&lt;T&gt; type, String className) {
+        try {
+<span class="fc" id="L36">            Thread.currentThread().setContextClassLoader(this);</span>
+<span class="fc" id="L37">            return (T) loadClass(className, true).newInstance();</span>
+<span class="fc" id="L38">        } catch (Exception e) {</span>
+<span class="fc" id="L39">            throw new InstantiationFailed(className, type, this, e);</span>
+        }
+    }
+
+    public boolean isAbstract(String className) {
+        try {
+<span class="fc" id="L45">            return Modifier.isAbstract(loadClass(className, true).getModifiers());</span>
+<span class="fc" id="L46">        } catch (ClassNotFoundException e) {</span>
+<span class="fc" id="L47">            return false;</span>
+        }
+    }
+
+    List&lt;String&gt; asShortPaths(URL... urls) {
+<span class="fc" id="L52">        List&lt;String&gt; names = new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        for (URL url : urls) {</span>
+<span class="fc" id="L54">            String path = url.getPath();</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            if (isJar(path)) {</span>
+<span class="fc" id="L56">                names.add(shortPath(path));</span>
+            } else {
+<span class="fc" id="L58">                names.add(path);</span>
+            }
+        }
+<span class="fc" id="L61">        return names;</span>
+    }
+
+    private static String shortPath(String path) {
+<span class="fc" id="L65">        return path.substring(path.lastIndexOf(&quot;/&quot;) + 1);</span>
+    }
+
+    private static boolean isJar(String path) {
+<span class="fc" id="L69">        return path.endsWith(&quot;.jar&quot;);</span>
+    }
+
+    private static URL[] classpathURLs(List&lt;String&gt; elements) {
+<span class="fc" id="L73">        List&lt;URL&gt; urls = new ArrayList&lt;URL&gt;();</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (elements != null) {</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            for (String element : elements) {</span>
+<span class="fc" id="L76">                urls.add(toURL(element));</span>
+<span class="fc" id="L77">            }</span>
+        }
+<span class="fc" id="L79">        return urls.toArray(new URL[urls.size()]);</span>
+    }
+
+    private static URL toURL(String element) {
+        try {
+<span class="fc" id="L84">            return new File(element).toURI().toURL();</span>
+<span class="fc" id="L85">        } catch ( Exception e ){</span>
+<span class="fc" id="L86">            throw new InvalidClasspathElement(element, e);</span>
+        }
+    }
+
+    @Override
+    public String toString() {
+<span class="fc" id="L92">        return new ToStringBuilder(this, ToStringStyle.SHORT_PREFIX_STYLE).append(&quot;urls&quot;, asShortPaths(getURLs()))</span>
+                .append(&quot;parent&quot;, getParent()).toString();
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class InstantiationFailed extends RuntimeException {
+
+        public InstantiationFailed(String className, Class&lt;?&gt; type, ClassLoader classLoader, Throwable cause) {
+<span class="fc" id="L100">            super(&quot;Instantiation failed for&quot; + className + &quot; of type &quot; + type + &quot; using class loader &quot;+classLoader, cause);</span>
+<span class="fc" id="L101">        }</span>
+
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class InvalidClasspathElement extends RuntimeException {
+
+        public InvalidClasspathElement(String element, Throwable cause) {
+<span class="fc" id="L109">            super(&quot;Invalid classpath element &quot; + element, cause);</span>
+<span class="fc" id="L110">        }</span>
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,1115 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StrTokenizer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-lang3</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.text</a> &gt; <span class="el_source">StrTokenizer.java</span></div><h1>StrTokenizer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.text;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.NoSuchElementException;
+
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
+
+/**
+ * Tokenizes a string based based on delimiters (separators)
+ * and supporting quoting and ignored character concepts.
+ * &lt;p&gt;
+ * This class can split a String into many smaller strings. It aims
+ * to do a similar job to {@link java.util.StringTokenizer StringTokenizer},
+ * however it offers much more control and flexibility including implementing
+ * the &lt;code&gt;ListIterator&lt;/code&gt; interface. By default, it is set up
+ * like &lt;code&gt;StringTokenizer&lt;/code&gt;.
+ * &lt;p&gt;
+ * The input String is split into a number of &lt;i&gt;tokens&lt;/i&gt;.
+ * Each token is separated from the next String by a &lt;i&gt;delimiter&lt;/i&gt;.
+ * One or more delimiter characters must be specified.
+ * &lt;p&gt;
+ * Each token may be surrounded by quotes.
+ * The &lt;i&gt;quote&lt;/i&gt; matcher specifies the quote character(s).
+ * A quote may be escaped within a quoted section by duplicating itself.
+ * &lt;p&gt;
+ * Between each token and the delimiter are potentially characters that need trimming.
+ * The &lt;i&gt;trimmer&lt;/i&gt; matcher specifies these characters.
+ * One usage might be to trim whitespace characters.
+ * &lt;p&gt;
+ * At any point outside the quotes there might potentially be invalid characters.
+ * The &lt;i&gt;ignored&lt;/i&gt; matcher specifies these characters to be removed.
+ * One usage might be to remove new line characters.
+ * &lt;p&gt;
+ * Empty tokens may be removed or returned as null.
+ * &lt;pre&gt;
+ * &quot;a,b,c&quot;         - Three tokens &quot;a&quot;,&quot;b&quot;,&quot;c&quot;   (comma delimiter)
+ * &quot; a, b , c &quot;    - Three tokens &quot;a&quot;,&quot;b&quot;,&quot;c&quot;   (default CSV processing trims whitespace)
+ * &quot;a, &quot;, b ,&quot;, c&quot; - Three tokens &quot;a, &quot; , &quot; b &quot;, &quot;, c&quot; (quoted text untouched)
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ *
+ * This tokenizer has the following properties and options:
+ *
+ * &lt;table&gt;
+ *  &lt;tr&gt;
+ *   &lt;th&gt;Property&lt;/th&gt;&lt;th&gt;Type&lt;/th&gt;&lt;th&gt;Default&lt;/th&gt;
+ *  &lt;/tr&gt;
+ *  &lt;tr&gt;
+ *   &lt;td&gt;delim&lt;/td&gt;&lt;td&gt;CharSetMatcher&lt;/td&gt;&lt;td&gt;{ \t\n\r\f}&lt;/td&gt;
+ *  &lt;/tr&gt;
+ *  &lt;tr&gt;
+ *   &lt;td&gt;quote&lt;/td&gt;&lt;td&gt;NoneMatcher&lt;/td&gt;&lt;td&gt;{}&lt;/td&gt;
+ *  &lt;/tr&gt;
+ *  &lt;tr&gt;
+ *   &lt;td&gt;ignore&lt;/td&gt;&lt;td&gt;NoneMatcher&lt;/td&gt;&lt;td&gt;{}&lt;/td&gt;
+ *  &lt;/tr&gt;
+ *  &lt;tr&gt;
+ *   &lt;td&gt;emptyTokenAsNull&lt;/td&gt;&lt;td&gt;boolean&lt;/td&gt;&lt;td&gt;false&lt;/td&gt;
+ *  &lt;/tr&gt;
+ *  &lt;tr&gt;
+ *   &lt;td&gt;ignoreEmptyTokens&lt;/td&gt;&lt;td&gt;boolean&lt;/td&gt;&lt;td&gt;true&lt;/td&gt;
+ *  &lt;/tr&gt;
+ * &lt;/table&gt;
+ *
+ * @since 2.2
+ * @version $Id: StrTokenizer.java 1533551 2013-10-18 16:49:15Z sebb $
+ */
+public class StrTokenizer implements ListIterator&lt;String&gt;, Cloneable {
+
+    private static final StrTokenizer CSV_TOKENIZER_PROTOTYPE;
+    private static final StrTokenizer TSV_TOKENIZER_PROTOTYPE;
+    static {
+<span class="fc" id="L93">        CSV_TOKENIZER_PROTOTYPE = new StrTokenizer();</span>
+<span class="fc" id="L94">        CSV_TOKENIZER_PROTOTYPE.setDelimiterMatcher(StrMatcher.commaMatcher());</span>
+<span class="fc" id="L95">        CSV_TOKENIZER_PROTOTYPE.setQuoteMatcher(StrMatcher.doubleQuoteMatcher());</span>
+<span class="fc" id="L96">        CSV_TOKENIZER_PROTOTYPE.setIgnoredMatcher(StrMatcher.noneMatcher());</span>
+<span class="fc" id="L97">        CSV_TOKENIZER_PROTOTYPE.setTrimmerMatcher(StrMatcher.trimMatcher());</span>
+<span class="fc" id="L98">        CSV_TOKENIZER_PROTOTYPE.setEmptyTokenAsNull(false);</span>
+<span class="fc" id="L99">        CSV_TOKENIZER_PROTOTYPE.setIgnoreEmptyTokens(false);</span>
+
+<span class="fc" id="L101">        TSV_TOKENIZER_PROTOTYPE = new StrTokenizer();</span>
+<span class="fc" id="L102">        TSV_TOKENIZER_PROTOTYPE.setDelimiterMatcher(StrMatcher.tabMatcher());</span>
+<span class="fc" id="L103">        TSV_TOKENIZER_PROTOTYPE.setQuoteMatcher(StrMatcher.doubleQuoteMatcher());</span>
+<span class="fc" id="L104">        TSV_TOKENIZER_PROTOTYPE.setIgnoredMatcher(StrMatcher.noneMatcher());</span>
+<span class="fc" id="L105">        TSV_TOKENIZER_PROTOTYPE.setTrimmerMatcher(StrMatcher.trimMatcher());</span>
+<span class="fc" id="L106">        TSV_TOKENIZER_PROTOTYPE.setEmptyTokenAsNull(false);</span>
+<span class="fc" id="L107">        TSV_TOKENIZER_PROTOTYPE.setIgnoreEmptyTokens(false);</span>
+<span class="fc" id="L108">    }</span>
+
+    /** The text to work on. */
+    private char chars[];
+    /** The parsed tokens */
+    private String tokens[];
+    /** The current iteration position */
+    private int tokenPos;
+
+    /** The delimiter matcher */
+<span class="fc" id="L118">    private StrMatcher delimMatcher = StrMatcher.splitMatcher();</span>
+    /** The quote matcher */
+<span class="fc" id="L120">    private StrMatcher quoteMatcher = StrMatcher.noneMatcher();</span>
+    /** The ignored matcher */
+<span class="fc" id="L122">    private StrMatcher ignoredMatcher = StrMatcher.noneMatcher();</span>
+    /** The trimmer matcher */
+<span class="fc" id="L124">    private StrMatcher trimmerMatcher = StrMatcher.noneMatcher();</span>
+
+    /** Whether to return empty tokens as null */
+<span class="fc" id="L127">    private boolean emptyAsNull = false;</span>
+    /** Whether to ignore empty tokens */
+<span class="fc" id="L129">    private boolean ignoreEmptyTokens = true;</span>
+
+    //-----------------------------------------------------------------------
+
+    /**
+     * Returns a clone of &lt;code&gt;CSV_TOKENIZER_PROTOTYPE&lt;/code&gt;.
+     * 
+     * @return a clone of &lt;code&gt;CSV_TOKENIZER_PROTOTYPE&lt;/code&gt;.
+     */
+    private static StrTokenizer getCSVClone() {
+<span class="fc" id="L139">        return (StrTokenizer) CSV_TOKENIZER_PROTOTYPE.clone();</span>
+    }
+
+    /**
+     * Gets a new tokenizer instance which parses Comma Separated Value strings
+     * initializing it with the given input.  The default for CSV processing
+     * will be trim whitespace from both ends (which can be overridden with
+     * the setTrimmer method).
+     * &lt;p&gt;
+     * You must call a &quot;reset&quot; method to set the string which you want to parse.
+     * @return a new tokenizer instance which parses Comma Separated Value strings
+     */
+    public static StrTokenizer getCSVInstance() {
+<span class="fc" id="L152">        return getCSVClone();</span>
+    }
+
+    /**
+     * Gets a new tokenizer instance which parses Comma Separated Value strings
+     * initializing it with the given input.  The default for CSV processing
+     * will be trim whitespace from both ends (which can be overridden with
+     * the setTrimmer method).
+     *
+     * @param input  the text to parse
+     * @return a new tokenizer instance which parses Comma Separated Value strings
+     */
+    public static StrTokenizer getCSVInstance(final String input) {
+<span class="fc" id="L165">        final StrTokenizer tok = getCSVClone();</span>
+<span class="fc" id="L166">        tok.reset(input);</span>
+<span class="fc" id="L167">        return tok;</span>
+    }
+
+    /**
+     * Gets a new tokenizer instance which parses Comma Separated Value strings
+     * initializing it with the given input.  The default for CSV processing
+     * will be trim whitespace from both ends (which can be overridden with
+     * the setTrimmer method).
+     *
+     * @param input  the text to parse
+     * @return a new tokenizer instance which parses Comma Separated Value strings
+     */
+    public static StrTokenizer getCSVInstance(final char[] input) {
+<span class="fc" id="L180">        final StrTokenizer tok = getCSVClone();</span>
+<span class="fc" id="L181">        tok.reset(input);</span>
+<span class="fc" id="L182">        return tok;</span>
+    }
+
+    /**
+     * Returns a clone of &lt;code&gt;TSV_TOKENIZER_PROTOTYPE&lt;/code&gt;.
+     * 
+     * @return a clone of &lt;code&gt;TSV_TOKENIZER_PROTOTYPE&lt;/code&gt;.
+     */
+    private static StrTokenizer getTSVClone() {
+<span class="fc" id="L191">        return (StrTokenizer) TSV_TOKENIZER_PROTOTYPE.clone();</span>
+    }
+
+
+    /**
+     * Gets a new tokenizer instance which parses Tab Separated Value strings.
+     * The default for CSV processing will be trim whitespace from both ends
+     * (which can be overridden with the setTrimmer method).
+     * &lt;p&gt;
+     * You must call a &quot;reset&quot; method to set the string which you want to parse.
+     * @return a new tokenizer instance which parses Tab Separated Value strings.
+     */
+    public static StrTokenizer getTSVInstance() {
+<span class="fc" id="L204">        return getTSVClone();</span>
+    }
+
+    /**
+     * Gets a new tokenizer instance which parses Tab Separated Value strings.
+     * The default for CSV processing will be trim whitespace from both ends
+     * (which can be overridden with the setTrimmer method).
+     * @param input  the string to parse
+     * @return a new tokenizer instance which parses Tab Separated Value strings.
+     */
+    public static StrTokenizer getTSVInstance(final String input) {
+<span class="fc" id="L215">        final StrTokenizer tok = getTSVClone();</span>
+<span class="fc" id="L216">        tok.reset(input);</span>
+<span class="fc" id="L217">        return tok;</span>
+    }
+
+    /**
+     * Gets a new tokenizer instance which parses Tab Separated Value strings.
+     * The default for CSV processing will be trim whitespace from both ends
+     * (which can be overridden with the setTrimmer method).
+     * @param input  the string to parse
+     * @return a new tokenizer instance which parses Tab Separated Value strings.
+     */
+    public static StrTokenizer getTSVInstance(final char[] input) {
+<span class="fc" id="L228">        final StrTokenizer tok = getTSVClone();</span>
+<span class="fc" id="L229">        tok.reset(input);</span>
+<span class="fc" id="L230">        return tok;</span>
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * Constructs a tokenizer splitting on space, tab, newline and formfeed
+     * as per StringTokenizer, but with no text to tokenize.
+     * &lt;p&gt;
+     * This constructor is normally used with {@link #reset(String)}.
+     */
+    public StrTokenizer() {
+<span class="fc" id="L241">        super();</span>
+<span class="fc" id="L242">        this.chars = null;</span>
+<span class="fc" id="L243">    }</span>
+
+    /**
+     * Constructs a tokenizer splitting on space, tab, newline and formfeed
+     * as per StringTokenizer.
+     *
+     * @param input  the string which is to be parsed
+     */
+    public StrTokenizer(final String input) {
+<span class="fc" id="L252">        super();</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        if (input != null) {</span>
+<span class="fc" id="L254">            chars = input.toCharArray();</span>
+        } else {
+<span class="fc" id="L256">            chars = null;</span>
+        }
+<span class="fc" id="L258">    }</span>
+
+    /**
+     * Constructs a tokenizer splitting on the specified delimiter character.
+     *
+     * @param input  the string which is to be parsed
+     * @param delim  the field delimiter character
+     */
+    public StrTokenizer(final String input, final char delim) {
+<span class="fc" id="L267">        this(input);</span>
+<span class="fc" id="L268">        setDelimiterChar(delim);</span>
+<span class="fc" id="L269">    }</span>
+
+    /**
+     * Constructs a tokenizer splitting on the specified delimiter string.
+     *
+     * @param input  the string which is to be parsed
+     * @param delim  the field delimiter string
+     */
+    public StrTokenizer(final String input, final String delim) {
+<span class="nc" id="L278">        this(input);</span>
+<span class="nc" id="L279">        setDelimiterString(delim);</span>
+<span class="nc" id="L280">    }</span>
+
+    /**
+     * Constructs a tokenizer splitting using the specified delimiter matcher.
+     *
+     * @param input  the string which is to be parsed
+     * @param delim  the field delimiter matcher
+     */
+    public StrTokenizer(final String input, final StrMatcher delim) {
+<span class="nc" id="L289">        this(input);</span>
+<span class="nc" id="L290">        setDelimiterMatcher(delim);</span>
+<span class="nc" id="L291">    }</span>
+
+    /**
+     * Constructs a tokenizer splitting on the specified delimiter character
+     * and handling quotes using the specified quote character.
+     *
+     * @param input  the string which is to be parsed
+     * @param delim  the field delimiter character
+     * @param quote  the field quoted string character
+     */
+    public StrTokenizer(final String input, final char delim, final char quote) {
+<span class="fc" id="L302">        this(input, delim);</span>
+<span class="fc" id="L303">        setQuoteChar(quote);</span>
+<span class="fc" id="L304">    }</span>
+
+    /**
+     * Constructs a tokenizer splitting using the specified delimiter matcher
+     * and handling quotes using the specified quote matcher.
+     *
+     * @param input  the string which is to be parsed
+     * @param delim  the field delimiter matcher
+     * @param quote  the field quoted string matcher
+     */
+    public StrTokenizer(final String input, final StrMatcher delim, final StrMatcher quote) {
+<span class="nc" id="L315">        this(input, delim);</span>
+<span class="nc" id="L316">        setQuoteMatcher(quote);</span>
+<span class="nc" id="L317">    }</span>
+
+    /**
+     * Constructs a tokenizer splitting on space, tab, newline and formfeed
+     * as per StringTokenizer.
+     *
+     * @param input  the string which is to be parsed, not cloned
+     */
+    public StrTokenizer(final char[] input) {
+<span class="fc" id="L326">        super();</span>
+<span class="fc" id="L327">        this.chars = ArrayUtils.clone(input);</span>
+<span class="fc" id="L328">    }</span>
+
+    /**
+     * Constructs a tokenizer splitting on the specified character.
+     *
+     * @param input  the string which is to be parsed, not cloned
+     * @param delim the field delimiter character
+     */
+    public StrTokenizer(final char[] input, final char delim) {
+<span class="fc" id="L337">        this(input);</span>
+<span class="fc" id="L338">        setDelimiterChar(delim);</span>
+<span class="fc" id="L339">    }</span>
+
+    /**
+     * Constructs a tokenizer splitting on the specified string.
+     *
+     * @param input  the string which is to be parsed, not cloned
+     * @param delim the field delimiter string
+     */
+    public StrTokenizer(final char[] input, final String delim) {
+<span class="nc" id="L348">        this(input);</span>
+<span class="nc" id="L349">        setDelimiterString(delim);</span>
+<span class="nc" id="L350">    }</span>
+
+    /**
+     * Constructs a tokenizer splitting using the specified delimiter matcher.
+     *
+     * @param input  the string which is to be parsed, not cloned
+     * @param delim  the field delimiter matcher
+     */
+    public StrTokenizer(final char[] input, final StrMatcher delim) {
+<span class="nc" id="L359">        this(input);</span>
+<span class="nc" id="L360">        setDelimiterMatcher(delim);</span>
+<span class="nc" id="L361">    }</span>
+
+    /**
+     * Constructs a tokenizer splitting on the specified delimiter character
+     * and handling quotes using the specified quote character.
+     *
+     * @param input  the string which is to be parsed, not cloned
+     * @param delim  the field delimiter character
+     * @param quote  the field quoted string character
+     */
+    public StrTokenizer(final char[] input, final char delim, final char quote) {
+<span class="fc" id="L372">        this(input, delim);</span>
+<span class="fc" id="L373">        setQuoteChar(quote);</span>
+<span class="fc" id="L374">    }</span>
+
+    /**
+     * Constructs a tokenizer splitting using the specified delimiter matcher
+     * and handling quotes using the specified quote matcher.
+     *
+     * @param input  the string which is to be parsed, not cloned
+     * @param delim  the field delimiter character
+     * @param quote  the field quoted string character
+     */
+    public StrTokenizer(final char[] input, final StrMatcher delim, final StrMatcher quote) {
+<span class="nc" id="L385">        this(input, delim);</span>
+<span class="nc" id="L386">        setQuoteMatcher(quote);</span>
+<span class="nc" id="L387">    }</span>
+
+    // API
+    //-----------------------------------------------------------------------
+    /**
+     * Gets the number of tokens found in the String.
+     *
+     * @return the number of matched tokens
+     */
+    public int size() {
+<span class="fc" id="L397">        checkTokenized();</span>
+<span class="fc" id="L398">        return tokens.length;</span>
+    }
+
+    /**
+     * Gets the next token from the String.
+     * Equivalent to {@link #next()} except it returns null rather than
+     * throwing {@link NoSuchElementException} when no tokens remain.
+     *
+     * @return the next sequential token, or null when no more tokens are found
+     */
+    public String nextToken() {
+<span class="fc bfc" id="L409" title="All 2 branches covered.">        if (hasNext()) {</span>
+<span class="fc" id="L410">            return tokens[tokenPos++];</span>
+        }
+<span class="fc" id="L412">        return null;</span>
+    }
+
+    /**
+     * Gets the previous token from the String.
+     *
+     * @return the previous sequential token, or null when no more tokens are found
+     */
+    public String previousToken() {
+<span class="fc bfc" id="L421" title="All 2 branches covered.">        if (hasPrevious()) {</span>
+<span class="fc" id="L422">            return tokens[--tokenPos];</span>
+        }
+<span class="fc" id="L424">        return null;</span>
+    }
+
+    /**
+     * Gets a copy of the full token list as an independent modifiable array.
+     *
+     * @return the tokens as a String array
+     */
+    public String[] getTokenArray() {
+<span class="fc" id="L433">        checkTokenized();</span>
+<span class="fc" id="L434">        return tokens.clone();</span>
+    }
+
+    /**
+     * Gets a copy of the full token list as an independent modifiable list.
+     *
+     * @return the tokens as a String array
+     */
+    public List&lt;String&gt; getTokenList() {
+<span class="fc" id="L443">        checkTokenized();</span>
+<span class="fc" id="L444">        final List&lt;String&gt; list = new ArrayList&lt;String&gt;(tokens.length);</span>
+<span class="fc bfc" id="L445" title="All 2 branches covered.">        for (final String element : tokens) {</span>
+<span class="fc" id="L446">            list.add(element);</span>
+        }
+<span class="fc" id="L448">        return list;</span>
+    }
+
+    /**
+     * Resets this tokenizer, forgetting all parsing and iteration already completed.
+     * &lt;p&gt;
+     * This method allows the same tokenizer to be reused for the same String.
+     *
+     * @return this, to enable chaining
+     */
+    public StrTokenizer reset() {
+<span class="fc" id="L459">        tokenPos = 0;</span>
+<span class="fc" id="L460">        tokens = null;</span>
+<span class="fc" id="L461">        return this;</span>
+    }
+
+    /**
+     * Reset this tokenizer, giving it a new input string to parse.
+     * In this manner you can re-use a tokenizer with the same settings
+     * on multiple input lines.
+     *
+     * @param input  the new string to tokenize, null sets no text to parse
+     * @return this, to enable chaining
+     */
+    public StrTokenizer reset(final String input) {
+<span class="fc" id="L473">        reset();</span>
+<span class="fc bfc" id="L474" title="All 2 branches covered.">        if (input != null) {</span>
+<span class="fc" id="L475">            this.chars = input.toCharArray();</span>
+        } else {
+<span class="fc" id="L477">            this.chars = null;</span>
+        }
+<span class="fc" id="L479">        return this;</span>
+    }
+
+    /**
+     * Reset this tokenizer, giving it a new input string to parse.
+     * In this manner you can re-use a tokenizer with the same settings
+     * on multiple input lines.
+     *
+     * @param input  the new character array to tokenize, not cloned, null sets no text to parse
+     * @return this, to enable chaining
+     */
+    public StrTokenizer reset(final char[] input) {
+<span class="fc" id="L491">        reset();</span>
+<span class="fc" id="L492">        this.chars = ArrayUtils.clone(input);</span>
+<span class="fc" id="L493">        return this;</span>
+    }
+
+    // ListIterator
+    //-----------------------------------------------------------------------
+    /**
+     * Checks whether there are any more tokens.
+     *
+     * @return true if there are more tokens
+     */
+    @Override
+    public boolean hasNext() {
+<span class="fc" id="L505">        checkTokenized();</span>
+<span class="fc bfc" id="L506" title="All 2 branches covered.">        return tokenPos &lt; tokens.length;</span>
+    }
+
+    /**
+     * Gets the next token.
+     *
+     * @return the next String token
+     * @throws NoSuchElementException if there are no more elements
+     */
+    @Override
+    public String next() {
+<span class="fc bfc" id="L517" title="All 2 branches covered.">        if (hasNext()) {</span>
+<span class="fc" id="L518">            return tokens[tokenPos++];</span>
+        }
+<span class="fc" id="L520">        throw new NoSuchElementException();</span>
+    }
+
+    /**
+     * Gets the index of the next token to return.
+     *
+     * @return the next token index
+     */
+    @Override
+    public int nextIndex() {
+<span class="fc" id="L530">        return tokenPos;</span>
+    }
+
+    /**
+     * Checks whether there are any previous tokens that can be iterated to.
+     *
+     * @return true if there are previous tokens
+     */
+    @Override
+    public boolean hasPrevious() {
+<span class="fc" id="L540">        checkTokenized();</span>
+<span class="fc bfc" id="L541" title="All 2 branches covered.">        return tokenPos &gt; 0;</span>
+    }
+
+    /**
+     * Gets the token previous to the last returned token.
+     *
+     * @return the previous token
+     */
+    @Override
+    public String previous() {
+<span class="fc bfc" id="L551" title="All 2 branches covered.">        if (hasPrevious()) {</span>
+<span class="fc" id="L552">            return tokens[--tokenPos];</span>
+        }
+<span class="fc" id="L554">        throw new NoSuchElementException();</span>
+    }
+
+    /**
+     * Gets the index of the previous token.
+     *
+     * @return the previous token index
+     */
+    @Override
+    public int previousIndex() {
+<span class="fc" id="L564">        return tokenPos - 1;</span>
+    }
+
+    /**
+     * Unsupported ListIterator operation.
+     *
+     * @throws UnsupportedOperationException always
+     */
+    @Override
+    public void remove() {
+<span class="fc" id="L574">        throw new UnsupportedOperationException(&quot;remove() is unsupported&quot;);</span>
+    }
+
+    /**
+     * Unsupported ListIterator operation.
+     * @param obj this parameter ignored.
+     * @throws UnsupportedOperationException always
+     */
+    @Override
+    public void set(final String obj) {
+<span class="fc" id="L584">        throw new UnsupportedOperationException(&quot;set() is unsupported&quot;);</span>
+    }
+
+    /**
+     * Unsupported ListIterator operation.
+     * @param obj this parameter ignored.
+     * @throws UnsupportedOperationException always
+     */
+    @Override
+    public void add(final String obj) {
+<span class="fc" id="L594">        throw new UnsupportedOperationException(&quot;add() is unsupported&quot;);</span>
+    }
+
+    // Implementation
+    //-----------------------------------------------------------------------
+    /**
+     * Checks if tokenization has been done, and if not then do it.
+     */
+    private void checkTokenized() {
+<span class="fc bfc" id="L603" title="All 2 branches covered.">        if (tokens == null) {</span>
+<span class="fc bfc" id="L604" title="All 2 branches covered.">            if (chars == null) {</span>
+                // still call tokenize as subclass may do some work
+<span class="fc" id="L606">                final List&lt;String&gt; split = tokenize(null, 0, 0);</span>
+<span class="fc" id="L607">                tokens = split.toArray(new String[split.size()]);</span>
+<span class="fc" id="L608">            } else {</span>
+<span class="fc" id="L609">                final List&lt;String&gt; split = tokenize(chars, 0, chars.length);</span>
+<span class="fc" id="L610">                tokens = split.toArray(new String[split.size()]);</span>
+            }
+        }
+<span class="fc" id="L613">    }</span>
+
+    /**
+     * Internal method to performs the tokenization.
+     * &lt;p&gt;
+     * Most users of this class do not need to call this method. This method
+     * will be called automatically by other (public) methods when required.
+     * &lt;p&gt;
+     * This method exists to allow subclasses to add code before or after the
+     * tokenization. For example, a subclass could alter the character array,
+     * offset or count to be parsed, or call the tokenizer multiple times on
+     * multiple strings. It is also be possible to filter the results.
+     * &lt;p&gt;
+     * &lt;code&gt;StrTokenizer&lt;/code&gt; will always pass a zero offset and a count
+     * equal to the length of the array to this method, however a subclass
+     * may pass other values, or even an entirely different array.
+     * 
+     * @param srcChars  the character array being tokenized, may be null
+     * @param offset  the start position within the character array, must be valid
+     * @param count  the number of characters to tokenize, must be valid
+     * @return the modifiable list of String tokens, unmodifiable if null array or zero count
+     */
+    protected List&lt;String&gt; tokenize(final char[] srcChars, final int offset, final int count) {
+<span class="fc bfc" id="L636" title="All 4 branches covered.">        if (srcChars == null || count == 0) {</span>
+<span class="fc" id="L637">            return Collections.emptyList();</span>
+        }
+<span class="fc" id="L639">        final StrBuilder buf = new StrBuilder();</span>
+<span class="fc" id="L640">        final List&lt;String&gt; tokenList = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L641">        int pos = offset;</span>
+        
+        // loop around the entire buffer
+<span class="fc bfc" id="L644" title="All 4 branches covered.">        while (pos &gt;= 0 &amp;&amp; pos &lt; count) {</span>
+            // find next token
+<span class="fc" id="L646">            pos = readNextToken(srcChars, pos, count, buf, tokenList);</span>
+            
+            // handle case where end of string is a delimiter
+<span class="fc bfc" id="L649" title="All 2 branches covered.">            if (pos &gt;= count) {</span>
+<span class="fc" id="L650">                addToken(tokenList, &quot;&quot;);</span>
+            }
+        }
+<span class="fc" id="L653">        return tokenList;</span>
+    }
+
+    /**
+     * Adds a token to a list, paying attention to the parameters we've set.
+     *
+     * @param list  the list to add to
+     * @param tok  the token to add
+     */
+    private void addToken(final List&lt;String&gt; list, String tok) {
+<span class="fc bfc" id="L663" title="All 2 branches covered.">        if (StringUtils.isEmpty(tok)) {</span>
+<span class="fc bfc" id="L664" title="All 2 branches covered.">            if (isIgnoreEmptyTokens()) {</span>
+<span class="fc" id="L665">                return;</span>
+            }
+<span class="fc bfc" id="L667" title="All 2 branches covered.">            if (isEmptyTokenAsNull()) {</span>
+<span class="fc" id="L668">                tok = null;</span>
+            }
+        }
+<span class="fc" id="L671">        list.add(tok);</span>
+<span class="fc" id="L672">    }</span>
+
+    /**
+     * Reads character by character through the String to get the next token.
+     *
+     * @param srcChars  the character array being tokenized
+     * @param start  the first character of field
+     * @param len  the length of the character array being tokenized
+     * @param workArea  a temporary work area
+     * @param tokenList  the list of parsed tokens
+     * @return the starting position of the next field (the character
+     *  immediately after the delimiter), or -1 if end of string found
+     */
+    private int readNextToken(final char[] srcChars, int start, final int len, final StrBuilder workArea, final List&lt;String&gt; tokenList) {
+        // skip all leading whitespace, unless it is the
+        // field delimiter or the quote character
+<span class="fc bfc" id="L688" title="All 2 branches covered.">        while (start &lt; len) {</span>
+<span class="fc" id="L689">            final int removeLen = Math.max(</span>
+                    getIgnoredMatcher().isMatch(srcChars, start, start, len),
+                    getTrimmerMatcher().isMatch(srcChars, start, start, len));
+<span class="pc bpc" id="L692" title="2 of 6 branches missed.">            if (removeLen == 0 ||</span>
+                getDelimiterMatcher().isMatch(srcChars, start, start, len) &gt; 0 ||
+                getQuoteMatcher().isMatch(srcChars, start, start, len) &gt; 0) {
+<span class="nc" id="L695">                break;</span>
+            }
+<span class="fc" id="L697">            start += removeLen;</span>
+<span class="fc" id="L698">        }</span>
+        
+        // handle reaching end
+<span class="fc bfc" id="L701" title="All 2 branches covered.">        if (start &gt;= len) {</span>
+<span class="fc" id="L702">            addToken(tokenList, &quot;&quot;);</span>
+<span class="fc" id="L703">            return -1;</span>
+        }
+        
+        // handle empty token
+<span class="fc" id="L707">        final int delimLen = getDelimiterMatcher().isMatch(srcChars, start, start, len);</span>
+<span class="fc bfc" id="L708" title="All 2 branches covered.">        if (delimLen &gt; 0) {</span>
+<span class="fc" id="L709">            addToken(tokenList, &quot;&quot;);</span>
+<span class="fc" id="L710">            return start + delimLen;</span>
+        }
+        
+        // handle found token
+<span class="fc" id="L714">        final int quoteLen = getQuoteMatcher().isMatch(srcChars, start, start, len);</span>
+<span class="fc bfc" id="L715" title="All 2 branches covered.">        if (quoteLen &gt; 0) {</span>
+<span class="fc" id="L716">            return readWithQuotes(srcChars, start + quoteLen, len, workArea, tokenList, start, quoteLen);</span>
+        }
+<span class="fc" id="L718">        return readWithQuotes(srcChars, start, len, workArea, tokenList, 0, 0);</span>
+    }
+
+    /**
+     * Reads a possibly quoted string token.
+     *
+     * @param srcChars  the character array being tokenized
+     * @param start  the first character of field
+     * @param len  the length of the character array being tokenized
+     * @param workArea  a temporary work area
+     * @param tokenList  the list of parsed tokens
+     * @param quoteStart  the start position of the matched quote, 0 if no quoting
+     * @param quoteLen  the length of the matched quote, 0 if no quoting
+     * @return the starting position of the next field (the character
+     *  immediately after the delimiter, or if end of string found,
+     *  then the length of string
+     */
+    private int readWithQuotes(final char[] srcChars, final int start, final int len, final StrBuilder workArea, 
+                               final List&lt;String&gt; tokenList, final int quoteStart, final int quoteLen) {
+        // Loop until we've found the end of the quoted
+        // string or the end of the input
+<span class="fc" id="L739">        workArea.clear();</span>
+<span class="fc" id="L740">        int pos = start;</span>
+<span class="fc bfc" id="L741" title="All 2 branches covered.">        boolean quoting = quoteLen &gt; 0;</span>
+<span class="fc" id="L742">        int trimStart = 0;</span>
+        
+<span class="fc bfc" id="L744" title="All 2 branches covered.">        while (pos &lt; len) {</span>
+            // quoting mode can occur several times throughout a string
+            // we must switch between quoting and non-quoting until we
+            // encounter a non-quoted delimiter, or end of string
+<span class="fc bfc" id="L748" title="All 2 branches covered.">            if (quoting) {</span>
+                // In quoting mode
+                
+                // If we've found a quote character, see if it's
+                // followed by a second quote.  If so, then we need
+                // to actually put the quote character into the token
+                // rather than end the token.
+<span class="fc bfc" id="L755" title="All 2 branches covered.">                if (isQuote(srcChars, pos, len, quoteStart, quoteLen)) {</span>
+<span class="fc bfc" id="L756" title="All 2 branches covered.">                    if (isQuote(srcChars, pos + quoteLen, len, quoteStart, quoteLen)) {</span>
+                        // matched pair of quotes, thus an escaped quote
+<span class="fc" id="L758">                        workArea.append(srcChars, pos, quoteLen);</span>
+<span class="fc" id="L759">                        pos += quoteLen * 2;</span>
+<span class="fc" id="L760">                        trimStart = workArea.size();</span>
+<span class="fc" id="L761">                        continue;</span>
+                    }
+                    
+                    // end of quoting
+<span class="fc" id="L765">                    quoting = false;</span>
+<span class="fc" id="L766">                    pos += quoteLen;</span>
+<span class="fc" id="L767">                    continue;</span>
+                }
+                
+                // copy regular character from inside quotes
+<span class="fc" id="L771">                workArea.append(srcChars[pos++]);</span>
+<span class="fc" id="L772">                trimStart = workArea.size();</span>
+                
+            } else {
+                // Not in quoting mode
+                
+                // check for delimiter, and thus end of token
+<span class="fc" id="L778">                final int delimLen = getDelimiterMatcher().isMatch(srcChars, pos, start, len);</span>
+<span class="fc bfc" id="L779" title="All 2 branches covered.">                if (delimLen &gt; 0) {</span>
+                    // return condition when end of token found
+<span class="fc" id="L781">                    addToken(tokenList, workArea.substring(0, trimStart));</span>
+<span class="fc" id="L782">                    return pos + delimLen;</span>
+                }
+                
+                // check for quote, and thus back into quoting mode
+<span class="fc bfc" id="L786" title="All 4 branches covered.">                if (quoteLen &gt; 0 &amp;&amp; isQuote(srcChars, pos, len, quoteStart, quoteLen)) {</span>
+<span class="fc" id="L787">                    quoting = true;</span>
+<span class="fc" id="L788">                    pos += quoteLen;</span>
+<span class="fc" id="L789">                    continue;</span>
+                }
+                
+                // check for ignored (outside quotes), and ignore
+<span class="fc" id="L793">                final int ignoredLen = getIgnoredMatcher().isMatch(srcChars, pos, start, len);</span>
+<span class="fc bfc" id="L794" title="All 2 branches covered.">                if (ignoredLen &gt; 0) {</span>
+<span class="fc" id="L795">                    pos += ignoredLen;</span>
+<span class="fc" id="L796">                    continue;</span>
+                }
+                
+                // check for trimmed character
+                // don't yet know if its at the end, so copy to workArea
+                // use trimStart to keep track of trim at the end
+<span class="fc" id="L802">                final int trimmedLen = getTrimmerMatcher().isMatch(srcChars, pos, start, len);</span>
+<span class="fc bfc" id="L803" title="All 2 branches covered.">                if (trimmedLen &gt; 0) {</span>
+<span class="fc" id="L804">                    workArea.append(srcChars, pos, trimmedLen);</span>
+<span class="fc" id="L805">                    pos += trimmedLen;</span>
+<span class="fc" id="L806">                    continue;</span>
+                }
+                
+                // copy regular character from outside quotes
+<span class="fc" id="L810">                workArea.append(srcChars[pos++]);</span>
+<span class="fc" id="L811">                trimStart = workArea.size();</span>
+<span class="fc" id="L812">            }</span>
+        }
+        
+        // return condition when end of string found
+<span class="fc" id="L816">        addToken(tokenList, workArea.substring(0, trimStart));</span>
+<span class="fc" id="L817">        return -1;</span>
+    }
+
+    /**
+     * Checks if the characters at the index specified match the quote
+     * already matched in readNextToken().
+     *
+     * @param srcChars  the character array being tokenized
+     * @param pos  the position to check for a quote
+     * @param len  the length of the character array being tokenized
+     * @param quoteStart  the start position of the matched quote, 0 if no quoting
+     * @param quoteLen  the length of the matched quote, 0 if no quoting
+     * @return true if a quote is matched
+     */
+    private boolean isQuote(final char[] srcChars, final int pos, final int len, final int quoteStart, final int quoteLen) {
+<span class="fc bfc" id="L832" title="All 2 branches covered.">        for (int i = 0; i &lt; quoteLen; i++) {</span>
+<span class="fc bfc" id="L833" title="All 4 branches covered.">            if (pos + i &gt;= len || srcChars[pos + i] != srcChars[quoteStart + i]) {</span>
+<span class="fc" id="L834">                return false;</span>
+            }
+        }
+<span class="fc" id="L837">        return true;</span>
+    }
+
+    // Delimiter
+    //-----------------------------------------------------------------------
+    /**
+     * Gets the field delimiter matcher.
+     *
+     * @return the delimiter matcher in use
+     */
+    public StrMatcher getDelimiterMatcher() {
+<span class="fc" id="L848">        return this.delimMatcher;</span>
+    }
+
+    /**
+     * Sets the field delimiter matcher.
+     * &lt;p&gt;
+     * The delimitier is used to separate one token from another.
+     *
+     * @param delim  the delimiter matcher to use
+     * @return this, to enable chaining
+     */
+    public StrTokenizer setDelimiterMatcher(final StrMatcher delim) {
+<span class="fc bfc" id="L860" title="All 2 branches covered.">        if (delim == null) {</span>
+<span class="fc" id="L861">            this.delimMatcher = StrMatcher.noneMatcher();</span>
+        } else {
+<span class="fc" id="L863">            this.delimMatcher = delim;</span>
+        }
+<span class="fc" id="L865">        return this;</span>
+    }
+
+    /**
+     * Sets the field delimiter character.
+     *
+     * @param delim  the delimiter character to use
+     * @return this, to enable chaining
+     */
+    public StrTokenizer setDelimiterChar(final char delim) {
+<span class="fc" id="L875">        return setDelimiterMatcher(StrMatcher.charMatcher(delim));</span>
+    }
+
+    /**
+     * Sets the field delimiter string.
+     *
+     * @param delim  the delimiter string to use
+     * @return this, to enable chaining
+     */
+    public StrTokenizer setDelimiterString(final String delim) {
+<span class="fc" id="L885">        return setDelimiterMatcher(StrMatcher.stringMatcher(delim));</span>
+    }
+
+    // Quote
+    //-----------------------------------------------------------------------
+    /**
+     * Gets the quote matcher currently in use.
+     * &lt;p&gt;
+     * The quote character is used to wrap data between the tokens.
+     * This enables delimiters to be entered as data.
+     * The default value is '&quot;' (double quote).
+     *
+     * @return the quote matcher in use
+     */
+    public StrMatcher getQuoteMatcher() {
+<span class="fc" id="L900">        return quoteMatcher;</span>
+    }
+
+    /**
+     * Set the quote matcher to use.
+     * &lt;p&gt;
+     * The quote character is used to wrap data between the tokens.
+     * This enables delimiters to be entered as data.
+     *
+     * @param quote  the quote matcher to use, null ignored
+     * @return this, to enable chaining
+     */
+    public StrTokenizer setQuoteMatcher(final StrMatcher quote) {
+<span class="fc bfc" id="L913" title="All 2 branches covered.">        if (quote != null) {</span>
+<span class="fc" id="L914">            this.quoteMatcher = quote;</span>
+        }
+<span class="fc" id="L916">        return this;</span>
+    }
+
+    /**
+     * Sets the quote character to use.
+     * &lt;p&gt;
+     * The quote character is used to wrap data between the tokens.
+     * This enables delimiters to be entered as data.
+     *
+     * @param quote  the quote character to use
+     * @return this, to enable chaining
+     */
+    public StrTokenizer setQuoteChar(final char quote) {
+<span class="fc" id="L929">        return setQuoteMatcher(StrMatcher.charMatcher(quote));</span>
+    }
+
+    // Ignored
+    //-----------------------------------------------------------------------
+    /**
+     * Gets the ignored character matcher.
+     * &lt;p&gt;
+     * These characters are ignored when parsing the String, unless they are
+     * within a quoted region.
+     * The default value is not to ignore anything.
+     *
+     * @return the ignored matcher in use
+     */
+    public StrMatcher getIgnoredMatcher() {
+<span class="fc" id="L944">        return ignoredMatcher;</span>
+    }
+
+    /**
+     * Set the matcher for characters to ignore.
+     * &lt;p&gt;
+     * These characters are ignored when parsing the String, unless they are
+     * within a quoted region.
+     *
+     * @param ignored  the ignored matcher to use, null ignored
+     * @return this, to enable chaining
+     */
+    public StrTokenizer setIgnoredMatcher(final StrMatcher ignored) {
+<span class="fc bfc" id="L957" title="All 2 branches covered.">        if (ignored != null) {</span>
+<span class="fc" id="L958">            this.ignoredMatcher = ignored;</span>
+        }
+<span class="fc" id="L960">        return this;</span>
+    }
+
+    /**
+     * Set the character to ignore.
+     * &lt;p&gt;
+     * This character is ignored when parsing the String, unless it is
+     * within a quoted region.
+     *
+     * @param ignored  the ignored character to use
+     * @return this, to enable chaining
+     */
+    public StrTokenizer setIgnoredChar(final char ignored) {
+<span class="fc" id="L973">        return setIgnoredMatcher(StrMatcher.charMatcher(ignored));</span>
+    }
+
+    // Trimmer
+    //-----------------------------------------------------------------------
+    /**
+     * Gets the trimmer character matcher.
+     * &lt;p&gt;
+     * These characters are trimmed off on each side of the delimiter
+     * until the token or quote is found.
+     * The default value is not to trim anything.
+     *
+     * @return the trimmer matcher in use
+     */
+    public StrMatcher getTrimmerMatcher() {
+<span class="fc" id="L988">        return trimmerMatcher;</span>
+    }
+
+    /**
+     * Sets the matcher for characters to trim.
+     * &lt;p&gt;
+     * These characters are trimmed off on each side of the delimiter
+     * until the token or quote is found.
+     *
+     * @param trimmer  the trimmer matcher to use, null ignored
+     * @return this, to enable chaining
+     */
+    public StrTokenizer setTrimmerMatcher(final StrMatcher trimmer) {
+<span class="fc bfc" id="L1001" title="All 2 branches covered.">        if (trimmer != null) {</span>
+<span class="fc" id="L1002">            this.trimmerMatcher = trimmer;</span>
+        }
+<span class="fc" id="L1004">        return this;</span>
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * Gets whether the tokenizer currently returns empty tokens as null.
+     * The default for this property is false.
+     *
+     * @return true if empty tokens are returned as null
+     */
+    public boolean isEmptyTokenAsNull() {
+<span class="fc" id="L1015">        return this.emptyAsNull;</span>
+    }
+
+    /**
+     * Sets whether the tokenizer should return empty tokens as null.
+     * The default for this property is false.
+     *
+     * @param emptyAsNull  whether empty tokens are returned as null
+     * @return this, to enable chaining
+     */
+    public StrTokenizer setEmptyTokenAsNull(final boolean emptyAsNull) {
+<span class="fc" id="L1026">        this.emptyAsNull = emptyAsNull;</span>
+<span class="fc" id="L1027">        return this;</span>
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * Gets whether the tokenizer currently ignores empty tokens.
+     * The default for this property is true.
+     *
+     * @return true if empty tokens are not returned
+     */
+    public boolean isIgnoreEmptyTokens() {
+<span class="fc" id="L1038">        return ignoreEmptyTokens;</span>
+    }
+
+    /**
+     * Sets whether the tokenizer should ignore and not return empty tokens.
+     * The default for this property is true.
+     *
+     * @param ignoreEmptyTokens  whether empty tokens are not returned
+     * @return this, to enable chaining
+     */
+    public StrTokenizer setIgnoreEmptyTokens(final boolean ignoreEmptyTokens) {
+<span class="fc" id="L1049">        this.ignoreEmptyTokens = ignoreEmptyTokens;</span>
+<span class="fc" id="L1050">        return this;</span>
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * Gets the String content that the tokenizer is parsing.
+     *
+     * @return the string content being parsed
+     */
+    public String getContent() {
+<span class="fc bfc" id="L1060" title="All 2 branches covered.">        if (chars == null) {</span>
+<span class="fc" id="L1061">            return null;</span>
+        }
+<span class="fc" id="L1063">        return new String(chars);</span>
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * Creates a new instance of this Tokenizer. The new instance is reset so
+     * that it will be at the start of the token list.
+     * If a {@link CloneNotSupportedException} is caught, return &lt;code&gt;null&lt;/code&gt;.
+     * 
+     * @return a new instance of this Tokenizer which has been reset.
+     */
+    @Override
+    public Object clone() {
+        try {
+<span class="fc" id="L1077">            return cloneReset();</span>
+<span class="fc" id="L1078">        } catch (final CloneNotSupportedException ex) {</span>
+<span class="fc" id="L1079">            return null;</span>
+        }
+    }
+
+    /**
+     * Creates a new instance of this Tokenizer. The new instance is reset so that
+     * it will be at the start of the token list.
+     * 
+     * @return a new instance of this Tokenizer which has been reset.
+     * @throws CloneNotSupportedException if there is a problem cloning
+     */
+    Object cloneReset() throws CloneNotSupportedException {
+        // this method exists to enable 100% test coverage
+<span class="fc" id="L1092">        final StrTokenizer cloned = (StrTokenizer) super.clone();</span>
+<span class="fc bfc" id="L1093" title="All 2 branches covered.">        if (cloned.chars != null) {</span>
+<span class="fc" id="L1094">            cloned.chars = cloned.chars.clone();</span>
+        }
+<span class="fc" id="L1096">        cloned.reset();</span>
+<span class="fc" id="L1097">        return cloned;</span>
+    }
+
+    //-----------------------------------------------------------------------
+    /**
+     * Gets the String content that the tokenizer is parsing.
+     *
+     * @return the string content being parsed
+     */
+    @Override
+    public String toString() {
+<span class="fc bfc" id="L1108" title="All 2 branches covered.">        if (tokens == null) {</span>
+<span class="fc" id="L1109">            return &quot;StrTokenizer[not tokenized yet]&quot;;</span>
+        }
+<span class="fc" id="L1111">        return &quot;StrTokenizer&quot; + getTokenList();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

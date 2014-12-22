@@ -1,0 +1,417 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>BlockJUnit4ClassRunner.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Junit-r4.11</a> &gt; <a href="index.source.html" class="el_package">org.junit.runners</a> &gt; <span class="el_source">BlockJUnit4ClassRunner.java</span></div><h1>BlockJUnit4ClassRunner.java</h1><pre class="source lang-java linenums">package org.junit.runners;
+
+import static org.junit.internal.runners.rules.RuleFieldValidator.RULE_METHOD_VALIDATOR;
+import static org.junit.internal.runners.rules.RuleFieldValidator.RULE_VALIDATOR;
+
+import java.util.List;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Ignore;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.Test.None;
+import org.junit.internal.runners.model.ReflectiveCallable;
+import org.junit.internal.runners.statements.ExpectException;
+import org.junit.internal.runners.statements.Fail;
+import org.junit.internal.runners.statements.FailOnTimeout;
+import org.junit.internal.runners.statements.InvokeMethod;
+import org.junit.internal.runners.statements.RunAfters;
+import org.junit.internal.runners.statements.RunBefores;
+import org.junit.rules.RunRules;
+import org.junit.rules.TestRule;
+import org.junit.runner.Description;
+import org.junit.runner.notification.RunNotifier;
+import org.junit.runners.model.FrameworkMethod;
+import org.junit.runners.model.InitializationError;
+import org.junit.runners.model.MultipleFailureException;
+import org.junit.runners.model.Statement;
+
+/**
+ * Implements the JUnit 4 standard test case class model, as defined by the
+ * annotations in the org.junit package. Many users will never notice this
+ * class: it is now the default test class runner, but it should have exactly
+ * the same behavior as the old test class runner ({@code JUnit4ClassRunner}).
+ *
+ * BlockJUnit4ClassRunner has advantages for writers of custom JUnit runners
+ * that are slight changes to the default behavior, however:
+ *
+ * &lt;ul&gt;
+ * &lt;li&gt;It has a much simpler implementation based on {@link Statement}s,
+ * allowing new operations to be inserted into the appropriate point in the
+ * execution flow.
+ *
+ * &lt;li&gt;It is published, and extension and reuse are encouraged, whereas {@code
+ * JUnit4ClassRunner} was in an internal package, and is now deprecated.
+ * &lt;/ul&gt;
+ *
+ * @since 4.5
+ */
+public class BlockJUnit4ClassRunner extends ParentRunner&lt;FrameworkMethod&gt; {
+    /**
+     * Creates a BlockJUnit4ClassRunner to run {@code klass}
+     *
+     * @throws InitializationError if the test class is malformed.
+     */
+    public BlockJUnit4ClassRunner(Class&lt;?&gt; klass) throws InitializationError {
+<span class="fc" id="L57">        super(klass);</span>
+<span class="fc" id="L58">    }</span>
+
+    //
+    // Implementation of ParentRunner
+    //
+
+    @Override
+    protected void runChild(final FrameworkMethod method, RunNotifier notifier) {
+<span class="fc" id="L66">        Description description = describeChild(method);</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (method.getAnnotation(Ignore.class) != null) {</span>
+<span class="fc" id="L68">            notifier.fireTestIgnored(description);</span>
+        } else {
+<span class="fc" id="L70">            runLeaf(methodBlock(method), description, notifier);</span>
+        }
+<span class="fc" id="L72">    }</span>
+
+    @Override
+    protected Description describeChild(FrameworkMethod method) {
+<span class="fc" id="L76">        return Description.createTestDescription(getTestClass().getJavaClass(),</span>
+                testName(method), method.getAnnotations());
+    }
+
+    @Override
+    protected List&lt;FrameworkMethod&gt; getChildren() {
+<span class="fc" id="L82">        return computeTestMethods();</span>
+    }
+
+    //
+    // Override in subclasses
+    //
+
+    /**
+     * Returns the methods that run tests. Default implementation returns all
+     * methods annotated with {@code @Test} on this class and superclasses that
+     * are not overridden.
+     */
+    protected List&lt;FrameworkMethod&gt; computeTestMethods() {
+<span class="fc" id="L95">        return getTestClass().getAnnotatedMethods(Test.class);</span>
+    }
+
+    @Override
+    protected void collectInitializationErrors(List&lt;Throwable&gt; errors) {
+<span class="fc" id="L100">        super.collectInitializationErrors(errors);</span>
+
+<span class="fc" id="L102">        validateNoNonStaticInnerClass(errors);</span>
+<span class="fc" id="L103">        validateConstructor(errors);</span>
+<span class="fc" id="L104">        validateInstanceMethods(errors);</span>
+<span class="fc" id="L105">        validateFields(errors);</span>
+<span class="fc" id="L106">        validateMethods(errors);</span>
+<span class="fc" id="L107">    }</span>
+
+    protected void validateNoNonStaticInnerClass(List&lt;Throwable&gt; errors) {
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (getTestClass().isANonStaticInnerClass()) {</span>
+<span class="nc" id="L111">            String gripe = &quot;The inner class &quot; + getTestClass().getName()</span>
+                    + &quot; is not static.&quot;;
+<span class="nc" id="L113">            errors.add(new Exception(gripe));</span>
+        }
+<span class="fc" id="L115">    }</span>
+
+    /**
+     * Adds to {@code errors} if the test class has more than one constructor,
+     * or if the constructor takes parameters. Override if a subclass requires
+     * different validation rules.
+     */
+    protected void validateConstructor(List&lt;Throwable&gt; errors) {
+<span class="fc" id="L123">        validateOnlyOneConstructor(errors);</span>
+<span class="fc" id="L124">        validateZeroArgConstructor(errors);</span>
+<span class="fc" id="L125">    }</span>
+
+    /**
+     * Adds to {@code errors} if the test class has more than one constructor
+     * (do not override)
+     */
+    protected void validateOnlyOneConstructor(List&lt;Throwable&gt; errors) {
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (!hasOneConstructor()) {</span>
+<span class="fc" id="L133">            String gripe = &quot;Test class should have exactly one public constructor&quot;;</span>
+<span class="fc" id="L134">            errors.add(new Exception(gripe));</span>
+        }
+<span class="fc" id="L136">    }</span>
+
+    /**
+     * Adds to {@code errors} if the test class's single constructor takes
+     * parameters (do not override)
+     */
+    protected void validateZeroArgConstructor(List&lt;Throwable&gt; errors) {
+<span class="pc bpc" id="L143" title="1 of 6 branches missed.">        if (!getTestClass().isANonStaticInnerClass()</span>
+                &amp;&amp; hasOneConstructor()
+                &amp;&amp; (getTestClass().getOnlyConstructor().getParameterTypes().length != 0)) {
+<span class="fc" id="L146">            String gripe = &quot;Test class should have exactly one public zero-argument constructor&quot;;</span>
+<span class="fc" id="L147">            errors.add(new Exception(gripe));</span>
+        }
+<span class="fc" id="L149">    }</span>
+
+    private boolean hasOneConstructor() {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        return getTestClass().getJavaClass().getConstructors().length == 1;</span>
+    }
+
+    /**
+     * Adds to {@code errors} for each method annotated with {@code @Test},
+     * {@code @Before}, or {@code @After} that is not a public, void instance
+     * method with no arguments.
+     *
+     * @deprecated unused API, will go away in future version
+     */
+    @Deprecated
+    protected void validateInstanceMethods(List&lt;Throwable&gt; errors) {
+<span class="fc" id="L164">        validatePublicVoidNoArgMethods(After.class, false, errors);</span>
+<span class="fc" id="L165">        validatePublicVoidNoArgMethods(Before.class, false, errors);</span>
+<span class="fc" id="L166">        validateTestMethods(errors);</span>
+
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        if (computeTestMethods().size() == 0) {</span>
+<span class="fc" id="L169">            errors.add(new Exception(&quot;No runnable methods&quot;));</span>
+        }
+<span class="fc" id="L171">    }</span>
+
+    protected void validateFields(List&lt;Throwable&gt; errors) {
+<span class="fc" id="L174">        RULE_VALIDATOR.validate(getTestClass(), errors);</span>
+<span class="fc" id="L175">    }</span>
+
+    private void validateMethods(List&lt;Throwable&gt; errors) {
+<span class="fc" id="L178">        RULE_METHOD_VALIDATOR.validate(getTestClass(), errors);</span>
+<span class="fc" id="L179">    }</span>
+
+    /**
+     * Adds to {@code errors} for each method annotated with {@code @Test}that
+     * is not a public, void instance method with no arguments.
+     */
+    protected void validateTestMethods(List&lt;Throwable&gt; errors) {
+<span class="fc" id="L186">        validatePublicVoidNoArgMethods(Test.class, false, errors);</span>
+<span class="fc" id="L187">    }</span>
+
+    /**
+     * Returns a new fixture for running a test. Default implementation executes
+     * the test class's no-argument constructor (validation should have ensured
+     * one exists).
+     */
+    protected Object createTest() throws Exception {
+<span class="fc" id="L195">        return getTestClass().getOnlyConstructor().newInstance();</span>
+    }
+
+    /**
+     * Returns the name that describes {@code method} for {@link Description}s.
+     * Default implementation is the method's name
+     */
+    protected String testName(FrameworkMethod method) {
+<span class="fc" id="L203">        return method.getName();</span>
+    }
+
+    /**
+     * Returns a Statement that, when executed, either returns normally if
+     * {@code method} passes, or throws an exception if {@code method} fails.
+     *
+     * Here is an outline of the default implementation:
+     *
+     * &lt;ul&gt;
+     * &lt;li&gt;Invoke {@code method} on the result of {@code createTest()}, and
+     * throw any exceptions thrown by either operation.
+     * &lt;li&gt;HOWEVER, if {@code method}'s {@code @Test} annotation has the {@code
+     * expecting} attribute, return normally only if the previous step threw an
+     * exception of the correct type, and throw an exception otherwise.
+     * &lt;li&gt;HOWEVER, if {@code method}'s {@code @Test} annotation has the {@code
+     * timeout} attribute, throw an exception if the previous step takes more
+     * than the specified number of milliseconds.
+     * &lt;li&gt;ALWAYS run all non-overridden {@code @Before} methods on this class
+     * and superclasses before any of the previous steps; if any throws an
+     * Exception, stop execution and pass the exception on.
+     * &lt;li&gt;ALWAYS run all non-overridden {@code @After} methods on this class
+     * and superclasses after any of the previous steps; all After methods are
+     * always executed: exceptions thrown by previous steps are combined, if
+     * necessary, with exceptions from After methods into a
+     * {@link MultipleFailureException}.
+     * &lt;li&gt;ALWAYS allow {@code @Rule} fields to modify the execution of the
+     * above steps. A {@code Rule} may prevent all execution of the above steps,
+     * or add additional behavior before and after, or modify thrown exceptions.
+     * For more information, see {@link TestRule}
+     * &lt;/ul&gt;
+     *
+     * This can be overridden in subclasses, either by overriding this method,
+     * or the implementations creating each sub-statement.
+     */
+    protected Statement methodBlock(FrameworkMethod method) {
+        Object test;
+        try {
+<span class="fc" id="L241">            test = new ReflectiveCallable() {</span>
+                @Override
+                protected Object runReflectiveCall() throws Throwable {
+<span class="fc" id="L244">                    return createTest();</span>
+                }
+            }.run();
+<span class="fc" id="L247">        } catch (Throwable e) {</span>
+<span class="fc" id="L248">            return new Fail(e);</span>
+<span class="fc" id="L249">        }</span>
+
+<span class="fc" id="L251">        Statement statement = methodInvoker(method, test);</span>
+<span class="fc" id="L252">        statement = possiblyExpectingExceptions(method, test, statement);</span>
+<span class="fc" id="L253">        statement = withPotentialTimeout(method, test, statement);</span>
+<span class="fc" id="L254">        statement = withBefores(method, test, statement);</span>
+<span class="fc" id="L255">        statement = withAfters(method, test, statement);</span>
+<span class="fc" id="L256">        statement = withRules(method, test, statement);</span>
+<span class="fc" id="L257">        return statement;</span>
+    }
+
+    //
+    // Statement builders
+    //
+
+    /**
+     * Returns a {@link Statement} that invokes {@code method} on {@code test}
+     */
+    protected Statement methodInvoker(FrameworkMethod method, Object test) {
+<span class="fc" id="L268">        return new InvokeMethod(method, test);</span>
+    }
+
+    /**
+     * Returns a {@link Statement}: if {@code method}'s {@code @Test} annotation
+     * has the {@code expecting} attribute, return normally only if {@code next}
+     * throws an exception of the correct type, and throw an exception
+     * otherwise.
+     *
+     * @deprecated Will be private soon: use Rules instead
+     */
+    @Deprecated
+    protected Statement possiblyExpectingExceptions(FrameworkMethod method,
+            Object test, Statement next) {
+<span class="fc" id="L282">        Test annotation = method.getAnnotation(Test.class);</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">        return expectsException(annotation) ? new ExpectException(next,</span>
+                getExpectedException(annotation)) : next;
+    }
+
+    /**
+     * Returns a {@link Statement}: if {@code method}'s {@code @Test} annotation
+     * has the {@code timeout} attribute, throw an exception if {@code next}
+     * takes more than the specified number of milliseconds.
+     *
+     * @deprecated Will be private soon: use Rules instead
+     */
+    @Deprecated
+    protected Statement withPotentialTimeout(FrameworkMethod method,
+            Object test, Statement next) {
+<span class="fc" id="L297">        long timeout = getTimeout(method.getAnnotation(Test.class));</span>
+<span class="pc bpc" id="L298" title="1 of 2 branches missed.">        return timeout &gt; 0 ? new FailOnTimeout(next, timeout) : next;</span>
+    }
+
+    /**
+     * Returns a {@link Statement}: run all non-overridden {@code @Before}
+     * methods on this class and superclasses before running {@code next}; if
+     * any throws an Exception, stop execution and pass the exception on.
+     *
+     * @deprecated Will be private soon: use Rules instead
+     */
+    @Deprecated
+    protected Statement withBefores(FrameworkMethod method, Object target,
+            Statement statement) {
+<span class="fc" id="L311">        List&lt;FrameworkMethod&gt; befores = getTestClass().getAnnotatedMethods(</span>
+                Before.class);
+<span class="fc bfc" id="L313" title="All 2 branches covered.">        return befores.isEmpty() ? statement : new RunBefores(statement,</span>
+                befores, target);
+    }
+
+    /**
+     * Returns a {@link Statement}: run all non-overridden {@code @After}
+     * methods on this class and superclasses before running {@code next}; all
+     * After methods are always executed: exceptions thrown by previous steps
+     * are combined, if necessary, with exceptions from After methods into a
+     * {@link MultipleFailureException}.
+     *
+     * @deprecated Will be private soon: use Rules instead
+     */
+    @Deprecated
+    protected Statement withAfters(FrameworkMethod method, Object target,
+            Statement statement) {
+<span class="fc" id="L329">        List&lt;FrameworkMethod&gt; afters = getTestClass().getAnnotatedMethods(</span>
+                After.class);
+<span class="fc bfc" id="L331" title="All 2 branches covered.">        return afters.isEmpty() ? statement : new RunAfters(statement, afters,</span>
+                target);
+    }
+
+    private Statement withRules(FrameworkMethod method, Object target,
+            Statement statement) {
+<span class="fc" id="L337">        List&lt;TestRule&gt; testRules = getTestRules(target);</span>
+<span class="fc" id="L338">        Statement result = statement;</span>
+<span class="fc" id="L339">        result = withMethodRules(method, testRules, target, result);</span>
+<span class="fc" id="L340">        result = withTestRules(method, testRules, result);</span>
+
+<span class="fc" id="L342">        return result;</span>
+    }
+
+    private Statement withMethodRules(FrameworkMethod method, List&lt;TestRule&gt; testRules,
+            Object target, Statement result) {
+<span class="pc bpc" id="L347" title="1 of 2 branches missed.">        for (org.junit.rules.MethodRule each : getMethodRules(target)) {</span>
+<span class="nc bnc" id="L348" title="All 2 branches missed.">            if (!testRules.contains(each)) {</span>
+<span class="nc" id="L349">                result = each.apply(result, method, target);</span>
+            }
+<span class="nc" id="L351">        }</span>
+<span class="fc" id="L352">        return result;</span>
+    }
+
+    private List&lt;org.junit.rules.MethodRule&gt; getMethodRules(Object target) {
+<span class="fc" id="L356">        return rules(target);</span>
+    }
+
+    /**
+     * @param target the test case instance
+     * @return a list of MethodRules that should be applied when executing this
+     *         test
+     */
+    protected List&lt;org.junit.rules.MethodRule&gt; rules(Object target) {
+<span class="fc" id="L365">        return getTestClass().getAnnotatedFieldValues(target, Rule.class,</span>
+                org.junit.rules.MethodRule.class);
+    }
+
+    /**
+     * Returns a {@link Statement}: apply all non-static {@link Value} fields
+     * annotated with {@link Rule}.
+     *
+     * @param statement The base statement
+     * @return a RunRules statement if any class-level {@link Rule}s are
+     *         found, or the base statement
+     */
+    private Statement withTestRules(FrameworkMethod method, List&lt;TestRule&gt; testRules,
+            Statement statement) {
+<span class="fc bfc" id="L379" title="All 2 branches covered.">        return testRules.isEmpty() ? statement :</span>
+                new RunRules(statement, testRules, describeChild(method));
+    }
+
+    /**
+     * @param target the test case instance
+     * @return a list of TestRules that should be applied when executing this
+     *         test
+     */
+    protected List&lt;TestRule&gt; getTestRules(Object target) {
+<span class="fc" id="L389">        List&lt;TestRule&gt; result = getTestClass().getAnnotatedMethodValues(target,</span>
+                Rule.class, TestRule.class);
+
+<span class="fc" id="L392">        result.addAll(getTestClass().getAnnotatedFieldValues(target,</span>
+                Rule.class, TestRule.class));
+
+<span class="fc" id="L395">        return result;</span>
+    }
+
+    private Class&lt;? extends Throwable&gt; getExpectedException(Test annotation) {
+<span class="fc bfc" id="L399" title="All 4 branches covered.">        if (annotation == null || annotation.expected() == None.class) {</span>
+<span class="fc" id="L400">            return null;</span>
+        } else {
+<span class="fc" id="L402">            return annotation.expected();</span>
+        }
+    }
+
+    private boolean expectsException(Test annotation) {
+<span class="fc bfc" id="L407" title="All 2 branches covered.">        return getExpectedException(annotation) != null;</span>
+    }
+
+    private long getTimeout(Test annotation) {
+<span class="fc bfc" id="L411" title="All 2 branches covered.">        if (annotation == null) {</span>
+<span class="fc" id="L412">            return 0;</span>
+        }
+<span class="fc" id="L414">        return annotation.timeout();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

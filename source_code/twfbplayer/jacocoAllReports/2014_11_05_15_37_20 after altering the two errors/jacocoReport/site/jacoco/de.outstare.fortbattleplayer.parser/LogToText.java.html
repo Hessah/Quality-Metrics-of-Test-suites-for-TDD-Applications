@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>LogToText.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">twfbplayer</a> &gt; <a href="index.source.html" class="el_package">de.outstare.fortbattleplayer.parser</a> &gt; <span class="el_source">LogToText.java</span></div><h1>LogToText.java</h1><pre class="source lang-java linenums">package de.outstare.fortbattleplayer.parser;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.CharBuffer;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+/**
+ * Converts the list of numbers to somewhat meaningfuller names
+ * 
+ * @author daniel
+ */
+<span class="nc" id="L23">public class LogToText {</span>
+<span class="nc" id="L24">	private static final String NEWLINE = System.getProperty(&quot;line.separator&quot;);</span>
+<span class="nc" id="L25">	private static boolean WRITE_EACH_ROUND_TO_FILE = false;</span>
+
+	/**
+	 * entry point
+	 * 
+	 * @param args
+	 */
+	public static void main(final String[] args) {
+<span class="nc bnc" id="L33" title="All 2 branches missed.">		if (args.length == 0) {</span>
+<span class="nc" id="L34">			System.out</span>
+			        .println(&quot;Please give a file with fortbattle data! Optionally append the parameter '-r' to write each round to a separate file (named round&lt;n&gt;.txt)&quot;);
+		} else {
+<span class="nc" id="L37">			final String filename = args[0];</span>
+<span class="nc bnc" id="L38" title="All 4 branches missed.">			if (args.length &gt; 1 &amp;&amp; &quot;-r&quot;.equals(args[1])) {</span>
+<span class="nc" id="L39">				WRITE_EACH_ROUND_TO_FILE = true;</span>
+			}
+<span class="nc" id="L41">			final File file = new File(filename);</span>
+<span class="nc bnc" id="L42" title="All 4 branches missed.">			if (file.canRead() &amp;&amp; file.isFile()) {</span>
+<span class="nc" id="L43">				final LogToText parser = new LogToText();</span>
+				JSONObject data;
+				try {
+<span class="nc" id="L46">					data = parser.parseFile(file);</span>
+<span class="nc" id="L47">					System.out.println(parser.getLog(data));</span>
+<span class="nc" id="L48">				} catch (final JSONException e) {</span>
+<span class="nc" id="L49">					e.printStackTrace();</span>
+<span class="nc" id="L50">				} catch (final IOException e) {</span>
+<span class="nc" id="L51">					e.printStackTrace();</span>
+<span class="nc" id="L52">				}</span>
+<span class="nc" id="L53">			} else {</span>
+<span class="nc" id="L54">				System.out.println(&quot;The given argument is not an readable file!&quot;);</span>
+			}
+		}
+<span class="nc" id="L57">	}</span>
+
+	/**
+	 * @param data
+	 * @return
+	 * @throws JSONException
+	 */
+	private CharSequence getLog(final JSONObject data) throws JSONException {
+<span class="nc" id="L65">		final Map&lt;Integer, String&gt; players = getCombatants(data);</span>
+<span class="nc" id="L66">		final String log = getTextLog(data, players);</span>
+<span class="nc" id="L67">		return log;</span>
+	}
+
+	/**
+	 * @param data
+	 * @param players
+	 * @return
+	 * @throws JSONException
+	 */
+	private String getTextLog(final JSONObject data, final Map&lt;Integer, String&gt; players) throws JSONException {
+<span class="nc" id="L77">		final JSONArray typeNames = data.getJSONArray(&quot;logtypes&quot;);</span>
+<span class="nc" id="L78">		final JSONArray log = data.getJSONArray(&quot;log&quot;);</span>
+<span class="nc" id="L79">		final StringBuilder formattedLog = new StringBuilder();</span>
+
+		try {
+<span class="nc" id="L82">			Writer output = null;</span>
+			try {
+<span class="nc bnc" id="L84" title="All 2 branches missed.">				if (WRITE_EACH_ROUND_TO_FILE) {</span>
+<span class="nc" id="L85">					output = new FileWriter(&quot;round0.txt&quot;);</span>
+				}
+				// System.out.println(&quot;formatting log data...&quot;);
+<span class="nc bnc" id="L88" title="All 2 branches missed.">				for (int i = 0; i &lt; log.length(); i += 2) {</span>
+<span class="nc" id="L89">					final int typeValue = (int) log.getLong(i);</span>
+<span class="nc" id="L90">					final int value = (int) log.getLong(i + 1);</span>
+					try {
+<span class="nc" id="L92">						final LogType type = LogType.valueOf(typeNames.getString(typeValue));</span>
+<span class="nc" id="L93">						final String formattedValue = formatValue(players, value, type);</span>
+
+<span class="nc bnc" id="L95" title="All 4 branches missed.">						if (WRITE_EACH_ROUND_TO_FILE &amp;&amp; output != null) {</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">							if (type == LogType.ROUNDSTART) {</span>
+<span class="nc" id="L97">								output.close();</span>
+<span class="nc" id="L98">								output = new FileWriter(&quot;round&quot; + value + &quot;.txt&quot;);</span>
+							}
+<span class="nc" id="L100">							output.write(type.toString());</span>
+<span class="nc" id="L101">							output.write(' ');</span>
+<span class="nc" id="L102">							output.write(formattedValue);</span>
+<span class="nc" id="L103">							output.write('\n');</span>
+						}
+
+<span class="nc" id="L106">						appendLogLine(formattedLog, type, formattedValue);</span>
+<span class="nc" id="L107">					} catch (final IllegalArgumentException e) {</span>
+<span class="nc" id="L108">						System.err.println(&quot;unknown log type: &quot; + typeNames.getString(typeValue) + &quot; [&quot; + typeValue</span>
+						        + &quot;]&quot;);
+<span class="nc" id="L110">						continue;</span>
+<span class="nc" id="L111">					}</span>
+				}
+			} finally {
+<span class="nc bnc" id="L114" title="All 8 branches missed.">				if (WRITE_EACH_ROUND_TO_FILE &amp;&amp; output != null) {</span>
+<span class="nc" id="L115">					output.close();</span>
+				}
+			}
+<span class="nc" id="L118">		} catch (final IOException e) {</span>
+<span class="nc" id="L119">			e.printStackTrace();</span>
+<span class="nc" id="L120">		}</span>
+
+<span class="nc" id="L122">		return formattedLog.toString();</span>
+	}
+
+	/**
+	 * @param players
+	 * @param value
+	 * @param type
+	 * @return
+	 */
+	private String formatValue(final Map&lt;Integer, String&gt; players, final int value, final LogType type) {
+		String formattedValue;
+<span class="nc bnc" id="L133" title="All 2 branches missed.">		switch (type) {</span>
+		case SHOOTAT:
+		case CHARTURN:
+<span class="nc" id="L136">			formattedValue = players.get(Integer.valueOf(value));</span>
+<span class="nc" id="L137">			break;</span>
+		default:
+<span class="nc" id="L139">			formattedValue = Integer.toString(value);</span>
+		}
+<span class="nc" id="L141">		return formattedValue;</span>
+	}
+
+	/**
+	 * @param formattedLog
+	 * @param type
+	 * @param formattedValue
+	 */
+	private void appendLogLine(final StringBuilder formattedLog, final LogType type, final String formattedValue) {
+<span class="nc" id="L150">		formattedLog.append(type.toString());</span>
+<span class="nc" id="L151">		formattedLog.append(' ');</span>
+<span class="nc" id="L152">		formattedLog.append(formattedValue);</span>
+<span class="nc" id="L153">		formattedLog.append(NEWLINE);</span>
+<span class="nc" id="L154">	}</span>
+
+	/**
+	 * @param data
+	 * @return
+	 * @throws JSONException
+	 */
+	private Map&lt;Integer, String&gt; getCombatants(final JSONObject data) throws JSONException {
+<span class="nc" id="L162">		final Map&lt;Integer, String&gt; combatants = new HashMap&lt;Integer, String&gt;();</span>
+<span class="nc" id="L163">		final String[] playerArrays = new String[] { &quot;attackerlist&quot;, &quot;defenderlist&quot; };</span>
+		// System.out.println(&quot;reading player names...&quot;);
+<span class="nc bnc" id="L165" title="All 2 branches missed.">		for (final String playerArray : playerArrays) {</span>
+<span class="nc" id="L166">			final JSONArray list = data.getJSONArray(playerArray);</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">			for (int i = 0; i &lt; list.length(); i++) {</span>
+<span class="nc" id="L168">				final JSONObject playerData = list.getJSONObject(i);</span>
+
+<span class="nc" id="L170">				final String playerName = playerData.getString(&quot;name&quot;);</span>
+<span class="nc" id="L171">				final Integer playerID = Integer.valueOf(playerData.getInt(&quot;westid&quot;));</span>
+
+<span class="nc" id="L173">				combatants.put(playerID, playerName);</span>
+			}
+		}
+
+<span class="nc" id="L177">		return combatants;</span>
+	}
+
+	/**
+	 * @param file
+	 * @return the json data of the file
+	 * @throws JSONException
+	 * @throws IOException
+	 */
+	public JSONObject parseFile(final File file) throws JSONException, IOException {
+<span class="nc" id="L187">		final String text = readFile(file);</span>
+<span class="nc" id="L188">		return new JSONObject(text);</span>
+	}
+
+	/**
+	 * @param file
+	 * @return
+	 * @throws IOException
+	 */
+	private String readFile(final File file) throws IOException {
+<span class="nc" id="L197">		final Reader reader = new BufferedReader(new FileReader(file));</span>
+		try {
+<span class="nc" id="L199">			final CharBuffer buffer = CharBuffer.allocate((int) file.length());</span>
+			int count;
+			// System.out.println(&quot;reading file...&quot;);
+			do {
+<span class="nc" id="L203">				count = reader.read(buffer);</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">			} while (count &gt; 0);</span>
+
+<span class="nc" id="L206">			buffer.position(0);</span>
+<span class="nc" id="L207">			return buffer.toString();</span>
+		} finally {
+<span class="nc" id="L209">			reader.close();</span>
+		}
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

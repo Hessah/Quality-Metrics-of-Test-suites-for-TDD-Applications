@@ -1,0 +1,527 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>HighLowRenderer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.renderer.xy</a> &gt; <span class="el_source">HighLowRenderer.java</span></div><h1>HighLowRenderer.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * --------------------
+ * HighLowRenderer.java
+ * --------------------
+ * (C) Copyright 2001-2008, by Object Refinery Limited.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   Richard Atkinson;
+ *                   Christian W. Zuckschwerdt;
+ *
+ * Changes
+ * -------
+ * 13-Dec-2001 : Version 1 (DG);
+ * 23-Jan-2002 : Added DrawInfo parameter to drawItem() method (DG);
+ * 28-Mar-2002 : Added a property change listener mechanism so that renderers
+ *               no longer need to be immutable (DG);
+ * 09-Apr-2002 : Removed translatedRangeZero from the drawItem() method, and
+ *               changed the return type of the drawItem method to void,
+ *               reflecting a change in the XYItemRenderer interface.  Added
+ *               tooltip code to drawItem() method (DG);
+ * 05-Aug-2002 : Small modification to drawItem method to support URLs for
+ *               HTML image maps (RA);
+ * 25-Mar-2003 : Implemented Serializable (DG);
+ * 01-May-2003 : Modified drawItem() method signature (DG);
+ * 30-Jul-2003 : Modified entity constructor (CZ);
+ * 31-Jul-2003 : Deprecated constructor (DG);
+ * 20-Aug-2003 : Implemented Cloneable and PublicCloneable (DG);
+ * 16-Sep-2003 : Changed ChartRenderingInfo --&gt; PlotRenderingInfo (DG);
+ * 29-Jan-2004 : Fixed bug (882392) when rendering with
+ *               PlotOrientation.HORIZONTAL (DG);
+ * 25-Feb-2004 : Replaced CrosshairInfo with CrosshairState.  Renamed
+ *               XYToolTipGenerator --&gt; XYItemLabelGenerator (DG);
+ * 15-Jul-2004 : Switched getX() with getXValue() and getY() with
+ *               getYValue() (DG);
+ * 01-Nov-2005 : Added optional openTickPaint and closeTickPaint settings (DG);
+ * ------------- JFREECHART 1.0.0 ---------------------------------------------
+ * 06-Jul-2006 : Replace dataset methods getX() --&gt; getXValue() (DG);
+ * 08-Apr-2008 : Added findRangeBounds() override (DG);
+ * 29-Apr-2008 : Added tickLength field (DG);
+ * 25-Sep-2008 : Check for non-null entity collection (DG);
+ *
+ */
+
+package org.jfree.chart.renderer.xy;
+
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.geom.Line2D;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.entity.EntityCollection;
+import org.jfree.chart.event.RendererChangeEvent;
+import org.jfree.chart.plot.CrosshairState;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.plot.PlotRenderingInfo;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.data.Range;
+import org.jfree.data.general.DatasetUtilities;
+import org.jfree.data.xy.OHLCDataset;
+import org.jfree.data.xy.XYDataset;
+import org.jfree.io.SerialUtilities;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.util.PaintUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A renderer that draws high/low/open/close markers on an {@link XYPlot}
+ * (requires a {@link OHLCDataset}).  This renderer does not include code to
+ * calculate the crosshair point for the plot.
+ *
+ * The example shown here is generated by the
+ * &lt;code&gt;HighLowChartDemo1.java&lt;/code&gt; program included in the JFreeChart Demo
+ * Collection:
+ * &lt;br&gt;&lt;br&gt;
+ * &lt;img src=&quot;../../../../../images/HighLowRendererSample.png&quot;
+ * alt=&quot;HighLowRendererSample.png&quot; /&gt;
+ */
+public class HighLowRenderer extends AbstractXYItemRenderer
+        implements XYItemRenderer, Cloneable, PublicCloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = -8135673815876552516L;
+
+    /** A flag that controls whether the open ticks are drawn. */
+    private boolean drawOpenTicks;
+
+    /** A flag that controls whether the close ticks are drawn. */
+    private boolean drawCloseTicks;
+
+    /**
+     * The paint used for the open ticks (if &lt;code&gt;null&lt;/code&gt;, the series
+     * paint is used instead).
+     */
+    private transient Paint openTickPaint;
+
+    /**
+     * The paint used for the close ticks (if &lt;code&gt;null&lt;/code&gt;, the series
+     * paint is used instead).
+     */
+    private transient Paint closeTickPaint;
+
+    /**
+     * The tick length (in Java2D units).
+     *
+     * @since 1.0.10
+     */
+    private double tickLength;
+
+    /**
+     * The default constructor.
+     */
+    public HighLowRenderer() {
+<span class="fc" id="L145">        super();</span>
+<span class="fc" id="L146">        this.drawOpenTicks = true;</span>
+<span class="fc" id="L147">        this.drawCloseTicks = true;</span>
+<span class="fc" id="L148">        this.tickLength = 2.0;</span>
+<span class="fc" id="L149">    }</span>
+
+    /**
+     * Returns the flag that controls whether open ticks are drawn.
+     *
+     * @return A boolean.
+     *
+     * @see #getDrawCloseTicks()
+     * @see #setDrawOpenTicks(boolean)
+     */
+    public boolean getDrawOpenTicks() {
+<span class="nc" id="L160">        return this.drawOpenTicks;</span>
+    }
+
+    /**
+     * Sets the flag that controls whether open ticks are drawn, and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param draw  the flag.
+     *
+     * @see #getDrawOpenTicks()
+     */
+    public void setDrawOpenTicks(boolean draw) {
+<span class="fc" id="L172">        this.drawOpenTicks = draw;</span>
+<span class="fc" id="L173">        fireChangeEvent();</span>
+<span class="fc" id="L174">    }</span>
+
+    /**
+     * Returns the flag that controls whether close ticks are drawn.
+     *
+     * @return A boolean.
+     *
+     * @see #getDrawOpenTicks()
+     * @see #setDrawCloseTicks(boolean)
+     */
+    public boolean getDrawCloseTicks() {
+<span class="nc" id="L185">        return this.drawCloseTicks;</span>
+    }
+
+    /**
+     * Sets the flag that controls whether close ticks are drawn, and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param draw  the flag.
+     *
+     * @see #getDrawCloseTicks()
+     */
+    public void setDrawCloseTicks(boolean draw) {
+<span class="fc" id="L197">        this.drawCloseTicks = draw;</span>
+<span class="fc" id="L198">        fireChangeEvent();</span>
+<span class="fc" id="L199">    }</span>
+
+    /**
+     * Returns the paint used to draw the ticks for the open values.
+     *
+     * @return The paint used to draw the ticks for the open values (possibly
+     *         &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setOpenTickPaint(Paint)
+     */
+    public Paint getOpenTickPaint() {
+<span class="nc" id="L210">        return this.openTickPaint;</span>
+    }
+
+    /**
+     * Sets the paint used to draw the ticks for the open values and sends a
+     * {@link RendererChangeEvent} to all registered listeners.  If you set
+     * this to &lt;code&gt;null&lt;/code&gt; (the default), the series paint is used
+     * instead.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @see #getOpenTickPaint()
+     */
+    public void setOpenTickPaint(Paint paint) {
+<span class="fc" id="L224">        this.openTickPaint = paint;</span>
+<span class="fc" id="L225">        fireChangeEvent();</span>
+<span class="fc" id="L226">    }</span>
+
+    /**
+     * Returns the paint used to draw the ticks for the close values.
+     *
+     * @return The paint used to draw the ticks for the close values (possibly
+     *         &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setCloseTickPaint(Paint)
+     */
+    public Paint getCloseTickPaint() {
+<span class="nc" id="L237">        return this.closeTickPaint;</span>
+    }
+
+    /**
+     * Sets the paint used to draw the ticks for the close values and sends a
+     * {@link RendererChangeEvent} to all registered listeners.  If you set
+     * this to &lt;code&gt;null&lt;/code&gt; (the default), the series paint is used
+     * instead.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @see #getCloseTickPaint()
+     */
+    public void setCloseTickPaint(Paint paint) {
+<span class="fc" id="L251">        this.closeTickPaint = paint;</span>
+<span class="fc" id="L252">        fireChangeEvent();</span>
+<span class="fc" id="L253">    }</span>
+
+    /**
+     * Returns the tick length (in Java2D units).
+     *
+     * @return The tick length.
+     *
+     * @since 1.0.10
+     *
+     * @see #setTickLength(double)
+     */
+    public double getTickLength() {
+<span class="nc" id="L265">        return this.tickLength;</span>
+    }
+
+    /**
+     * Sets the tick length (in Java2D units) and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param length  the length.
+     *
+     * @since 1.0.10
+     *
+     * @see #getTickLength()
+     */
+    public void setTickLength(double length) {
+<span class="fc" id="L279">        this.tickLength = length;</span>
+<span class="fc" id="L280">        fireChangeEvent();</span>
+<span class="fc" id="L281">    }</span>
+
+    /**
+     * Returns the range of values the renderer requires to display all the
+     * items from the specified dataset.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return The range (&lt;code&gt;null&lt;/code&gt; if the dataset is &lt;code&gt;null&lt;/code&gt;
+     *         or empty).
+     */
+    @Override
+    public Range findRangeBounds(XYDataset dataset) {
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        if (dataset != null) {</span>
+<span class="fc" id="L295">            return DatasetUtilities.findRangeBounds(dataset, true);</span>
+        }
+        else {
+<span class="fc" id="L298">            return null;</span>
+        }
+    }
+
+    /**
+     * Draws the visual representation of a single data item.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the area within which the plot is being drawn.
+     * @param info  collects information about the drawing.
+     * @param plot  the plot (can be used to obtain standard color
+     *              information etc).
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the dataset.
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     * @param crosshairState  crosshair information for the plot
+     *                        (&lt;code&gt;null&lt;/code&gt; permitted).
+     * @param pass  the pass index.
+     */
+    @Override
+    public void drawItem(Graphics2D g2, XYItemRendererState state,
+            Rectangle2D dataArea, PlotRenderingInfo info, XYPlot plot,
+            ValueAxis domainAxis, ValueAxis rangeAxis, XYDataset dataset,
+            int series, int item, CrosshairState crosshairState, int pass) {
+
+<span class="nc" id="L326">        double x = dataset.getXValue(series, item);</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">        if (!domainAxis.getRange().contains(x)) {</span>
+<span class="nc" id="L328">            return;    // the x value is not within the axis range</span>
+        }
+<span class="nc" id="L330">        double xx = domainAxis.valueToJava2D(x, dataArea,</span>
+                plot.getDomainAxisEdge());
+
+        // setup for collecting optional entity info...
+<span class="nc" id="L334">        Shape entityArea = null;</span>
+<span class="nc" id="L335">        EntityCollection entities = null;</span>
+<span class="nc bnc" id="L336" title="All 2 branches missed.">        if (info != null) {</span>
+<span class="nc" id="L337">            entities = info.getOwner().getEntityCollection();</span>
+        }
+
+<span class="nc" id="L340">        PlotOrientation orientation = plot.getOrientation();</span>
+<span class="nc" id="L341">        RectangleEdge location = plot.getRangeAxisEdge();</span>
+
+<span class="nc" id="L343">        Paint itemPaint = getItemPaint(series, item);</span>
+<span class="nc" id="L344">        Stroke itemStroke = getItemStroke(series, item);</span>
+<span class="nc" id="L345">        g2.setPaint(itemPaint);</span>
+<span class="nc" id="L346">        g2.setStroke(itemStroke);</span>
+
+<span class="nc bnc" id="L348" title="All 2 branches missed.">        if (dataset instanceof OHLCDataset) {</span>
+<span class="nc" id="L349">            OHLCDataset hld = (OHLCDataset) dataset;</span>
+
+<span class="nc" id="L351">            double yHigh = hld.getHighValue(series, item);</span>
+<span class="nc" id="L352">            double yLow = hld.getLowValue(series, item);</span>
+<span class="nc bnc" id="L353" title="All 4 branches missed.">            if (!Double.isNaN(yHigh) &amp;&amp; !Double.isNaN(yLow)) {</span>
+<span class="nc" id="L354">                double yyHigh = rangeAxis.valueToJava2D(yHigh, dataArea,</span>
+                        location);
+<span class="nc" id="L356">                double yyLow = rangeAxis.valueToJava2D(yLow, dataArea,</span>
+                        location);
+<span class="nc bnc" id="L358" title="All 2 branches missed.">                if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L359">                    g2.draw(new Line2D.Double(yyLow, xx, yyHigh, xx));</span>
+<span class="nc" id="L360">                    entityArea = new Rectangle2D.Double(Math.min(yyLow, yyHigh),</span>
+                            xx - 1.0, Math.abs(yyHigh - yyLow), 2.0);
+                }
+<span class="nc bnc" id="L363" title="All 2 branches missed.">                else if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="nc" id="L364">                    g2.draw(new Line2D.Double(xx, yyLow, xx, yyHigh));</span>
+<span class="nc" id="L365">                    entityArea = new Rectangle2D.Double(xx - 1.0,</span>
+                            Math.min(yyLow, yyHigh), 2.0,
+                            Math.abs(yyHigh - yyLow));
+                }
+            }
+
+<span class="nc" id="L371">            double delta = getTickLength();</span>
+<span class="nc bnc" id="L372" title="All 2 branches missed.">            if (domainAxis.isInverted()) {</span>
+<span class="nc" id="L373">                delta = -delta;</span>
+            }
+<span class="nc bnc" id="L375" title="All 2 branches missed.">            if (getDrawOpenTicks()) {</span>
+<span class="nc" id="L376">                double yOpen = hld.getOpenValue(series, item);</span>
+<span class="nc bnc" id="L377" title="All 2 branches missed.">                if (!Double.isNaN(yOpen)) {</span>
+<span class="nc" id="L378">                    double yyOpen = rangeAxis.valueToJava2D(yOpen, dataArea,</span>
+                            location);
+<span class="nc bnc" id="L380" title="All 2 branches missed.">                    if (this.openTickPaint != null) {</span>
+<span class="nc" id="L381">                        g2.setPaint(this.openTickPaint);</span>
+                    }
+                    else {
+<span class="nc" id="L384">                        g2.setPaint(itemPaint);</span>
+                    }
+<span class="nc bnc" id="L386" title="All 2 branches missed.">                    if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L387">                        g2.draw(new Line2D.Double(yyOpen, xx + delta, yyOpen,</span>
+                                xx));
+                    }
+<span class="nc bnc" id="L390" title="All 2 branches missed.">                    else if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="nc" id="L391">                        g2.draw(new Line2D.Double(xx - delta, yyOpen, xx,</span>
+                                yyOpen));
+                    }
+                }
+            }
+
+<span class="nc bnc" id="L397" title="All 2 branches missed.">            if (getDrawCloseTicks()) {</span>
+<span class="nc" id="L398">                double yClose = hld.getCloseValue(series, item);</span>
+<span class="nc bnc" id="L399" title="All 2 branches missed.">                if (!Double.isNaN(yClose)) {</span>
+<span class="nc" id="L400">                    double yyClose = rangeAxis.valueToJava2D(</span>
+                        yClose, dataArea, location);
+<span class="nc bnc" id="L402" title="All 2 branches missed.">                    if (this.closeTickPaint != null) {</span>
+<span class="nc" id="L403">                        g2.setPaint(this.closeTickPaint);</span>
+                    }
+                    else {
+<span class="nc" id="L406">                        g2.setPaint(itemPaint);</span>
+                    }
+<span class="nc bnc" id="L408" title="All 2 branches missed.">                    if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L409">                        g2.draw(new Line2D.Double(yyClose, xx, yyClose,</span>
+                                xx - delta));
+                    }
+<span class="nc bnc" id="L412" title="All 2 branches missed.">                    else if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="nc" id="L413">                        g2.draw(new Line2D.Double(xx, yyClose, xx + delta,</span>
+                                yyClose));
+                    }
+                }
+            }
+
+<span class="nc" id="L419">        }</span>
+        else {
+            // not a HighLowDataset, so just draw a line connecting this point
+            // with the previous point...
+<span class="nc bnc" id="L423" title="All 2 branches missed.">            if (item &gt; 0) {</span>
+<span class="nc" id="L424">                double x0 = dataset.getXValue(series, item - 1);</span>
+<span class="nc" id="L425">                double y0 = dataset.getYValue(series, item - 1);</span>
+<span class="nc" id="L426">                double y = dataset.getYValue(series, item);</span>
+<span class="nc bnc" id="L427" title="All 6 branches missed.">                if (Double.isNaN(x0) || Double.isNaN(y0) || Double.isNaN(y)) {</span>
+<span class="nc" id="L428">                    return;</span>
+                }
+<span class="nc" id="L430">                double xx0 = domainAxis.valueToJava2D(x0, dataArea,</span>
+                        plot.getDomainAxisEdge());
+<span class="nc" id="L432">                double yy0 = rangeAxis.valueToJava2D(y0, dataArea, location);</span>
+<span class="nc" id="L433">                double yy = rangeAxis.valueToJava2D(y, dataArea, location);</span>
+<span class="nc bnc" id="L434" title="All 2 branches missed.">                if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L435">                    g2.draw(new Line2D.Double(yy0, xx0, yy, xx));</span>
+                }
+<span class="nc bnc" id="L437" title="All 2 branches missed.">                else if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="nc" id="L438">                    g2.draw(new Line2D.Double(xx0, yy0, xx, yy));</span>
+                }
+            }
+        }
+
+<span class="nc bnc" id="L443" title="All 2 branches missed.">        if (entities != null) {</span>
+<span class="nc" id="L444">            addEntity(entities, entityArea, dataset, series, item, 0.0, 0.0);</span>
+        }
+
+<span class="nc" id="L447">    }</span>
+
+    /**
+     * Returns a clone of the renderer.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException  if the renderer cannot be cloned.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L458">        return super.clone();</span>
+    }
+
+    /**
+     * Tests this renderer for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L470" title="1 of 2 branches missed.">        if (this == obj) {</span>
+<span class="nc" id="L471">            return true;</span>
+        }
+<span class="pc bpc" id="L473" title="1 of 2 branches missed.">        if (!(obj instanceof HighLowRenderer)) {</span>
+<span class="nc" id="L474">            return false;</span>
+        }
+<span class="fc" id="L476">        HighLowRenderer that = (HighLowRenderer) obj;</span>
+<span class="fc bfc" id="L477" title="All 2 branches covered.">        if (this.drawOpenTicks != that.drawOpenTicks) {</span>
+<span class="fc" id="L478">            return false;</span>
+        }
+<span class="fc bfc" id="L480" title="All 2 branches covered.">        if (this.drawCloseTicks != that.drawCloseTicks) {</span>
+<span class="fc" id="L481">            return false;</span>
+        }
+<span class="fc bfc" id="L483" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.openTickPaint, that.openTickPaint)) {</span>
+<span class="fc" id="L484">            return false;</span>
+        }
+<span class="fc bfc" id="L486" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.closeTickPaint, that.closeTickPaint)) {</span>
+<span class="fc" id="L487">            return false;</span>
+        }
+<span class="fc bfc" id="L489" title="All 2 branches covered.">        if (this.tickLength != that.tickLength) {</span>
+<span class="fc" id="L490">            return false;</span>
+        }
+<span class="pc bpc" id="L492" title="1 of 2 branches missed.">        if (!super.equals(obj)) {</span>
+<span class="nc" id="L493">            return false;</span>
+        }
+<span class="fc" id="L495">        return true;</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+            throws IOException, ClassNotFoundException {
+<span class="fc" id="L508">        stream.defaultReadObject();</span>
+<span class="fc" id="L509">        this.openTickPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L510">        this.closeTickPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L511">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L521">        stream.defaultWriteObject();</span>
+<span class="fc" id="L522">        SerialUtilities.writePaint(this.openTickPaint, stream);</span>
+<span class="fc" id="L523">        SerialUtilities.writePaint(this.closeTickPaint, stream);</span>
+<span class="fc" id="L524">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

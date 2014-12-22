@@ -1,0 +1,978 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>CandlestickRenderer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.renderer.xy</a> &gt; <span class="el_source">CandlestickRenderer.java</span></div><h1>CandlestickRenderer.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ------------------------
+ * CandlestickRenderer.java
+ * ------------------------
+ * (C) Copyright 2001-2013, by Object Refinery Limited.
+ *
+ * Original Authors:  David Gilbert (for Object Refinery Limited);
+ *                    Sylvain Vieujot;
+ * Contributor(s):    Richard Atkinson;
+ *                    Christian W. Zuckschwerdt;
+ *                    Jerome Fisher;
+ *
+ * Changes
+ * -------
+ * 13-Dec-2001 : Version 1.  Based on code in the (now redundant)
+ *               CandlestickPlot class, written by Sylvain Vieujot (DG);
+ * 23-Jan-2002 : Added DrawInfo parameter to drawItem() method (DG);
+ * 28-Mar-2002 : Added a property change listener mechanism so that renderers
+ *               no longer need to be immutable.  Added properties for up and
+ *               down colors (DG);
+ * 04-Apr-2002 : Updated with new automatic width calculation and optional
+ *               volume display, contributed by Sylvain Vieujot (DG);
+ * 09-Apr-2002 : Removed translatedRangeZero from the drawItem() method, and
+ *               changed the return type of the drawItem method to void,
+ *               reflecting a change in the XYItemRenderer interface.  Added
+ *               tooltip code to drawItem() method (DG);
+ * 25-Jun-2002 : Removed redundant code (DG);
+ * 05-Aug-2002 : Small modification to drawItem method to support URLs for HTML
+ *               image maps (RA);
+ * 19-Sep-2002 : Fixed errors reported by Checkstyle (DG);
+ * 25-Mar-2003 : Implemented Serializable (DG);
+ * 01-May-2003 : Modified drawItem() method signature (DG);
+ * 30-Jun-2003 : Added support for PlotOrientation (for completeness, this
+ *               renderer is unlikely to be used with a HORIZONTAL
+ *               orientation) (DG);
+ * 30-Jul-2003 : Modified entity constructor (CZ);
+ * 20-Aug-2003 : Implemented Cloneable and PublicCloneable (DG);
+ * 29-Aug-2003 : Moved maxVolume calculation to initialise method (see bug
+ *               report 796619) (DG);
+ * 02-Sep-2003 : Added maxCandleWidthInMilliseconds as workaround for bug
+ *               796621 (DG);
+ * 08-Sep-2003 : Changed ValueAxis API (DG);
+ * 16-Sep-2003 : Changed ChartRenderingInfo --&gt; PlotRenderingInfo (DG);
+ * 13-Oct-2003 : Applied patch from Jerome Fisher to improve auto width
+ *               calculations (DG);
+ * 23-Dec-2003 : Fixed bug where up and down paint are used incorrectly (DG);
+ * 25-Feb-2004 : Replaced CrosshairInfo with CrosshairState (DG);
+ * 15-Jul-2004 : Switched getX() with getXValue() and getY() with
+ *               getYValue() (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 06-Jul-2006 : Swapped calls to getX() --&gt; getXValue(), and the same for the
+ *               other data values (DG);
+ * 17-Aug-2006 : Corrections to the equals() method (DG);
+ * 05-Mar-2007 : Added flag to allow optional use of outline paint (DG);
+ * 08-Oct-2007 : Added new volumePaint field (DG);
+ * 08-Apr-2008 : Added findRangeBounds() method override (DG);
+ * 13-May-2008 : Fixed chart entity bugs (1962467 and 1962472) (DG);
+ * 27-Mar-2009 : Updated findRangeBounds() to call new method in
+ *               superclass (DG);
+ * 03-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.chart.renderer.xy;
+
+import java.awt.AlphaComposite;
+import java.awt.Color;
+import java.awt.Composite;
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Stroke;
+import java.awt.geom.Line2D;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.entity.EntityCollection;
+import org.jfree.chart.event.RendererChangeEvent;
+import org.jfree.chart.labels.HighLowItemLabelGenerator;
+import org.jfree.chart.labels.XYToolTipGenerator;
+import org.jfree.chart.plot.CrosshairState;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.plot.PlotRenderingInfo;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.data.Range;
+import org.jfree.data.xy.IntervalXYDataset;
+import org.jfree.data.xy.OHLCDataset;
+import org.jfree.data.xy.XYDataset;
+import org.jfree.io.SerialUtilities;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.util.PaintUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A renderer that draws candlesticks on an {@link XYPlot} (requires a
+ * {@link OHLCDataset}).  The example shown here is generated
+ * by the &lt;code&gt;CandlestickChartDemo1.java&lt;/code&gt; program included in the
+ * JFreeChart demo collection:
+ * &lt;br&gt;&lt;br&gt;
+ * &lt;img src=&quot;../../../../../images/CandlestickRendererSample.png&quot;
+ * alt=&quot;CandlestickRendererSample.png&quot; /&gt;
+ * &lt;P&gt;
+ * This renderer does not include code to calculate the crosshair point for the
+ * plot.
+ */
+public class CandlestickRenderer extends AbstractXYItemRenderer
+        implements XYItemRenderer, Cloneable, PublicCloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = 50390395841817121L;
+
+    /** The average width method. */
+    public static final int WIDTHMETHOD_AVERAGE = 0;
+
+    /** The smallest width method. */
+    public static final int WIDTHMETHOD_SMALLEST = 1;
+
+    /** The interval data method. */
+    public static final int WIDTHMETHOD_INTERVALDATA = 2;
+
+    /** The method of automatically calculating the candle width. */
+<span class="fc" id="L151">    private int autoWidthMethod = WIDTHMETHOD_AVERAGE;</span>
+
+    /**
+     * The number (generally between 0.0 and 1.0) by which the available space
+     * automatically calculated for the candles will be multiplied to determine
+     * the actual width to use.
+     */
+<span class="fc" id="L158">    private double autoWidthFactor = 4.5 / 7;</span>
+
+    /** The minimum gap between one candle and the next */
+<span class="fc" id="L161">    private double autoWidthGap = 0.0;</span>
+
+    /** The candle width. */
+    private double candleWidth;
+
+    /** The maximum candlewidth in milliseconds. */
+<span class="fc" id="L167">    private double maxCandleWidthInMilliseconds = 1000.0 * 60.0 * 60.0 * 20.0;</span>
+
+    /** Temporary storage for the maximum candle width. */
+    private double maxCandleWidth;
+
+    /**
+     * The paint used to fill the candle when the price moved up from open to
+     * close.
+     */
+    private transient Paint upPaint;
+
+    /**
+     * The paint used to fill the candle when the price moved down from open
+     * to close.
+     */
+    private transient Paint downPaint;
+
+    /** A flag controlling whether or not volume bars are drawn on the chart. */
+    private boolean drawVolume;
+
+    /**
+     * The paint used to fill the volume bars (if they are visible).  Once
+     * initialised, this field should never be set to &lt;code&gt;null&lt;/code&gt;.
+     *
+     * @since 1.0.7
+     */
+    private transient Paint volumePaint;
+
+    /** Temporary storage for the maximum volume. */
+    private transient double maxVolume;
+
+    /**
+     * A flag that controls whether or not the renderer's outline paint is
+     * used to draw the outline of the candlestick.  The default value is
+     * &lt;code&gt;false&lt;/code&gt; to avoid a change of behaviour for existing code.
+     *
+     * @since 1.0.5
+     */
+    private boolean useOutlinePaint;
+
+    /**
+     * Creates a new renderer for candlestick charts.
+     */
+    public CandlestickRenderer() {
+<span class="fc" id="L211">        this(-1.0);</span>
+<span class="fc" id="L212">    }</span>
+
+    /**
+     * Creates a new renderer for candlestick charts.
+     * &lt;P&gt;
+     * Use -1 for the candle width if you prefer the width to be calculated
+     * automatically.
+     *
+     * @param candleWidth  The candle width.
+     */
+    public CandlestickRenderer(double candleWidth) {
+<span class="fc" id="L223">        this(candleWidth, true, new HighLowItemLabelGenerator());</span>
+<span class="fc" id="L224">    }</span>
+
+    /**
+     * Creates a new renderer for candlestick charts.
+     * &lt;P&gt;
+     * Use -1 for the candle width if you prefer the width to be calculated
+     * automatically.
+     *
+     * @param candleWidth  the candle width.
+     * @param drawVolume  a flag indicating whether or not volume bars should
+     *                    be drawn.
+     * @param toolTipGenerator  the tool tip generator. &lt;code&gt;null&lt;/code&gt; is
+     *                          none.
+     */
+    public CandlestickRenderer(double candleWidth, boolean drawVolume,
+                               XYToolTipGenerator toolTipGenerator) {
+<span class="fc" id="L240">        super();</span>
+<span class="fc" id="L241">        setBaseToolTipGenerator(toolTipGenerator);</span>
+<span class="fc" id="L242">        this.candleWidth = candleWidth;</span>
+<span class="fc" id="L243">        this.drawVolume = drawVolume;</span>
+<span class="fc" id="L244">        this.volumePaint = Color.gray;</span>
+<span class="fc" id="L245">        this.upPaint = Color.green;</span>
+<span class="fc" id="L246">        this.downPaint = Color.red;</span>
+<span class="fc" id="L247">        this.useOutlinePaint = false;  // false preserves the old behaviour</span>
+                                       // prior to introducing this flag
+<span class="fc" id="L249">    }</span>
+
+    /**
+     * Returns the width of each candle.
+     *
+     * @return The candle width.
+     *
+     * @see #setCandleWidth(double)
+     */
+    public double getCandleWidth() {
+<span class="fc" id="L259">        return this.candleWidth;</span>
+    }
+
+    /**
+     * Sets the candle width and sends a {@link RendererChangeEvent} to all
+     * registered listeners.
+     * &lt;P&gt;
+     * If you set the width to a negative value, the renderer will calculate
+     * the candle width automatically based on the space available on the chart.
+     *
+     * @param width  The width.
+     * @see #setAutoWidthMethod(int)
+     * @see #setAutoWidthGap(double)
+     * @see #setAutoWidthFactor(double)
+     * @see #setMaxCandleWidthInMilliseconds(double)
+     */
+    public void setCandleWidth(double width) {
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">        if (width != this.candleWidth) {</span>
+<span class="fc" id="L277">            this.candleWidth = width;</span>
+<span class="fc" id="L278">            fireChangeEvent();</span>
+        }
+<span class="fc" id="L280">    }</span>
+
+    /**
+     * Returns the maximum width (in milliseconds) of each candle.
+     *
+     * @return The maximum candle width in milliseconds.
+     *
+     * @see #setMaxCandleWidthInMilliseconds(double)
+     */
+    public double getMaxCandleWidthInMilliseconds() {
+<span class="nc" id="L290">        return this.maxCandleWidthInMilliseconds;</span>
+    }
+
+    /**
+     * Sets the maximum candle width (in milliseconds) and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param millis  The maximum width.
+     *
+     * @see #getMaxCandleWidthInMilliseconds()
+     * @see #setCandleWidth(double)
+     * @see #setAutoWidthMethod(int)
+     * @see #setAutoWidthGap(double)
+     * @see #setAutoWidthFactor(double)
+     */
+    public void setMaxCandleWidthInMilliseconds(double millis) {
+<span class="fc" id="L306">        this.maxCandleWidthInMilliseconds = millis;</span>
+<span class="fc" id="L307">        fireChangeEvent();</span>
+<span class="fc" id="L308">    }</span>
+
+    /**
+     * Returns the method of automatically calculating the candle width.
+     *
+     * @return The method of automatically calculating the candle width.
+     *
+     * @see #setAutoWidthMethod(int)
+     */
+    public int getAutoWidthMethod() {
+<span class="nc" id="L318">        return this.autoWidthMethod;</span>
+    }
+
+    /**
+     * Sets the method of automatically calculating the candle width and
+     * sends a {@link RendererChangeEvent} to all registered listeners.
+     * &lt;p&gt;
+     * &lt;code&gt;WIDTHMETHOD_AVERAGE&lt;/code&gt;: Divides the entire display (ignoring
+     * scale factor) by the number of items, and uses this as the available
+     * width.&lt;br&gt;
+     * &lt;code&gt;WIDTHMETHOD_SMALLEST&lt;/code&gt;: Checks the interval between each
+     * item, and uses the smallest as the available width.&lt;br&gt;
+     * &lt;code&gt;WIDTHMETHOD_INTERVALDATA&lt;/code&gt;: Assumes that the dataset supports
+     * the IntervalXYDataset interface, and uses the startXValue - endXValue as
+     * the available width.
+     * &lt;br&gt;
+     *
+     * @param autoWidthMethod  The method of automatically calculating the
+     * candle width.
+     *
+     * @see #WIDTHMETHOD_AVERAGE
+     * @see #WIDTHMETHOD_SMALLEST
+     * @see #WIDTHMETHOD_INTERVALDATA
+     * @see #getAutoWidthMethod()
+     * @see #setCandleWidth(double)
+     * @see #setAutoWidthGap(double)
+     * @see #setAutoWidthFactor(double)
+     * @see #setMaxCandleWidthInMilliseconds(double)
+     */
+    public void setAutoWidthMethod(int autoWidthMethod) {
+<span class="pc bpc" id="L348" title="1 of 2 branches missed.">        if (this.autoWidthMethod != autoWidthMethod) {</span>
+<span class="fc" id="L349">            this.autoWidthMethod = autoWidthMethod;</span>
+<span class="fc" id="L350">            fireChangeEvent();</span>
+        }
+<span class="fc" id="L352">    }</span>
+
+    /**
+     * Returns the factor by which the available space automatically
+     * calculated for the candles will be multiplied to determine the actual
+     * width to use.
+     *
+     * @return The width factor (generally between 0.0 and 1.0).
+     *
+     * @see #setAutoWidthFactor(double)
+     */
+    public double getAutoWidthFactor() {
+<span class="nc" id="L364">        return this.autoWidthFactor;</span>
+    }
+
+    /**
+     * Sets the factor by which the available space automatically calculated
+     * for the candles will be multiplied to determine the actual width to use.
+     *
+     * @param autoWidthFactor The width factor (generally between 0.0 and 1.0).
+     *
+     * @see #getAutoWidthFactor()
+     * @see #setCandleWidth(double)
+     * @see #setAutoWidthMethod(int)
+     * @see #setAutoWidthGap(double)
+     * @see #setMaxCandleWidthInMilliseconds(double)
+     */
+    public void setAutoWidthFactor(double autoWidthFactor) {
+<span class="pc bpc" id="L380" title="1 of 2 branches missed.">        if (this.autoWidthFactor != autoWidthFactor) {</span>
+<span class="fc" id="L381">            this.autoWidthFactor = autoWidthFactor;</span>
+<span class="fc" id="L382">            fireChangeEvent();</span>
+        }
+<span class="fc" id="L384">    }</span>
+
+    /**
+     * Returns the amount of space to leave on the left and right of each
+     * candle when automatically calculating widths.
+     *
+     * @return The gap.
+     *
+     * @see #setAutoWidthGap(double)
+     */
+    public double getAutoWidthGap() {
+<span class="nc" id="L395">        return this.autoWidthGap;</span>
+    }
+
+    /**
+     * Sets the amount of space to leave on the left and right of each candle
+     * when automatically calculating widths and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param autoWidthGap The gap.
+     *
+     * @see #getAutoWidthGap()
+     * @see #setCandleWidth(double)
+     * @see #setAutoWidthMethod(int)
+     * @see #setAutoWidthFactor(double)
+     * @see #setMaxCandleWidthInMilliseconds(double)
+     */
+    public void setAutoWidthGap(double autoWidthGap) {
+<span class="pc bpc" id="L412" title="1 of 2 branches missed.">        if (this.autoWidthGap != autoWidthGap) {</span>
+<span class="fc" id="L413">            this.autoWidthGap = autoWidthGap;</span>
+<span class="fc" id="L414">            fireChangeEvent();</span>
+        }
+<span class="fc" id="L416">    }</span>
+
+    /**
+     * Returns the paint used to fill candles when the price moves up from open
+     * to close.
+     *
+     * @return The paint (possibly &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setUpPaint(Paint)
+     */
+    public Paint getUpPaint() {
+<span class="fc" id="L427">        return this.upPaint;</span>
+    }
+
+    /**
+     * Sets the paint used to fill candles when the price moves up from open
+     * to close and sends a {@link RendererChangeEvent} to all registered
+     * listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @see #getUpPaint()
+     */
+    public void setUpPaint(Paint paint) {
+<span class="fc" id="L440">        this.upPaint = paint;</span>
+<span class="fc" id="L441">        fireChangeEvent();</span>
+<span class="fc" id="L442">    }</span>
+
+    /**
+     * Returns the paint used to fill candles when the price moves down from
+     * open to close.
+     *
+     * @return The paint (possibly &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setDownPaint(Paint)
+     */
+    public Paint getDownPaint() {
+<span class="fc" id="L453">        return this.downPaint;</span>
+    }
+
+    /**
+     * Sets the paint used to fill candles when the price moves down from open
+     * to close and sends a {@link RendererChangeEvent} to all registered
+     * listeners.
+     *
+     * @param paint  The paint (&lt;code&gt;null&lt;/code&gt; permitted).
+     */
+    public void setDownPaint(Paint paint) {
+<span class="fc" id="L464">        this.downPaint = paint;</span>
+<span class="fc" id="L465">        fireChangeEvent();</span>
+<span class="fc" id="L466">    }</span>
+
+    /**
+     * Returns a flag indicating whether or not volume bars are drawn on the
+     * chart.
+     *
+     * @return A boolean.
+     *
+     * @since 1.0.5
+     *
+     * @see #setDrawVolume(boolean)
+     */
+    public boolean getDrawVolume() {
+<span class="fc" id="L479">        return this.drawVolume;</span>
+    }
+
+    /**
+     * Sets a flag that controls whether or not volume bars are drawn in the
+     * background and sends a {@link RendererChangeEvent} to all registered
+     * listeners.
+     *
+     * @param flag  the flag.
+     *
+     * @see #getDrawVolume()
+     */
+    public void setDrawVolume(boolean flag) {
+<span class="pc bpc" id="L492" title="1 of 2 branches missed.">        if (this.drawVolume != flag) {</span>
+<span class="fc" id="L493">            this.drawVolume = flag;</span>
+<span class="fc" id="L494">            fireChangeEvent();</span>
+        }
+<span class="fc" id="L496">    }</span>
+
+    /**
+     * Returns the paint that is used to fill the volume bars if they are
+     * visible.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setVolumePaint(Paint)
+     *
+     * @since 1.0.7
+     */
+    public Paint getVolumePaint() {
+<span class="fc" id="L509">        return this.volumePaint;</span>
+    }
+
+    /**
+     * Sets the paint used to fill the volume bars, and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getVolumePaint()
+     * @see #getDrawVolume()
+     *
+     * @since 1.0.7
+     */
+    public void setVolumePaint(Paint paint) {
+<span class="fc" id="L524">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L525">        this.volumePaint = paint;</span>
+<span class="fc" id="L526">        fireChangeEvent();</span>
+<span class="fc" id="L527">    }</span>
+
+    /**
+     * Returns the flag that controls whether or not the renderer's outline
+     * paint is used to draw the candlestick outline.  The default value is
+     * &lt;code&gt;false&lt;/code&gt;.
+     *
+     * @return A boolean.
+     *
+     * @since 1.0.5
+     *
+     * @see #setUseOutlinePaint(boolean)
+     */
+    public boolean getUseOutlinePaint() {
+<span class="fc" id="L541">        return this.useOutlinePaint;</span>
+    }
+
+    /**
+     * Sets the flag that controls whether or not the renderer's outline
+     * paint is used to draw the candlestick outline, and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param use  the new flag value.
+     *
+     * @since 1.0.5
+     *
+     * @see #getUseOutlinePaint()
+     */
+    public void setUseOutlinePaint(boolean use) {
+<span class="pc bpc" id="L556" title="1 of 2 branches missed.">        if (this.useOutlinePaint != use) {</span>
+<span class="fc" id="L557">            this.useOutlinePaint = use;</span>
+<span class="fc" id="L558">            fireChangeEvent();</span>
+        }
+<span class="fc" id="L560">    }</span>
+
+    /**
+     * Returns the range of values the renderer requires to display all the
+     * items from the specified dataset.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return The range (&lt;code&gt;null&lt;/code&gt; if the dataset is &lt;code&gt;null&lt;/code&gt;
+     *         or empty).
+     */
+    @Override
+    public Range findRangeBounds(XYDataset dataset) {
+<span class="fc" id="L573">        return findRangeBounds(dataset, true);</span>
+    }
+
+    /**
+     * Initialises the renderer then returns the number of 'passes' through the
+     * data that the renderer will require (usually just one).  This method
+     * will be called before the first item is rendered, giving the renderer
+     * an opportunity to initialise any state information it wants to maintain.
+     * The renderer can do nothing if it chooses.
+     *
+     * @param g2  the graphics device.
+     * @param dataArea  the area inside the axes.
+     * @param plot  the plot.
+     * @param dataset  the data.
+     * @param info  an optional info collection object to return data back to
+     *              the caller.
+     *
+     * @return The number of passes the renderer requires.
+     */
+    @Override
+    public XYItemRendererState initialise(Graphics2D g2, Rectangle2D dataArea,
+            XYPlot plot, XYDataset dataset, PlotRenderingInfo info) {
+
+        // calculate the maximum allowed candle width from the axis...
+<span class="nc" id="L597">        ValueAxis axis = plot.getDomainAxis();</span>
+<span class="nc" id="L598">        double x1 = axis.getLowerBound();</span>
+<span class="nc" id="L599">        double x2 = x1 + this.maxCandleWidthInMilliseconds;</span>
+<span class="nc" id="L600">        RectangleEdge edge = plot.getDomainAxisEdge();</span>
+<span class="nc" id="L601">        double xx1 = axis.valueToJava2D(x1, dataArea, edge);</span>
+<span class="nc" id="L602">        double xx2 = axis.valueToJava2D(x2, dataArea, edge);</span>
+<span class="nc" id="L603">        this.maxCandleWidth = Math.abs(xx2 - xx1);</span>
+            // Absolute value, since the relative x
+            // positions are reversed for horizontal orientation
+
+        // calculate the highest volume in the dataset...
+<span class="nc bnc" id="L608" title="All 2 branches missed.">        if (this.drawVolume) {</span>
+<span class="nc" id="L609">            OHLCDataset highLowDataset = (OHLCDataset) dataset;</span>
+<span class="nc" id="L610">            this.maxVolume = 0.0;</span>
+<span class="nc bnc" id="L611" title="All 2 branches missed.">            for (int series = 0; series &lt; highLowDataset.getSeriesCount();</span>
+<span class="nc" id="L612">                 series++) {</span>
+<span class="nc bnc" id="L613" title="All 2 branches missed.">                for (int item = 0; item &lt; highLowDataset.getItemCount(series);</span>
+<span class="nc" id="L614">                     item++) {</span>
+<span class="nc" id="L615">                    double volume = highLowDataset.getVolumeValue(series, item);</span>
+<span class="nc bnc" id="L616" title="All 2 branches missed.">                    if (volume &gt; this.maxVolume) {</span>
+<span class="nc" id="L617">                        this.maxVolume = volume;</span>
+                    }
+
+                }
+            }
+        }
+
+<span class="nc" id="L624">        return new XYItemRendererState(info);</span>
+    }
+
+    /**
+     * Draws the visual representation of a single data item.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the area within which the plot is being drawn.
+     * @param info  collects info about the drawing.
+     * @param plot  the plot (can be used to obtain standard color
+     *              information etc).
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the dataset.
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     * @param crosshairState  crosshair information for the plot
+     *                        (&lt;code&gt;null&lt;/code&gt; permitted).
+     * @param pass  the pass index.
+     */
+    @Override
+    public void drawItem(Graphics2D g2, XYItemRendererState state,
+            Rectangle2D dataArea, PlotRenderingInfo info, XYPlot plot,
+            ValueAxis domainAxis, ValueAxis rangeAxis, XYDataset dataset,
+            int series, int item, CrosshairState crosshairState, int pass) {
+
+        boolean horiz;
+<span class="nc" id="L652">        PlotOrientation orientation = plot.getOrientation();</span>
+<span class="nc bnc" id="L653" title="All 2 branches missed.">        if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L654">            horiz = true;</span>
+        }
+<span class="nc bnc" id="L656" title="All 2 branches missed.">        else if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="nc" id="L657">            horiz = false;</span>
+        }
+        else {
+<span class="nc" id="L660">            return;</span>
+        }
+
+        // setup for collecting optional entity info...
+<span class="nc" id="L664">        EntityCollection entities = null;</span>
+<span class="nc bnc" id="L665" title="All 2 branches missed.">        if (info != null) {</span>
+<span class="nc" id="L666">            entities = info.getOwner().getEntityCollection();</span>
+        }
+
+<span class="nc" id="L669">        OHLCDataset highLowData = (OHLCDataset) dataset;</span>
+
+<span class="nc" id="L671">        double x = highLowData.getXValue(series, item);</span>
+<span class="nc" id="L672">        double yHigh = highLowData.getHighValue(series, item);</span>
+<span class="nc" id="L673">        double yLow = highLowData.getLowValue(series, item);</span>
+<span class="nc" id="L674">        double yOpen = highLowData.getOpenValue(series, item);</span>
+<span class="nc" id="L675">        double yClose = highLowData.getCloseValue(series, item);</span>
+
+<span class="nc" id="L677">        RectangleEdge domainEdge = plot.getDomainAxisEdge();</span>
+<span class="nc" id="L678">        double xx = domainAxis.valueToJava2D(x, dataArea, domainEdge);</span>
+
+<span class="nc" id="L680">        RectangleEdge edge = plot.getRangeAxisEdge();</span>
+<span class="nc" id="L681">        double yyHigh = rangeAxis.valueToJava2D(yHigh, dataArea, edge);</span>
+<span class="nc" id="L682">        double yyLow = rangeAxis.valueToJava2D(yLow, dataArea, edge);</span>
+<span class="nc" id="L683">        double yyOpen = rangeAxis.valueToJava2D(yOpen, dataArea, edge);</span>
+<span class="nc" id="L684">        double yyClose = rangeAxis.valueToJava2D(yClose, dataArea, edge);</span>
+
+        double volumeWidth;
+        double stickWidth;
+<span class="nc bnc" id="L688" title="All 2 branches missed.">        if (this.candleWidth &gt; 0) {</span>
+            // These are deliberately not bounded to minimums/maxCandleWidth to
+            //  retain old behaviour.
+<span class="nc" id="L691">            volumeWidth = this.candleWidth;</span>
+<span class="nc" id="L692">            stickWidth = this.candleWidth;</span>
+        }
+        else {
+<span class="nc" id="L695">            double xxWidth = 0;</span>
+            int itemCount;
+<span class="nc bnc" id="L697" title="All 4 branches missed.">            switch (this.autoWidthMethod) {</span>
+
+                case WIDTHMETHOD_AVERAGE:
+<span class="nc" id="L700">                    itemCount = highLowData.getItemCount(series);</span>
+<span class="nc bnc" id="L701" title="All 2 branches missed.">                    if (horiz) {</span>
+<span class="nc" id="L702">                        xxWidth = dataArea.getHeight() / itemCount;</span>
+                    }
+                    else {
+<span class="nc" id="L705">                        xxWidth = dataArea.getWidth() / itemCount;</span>
+                    }
+<span class="nc" id="L707">                    break;</span>
+
+                case WIDTHMETHOD_SMALLEST:
+                    // Note: It would be nice to pre-calculate this per series
+<span class="nc" id="L711">                    itemCount = highLowData.getItemCount(series);</span>
+<span class="nc" id="L712">                    double lastPos = -1;</span>
+<span class="nc" id="L713">                    xxWidth = dataArea.getWidth();</span>
+<span class="nc bnc" id="L714" title="All 2 branches missed.">                    for (int i = 0; i &lt; itemCount; i++) {</span>
+<span class="nc" id="L715">                        double pos = domainAxis.valueToJava2D(</span>
+                                highLowData.getXValue(series, i), dataArea,
+                                domainEdge);
+<span class="nc bnc" id="L718" title="All 2 branches missed.">                        if (lastPos != -1) {</span>
+<span class="nc" id="L719">                            xxWidth = Math.min(xxWidth,</span>
+                                    Math.abs(pos - lastPos));
+                        }
+<span class="nc" id="L722">                        lastPos = pos;</span>
+                    }
+<span class="nc" id="L724">                    break;</span>
+
+                case WIDTHMETHOD_INTERVALDATA:
+<span class="nc" id="L727">                    IntervalXYDataset intervalXYData</span>
+                            = (IntervalXYDataset) dataset;
+<span class="nc" id="L729">                    double startPos = domainAxis.valueToJava2D(</span>
+                            intervalXYData.getStartXValue(series, item),
+                            dataArea, plot.getDomainAxisEdge());
+<span class="nc" id="L732">                    double endPos = domainAxis.valueToJava2D(</span>
+                            intervalXYData.getEndXValue(series, item),
+                            dataArea, plot.getDomainAxisEdge());
+<span class="nc" id="L735">                    xxWidth = Math.abs(endPos - startPos);</span>
+                    break;
+
+            }
+<span class="nc" id="L739">            xxWidth -= 2 * this.autoWidthGap;</span>
+<span class="nc" id="L740">            xxWidth *= this.autoWidthFactor;</span>
+<span class="nc" id="L741">            xxWidth = Math.min(xxWidth, this.maxCandleWidth);</span>
+<span class="nc" id="L742">            volumeWidth = Math.max(Math.min(1, this.maxCandleWidth), xxWidth);</span>
+<span class="nc" id="L743">            stickWidth = Math.max(Math.min(3, this.maxCandleWidth), xxWidth);</span>
+        }
+
+<span class="nc" id="L746">        Paint p = getItemPaint(series, item);</span>
+<span class="nc" id="L747">        Paint outlinePaint = null;</span>
+<span class="nc bnc" id="L748" title="All 2 branches missed.">        if (this.useOutlinePaint) {</span>
+<span class="nc" id="L749">            outlinePaint = getItemOutlinePaint(series, item);</span>
+        }
+<span class="nc" id="L751">        Stroke s = getItemStroke(series, item);</span>
+
+<span class="nc" id="L753">        g2.setStroke(s);</span>
+
+<span class="nc bnc" id="L755" title="All 2 branches missed.">        if (this.drawVolume) {</span>
+<span class="nc" id="L756">            int volume = (int) highLowData.getVolumeValue(series, item);</span>
+<span class="nc" id="L757">            double volumeHeight = volume / this.maxVolume;</span>
+
+            double min, max;
+<span class="nc bnc" id="L760" title="All 2 branches missed.">            if (horiz) {</span>
+<span class="nc" id="L761">                min = dataArea.getMinX();</span>
+<span class="nc" id="L762">                max = dataArea.getMaxX();</span>
+            }
+            else {
+<span class="nc" id="L765">                min = dataArea.getMinY();</span>
+<span class="nc" id="L766">                max = dataArea.getMaxY();</span>
+            }
+
+<span class="nc" id="L769">            double zzVolume = volumeHeight * (max - min);</span>
+
+<span class="nc" id="L771">            g2.setPaint(getVolumePaint());</span>
+<span class="nc" id="L772">            Composite originalComposite = g2.getComposite();</span>
+<span class="nc" id="L773">            g2.setComposite(AlphaComposite.getInstance(</span>
+                    AlphaComposite.SRC_OVER, 0.3f));
+
+<span class="nc bnc" id="L776" title="All 2 branches missed.">            if (horiz) {</span>
+<span class="nc" id="L777">                g2.fill(new Rectangle2D.Double(min, xx - volumeWidth / 2,</span>
+                        zzVolume, volumeWidth));
+            }
+            else {
+<span class="nc" id="L781">                g2.fill(new Rectangle2D.Double(xx - volumeWidth / 2,</span>
+                        max - zzVolume, volumeWidth, zzVolume));
+            }
+
+<span class="nc" id="L785">            g2.setComposite(originalComposite);</span>
+        }
+
+<span class="nc bnc" id="L788" title="All 2 branches missed.">        if (this.useOutlinePaint) {</span>
+<span class="nc" id="L789">            g2.setPaint(outlinePaint);</span>
+        }
+        else {
+<span class="nc" id="L792">            g2.setPaint(p);</span>
+        }
+
+<span class="nc" id="L795">        double yyMaxOpenClose = Math.max(yyOpen, yyClose);</span>
+<span class="nc" id="L796">        double yyMinOpenClose = Math.min(yyOpen, yyClose);</span>
+<span class="nc" id="L797">        double maxOpenClose = Math.max(yOpen, yClose);</span>
+<span class="nc" id="L798">        double minOpenClose = Math.min(yOpen, yClose);</span>
+
+        // draw the upper shadow
+<span class="nc bnc" id="L801" title="All 2 branches missed.">        if (yHigh &gt; maxOpenClose) {</span>
+<span class="nc bnc" id="L802" title="All 2 branches missed.">            if (horiz) {</span>
+<span class="nc" id="L803">                g2.draw(new Line2D.Double(yyHigh, xx, yyMaxOpenClose, xx));</span>
+            }
+            else {
+<span class="nc" id="L806">                g2.draw(new Line2D.Double(xx, yyHigh, xx, yyMaxOpenClose));</span>
+            }
+        }
+
+        // draw the lower shadow
+<span class="nc bnc" id="L811" title="All 2 branches missed.">        if (yLow &lt; minOpenClose) {</span>
+<span class="nc bnc" id="L812" title="All 2 branches missed.">            if (horiz) {</span>
+<span class="nc" id="L813">                g2.draw(new Line2D.Double(yyLow, xx, yyMinOpenClose, xx));</span>
+            }
+            else {
+<span class="nc" id="L816">                g2.draw(new Line2D.Double(xx, yyLow, xx, yyMinOpenClose));</span>
+            }
+        }
+
+        // draw the body
+        Rectangle2D body;
+        Rectangle2D hotspot;
+<span class="nc" id="L823">        double length = Math.abs(yyHigh - yyLow);</span>
+<span class="nc" id="L824">        double base = Math.min(yyHigh, yyLow);</span>
+<span class="nc bnc" id="L825" title="All 2 branches missed.">        if (horiz) {</span>
+<span class="nc" id="L826">            body = new Rectangle2D.Double(yyMinOpenClose, xx - stickWidth / 2,</span>
+                    yyMaxOpenClose - yyMinOpenClose, stickWidth);
+<span class="nc" id="L828">            hotspot = new Rectangle2D.Double(base, xx - stickWidth / 2,</span>
+                    length, stickWidth);
+        }
+        else {
+<span class="nc" id="L832">            body = new Rectangle2D.Double(xx - stickWidth / 2, yyMinOpenClose,</span>
+                    stickWidth, yyMaxOpenClose - yyMinOpenClose);
+<span class="nc" id="L834">            hotspot = new Rectangle2D.Double(xx - stickWidth / 2,</span>
+                    base, stickWidth, length);
+        }
+<span class="nc bnc" id="L837" title="All 2 branches missed.">        if (yClose &gt; yOpen) {</span>
+<span class="nc bnc" id="L838" title="All 2 branches missed.">            if (this.upPaint != null) {</span>
+<span class="nc" id="L839">                g2.setPaint(this.upPaint);</span>
+            }
+            else {
+<span class="nc" id="L842">                g2.setPaint(p);</span>
+            }
+<span class="nc" id="L844">            g2.fill(body);</span>
+        }
+        else {
+<span class="nc bnc" id="L847" title="All 2 branches missed.">            if (this.downPaint != null) {</span>
+<span class="nc" id="L848">                g2.setPaint(this.downPaint);</span>
+            }
+            else {
+<span class="nc" id="L851">                g2.setPaint(p);</span>
+            }
+<span class="nc" id="L853">            g2.fill(body);</span>
+        }
+<span class="nc bnc" id="L855" title="All 2 branches missed.">        if (this.useOutlinePaint) {</span>
+<span class="nc" id="L856">            g2.setPaint(outlinePaint);</span>
+        }
+        else {
+<span class="nc" id="L859">            g2.setPaint(p);</span>
+        }
+<span class="nc" id="L861">        g2.draw(body);</span>
+
+        // add an entity for the item...
+<span class="nc bnc" id="L864" title="All 2 branches missed.">        if (entities != null) {</span>
+<span class="nc" id="L865">            addEntity(entities, hotspot, dataset, series, item, 0.0, 0.0);</span>
+        }
+
+<span class="nc" id="L868">    }</span>
+
+    /**
+     * Tests this renderer for equality with another object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L879" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L880">            return true;</span>
+        }
+<span class="pc bpc" id="L882" title="1 of 2 branches missed.">        if (!(obj instanceof CandlestickRenderer)) {</span>
+<span class="nc" id="L883">            return false;</span>
+        }
+<span class="fc" id="L885">        CandlestickRenderer that = (CandlestickRenderer) obj;</span>
+<span class="fc bfc" id="L886" title="All 2 branches covered.">        if (this.candleWidth != that.candleWidth) {</span>
+<span class="fc" id="L887">            return false;</span>
+        }
+<span class="fc bfc" id="L889" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.upPaint, that.upPaint)) {</span>
+<span class="fc" id="L890">            return false;</span>
+        }
+<span class="fc bfc" id="L892" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.downPaint, that.downPaint)) {</span>
+<span class="fc" id="L893">            return false;</span>
+        }
+<span class="fc bfc" id="L895" title="All 2 branches covered.">        if (this.drawVolume != that.drawVolume) {</span>
+<span class="fc" id="L896">            return false;</span>
+        }
+<span class="fc bfc" id="L898" title="All 2 branches covered.">        if (this.maxCandleWidthInMilliseconds</span>
+                != that.maxCandleWidthInMilliseconds) {
+<span class="fc" id="L900">            return false;</span>
+        }
+<span class="fc bfc" id="L902" title="All 2 branches covered.">        if (this.autoWidthMethod != that.autoWidthMethod) {</span>
+<span class="fc" id="L903">            return false;</span>
+        }
+<span class="fc bfc" id="L905" title="All 2 branches covered.">        if (this.autoWidthFactor != that.autoWidthFactor) {</span>
+<span class="fc" id="L906">            return false;</span>
+        }
+<span class="fc bfc" id="L908" title="All 2 branches covered.">        if (this.autoWidthGap != that.autoWidthGap) {</span>
+<span class="fc" id="L909">            return false;</span>
+        }
+<span class="fc bfc" id="L911" title="All 2 branches covered.">        if (this.useOutlinePaint != that.useOutlinePaint) {</span>
+<span class="fc" id="L912">            return false;</span>
+        }
+<span class="fc bfc" id="L914" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.volumePaint, that.volumePaint)) {</span>
+<span class="fc" id="L915">            return false;</span>
+        }
+<span class="fc" id="L917">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Returns a clone of the renderer.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException  if the renderer cannot be cloned.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L929">        return super.clone();</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L940">        stream.defaultWriteObject();</span>
+<span class="fc" id="L941">        SerialUtilities.writePaint(this.upPaint, stream);</span>
+<span class="fc" id="L942">        SerialUtilities.writePaint(this.downPaint, stream);</span>
+<span class="fc" id="L943">        SerialUtilities.writePaint(this.volumePaint, stream);</span>
+<span class="fc" id="L944">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+            throws IOException, ClassNotFoundException {
+<span class="fc" id="L956">        stream.defaultReadObject();</span>
+<span class="fc" id="L957">        this.upPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L958">        this.downPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L959">        this.volumePaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L960">    }</span>
+
+    // --- DEPRECATED CODE ----------------------------------------------------
+
+    /**
+     * Returns a flag indicating whether or not volume bars are drawn on the
+     * chart.
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; if volume bars are drawn on the chart.
+     *
+     * @deprecated As of 1.0.5, you should use the {@link #getDrawVolume()}
+     *         method.
+     */
+    public boolean drawVolume() {
+<span class="nc" id="L974">        return this.drawVolume;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,489 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>IntervalXYDelegate.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.data.xy</a> &gt; <span class="el_source">IntervalXYDelegate.java</span></div><h1>IntervalXYDelegate.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * -----------------------
+ * IntervalXYDelegate.java
+ * -----------------------
+ * (C) Copyright 2004-2013, by Andreas Schroeder and Contributors.
+ *
+ * Original Author:  Andreas Schroeder;
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *
+ * Changes
+ * -------
+ * 31-Mar-2004 : Version 1 (AS);
+ * 15-Jul-2004 : Switched getX() with getXValue() and getY() with
+ *               getYValue() (DG);
+ * 18-Aug-2004 : Moved from org.jfree.data --&gt; org.jfree.data.xy (DG);
+ * 04-Nov-2004 : Added argument check for setIntervalWidth() method (DG);
+ * 17-Nov-2004 : New methods to reflect changes in DomainInfo (DG);
+ * 11-Jan-2005 : Removed deprecated methods in preparation for the 1.0.0
+ *               release (DG);
+ * 21-Feb-2005 : Made public and added equals() method (DG);
+ * 06-Oct-2005 : Implemented DatasetChangeListener to recalculate
+ *               autoIntervalWidth (DG);
+ * 02-Feb-2007 : Removed author tags all over JFreeChart sources (DG);
+ * 06-Mar-2009 : Implemented hashCode() (DG);
+ * 02-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.data.xy;
+
+import java.io.Serializable;
+
+import org.jfree.chart.HashUtilities;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.data.DomainInfo;
+import org.jfree.data.Range;
+import org.jfree.data.RangeInfo;
+import org.jfree.data.general.DatasetChangeEvent;
+import org.jfree.data.general.DatasetChangeListener;
+import org.jfree.data.general.DatasetUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A delegate that handles the specification or automatic calculation of the
+ * interval surrounding the x-values in a dataset.  This is used to extend
+ * a regular {@link XYDataset} to support the {@link IntervalXYDataset}
+ * interface.
+ * &lt;p&gt;
+ * The decorator pattern was not used because of the several possibly
+ * implemented interfaces of the decorated instance (e.g.
+ * {@link TableXYDataset}, {@link RangeInfo}, {@link DomainInfo} etc.).
+ * &lt;p&gt;
+ * The width can be set manually or calculated automatically. The switch
+ * autoWidth allows to determine which behavior is used. The auto width
+ * calculation tries to find the smallest gap between two x-values in the
+ * dataset.  If there is only one item in the series, the auto width
+ * calculation fails and falls back on the manually set interval width (which
+ * is itself defaulted to 1.0).
+ */
+public class IntervalXYDelegate implements DatasetChangeListener,
+        DomainInfo, Serializable, Cloneable, PublicCloneable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = -685166711639592857L;
+
+    /**
+     * The dataset to enhance.
+     */
+    private XYDataset dataset;
+
+    /**
+     * A flag to indicate whether the width should be calculated automatically.
+     */
+    private boolean autoWidth;
+
+    /**
+     * A value between 0.0 and 1.0 that indicates the position of the x-value
+     * within the interval.
+     */
+    private double intervalPositionFactor;
+
+    /**
+     * The fixed interval width (defaults to 1.0).
+     */
+    private double fixedIntervalWidth;
+
+    /**
+     * The automatically calculated interval width.
+     */
+    private double autoIntervalWidth;
+
+    /**
+     * Creates a new delegate that.
+     *
+     * @param dataset  the underlying dataset (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public IntervalXYDelegate(XYDataset dataset) {
+<span class="fc" id="L123">        this(dataset, true);</span>
+<span class="fc" id="L124">    }</span>
+
+    /**
+     * Creates a new delegate for the specified dataset.
+     *
+     * @param dataset  the underlying dataset (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param autoWidth  a flag that controls whether the interval width is
+     *                   calculated automatically.
+     */
+<span class="fc" id="L133">    public IntervalXYDelegate(XYDataset dataset, boolean autoWidth) {</span>
+<span class="fc" id="L134">        ParamChecks.nullNotPermitted(dataset, &quot;dataset&quot;);</span>
+<span class="fc" id="L135">        this.dataset = dataset;</span>
+<span class="fc" id="L136">        this.autoWidth = autoWidth;</span>
+<span class="fc" id="L137">        this.intervalPositionFactor = 0.5;</span>
+<span class="fc" id="L138">        this.autoIntervalWidth = Double.POSITIVE_INFINITY;</span>
+<span class="fc" id="L139">        this.fixedIntervalWidth = 1.0;</span>
+<span class="fc" id="L140">    }</span>
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; if the interval width is automatically
+     * calculated, and &lt;code&gt;false&lt;/code&gt; otherwise.
+     *
+     * @return A boolean.
+     */
+    public boolean isAutoWidth() {
+<span class="fc" id="L149">        return this.autoWidth;</span>
+    }
+
+    /**
+     * Sets the flag that indicates whether the interval width is automatically
+     * calculated.  If the flag is set to &lt;code&gt;true&lt;/code&gt;, the interval is
+     * recalculated.
+     * &lt;p&gt;
+     * Note: recalculating the interval amounts to changing the data values
+     * represented by the dataset.  The calling dataset must fire an
+     * appropriate {@link DatasetChangeEvent}.
+     *
+     * @param b  a boolean.
+     */
+    public void setAutoWidth(boolean b) {
+<span class="fc" id="L164">        this.autoWidth = b;</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        if (b) {</span>
+<span class="fc" id="L166">            this.autoIntervalWidth = recalculateInterval();</span>
+        }
+<span class="fc" id="L168">    }</span>
+
+    /**
+     * Returns the interval position factor.
+     *
+     * @return The interval position factor.
+     */
+    public double getIntervalPositionFactor() {
+<span class="fc" id="L176">        return this.intervalPositionFactor;</span>
+    }
+
+    /**
+     * Sets the interval position factor.  This controls how the interval is
+     * aligned to the x-value.  For a value of 0.5, the interval is aligned
+     * with the x-value in the center.  For a value of 0.0, the interval is
+     * aligned with the x-value at the lower end of the interval, and for a
+     * value of 1.0, the interval is aligned with the x-value at the upper
+     * end of the interval.
+     * &lt;br&gt;&lt;br&gt;
+     * Note that changing the interval position factor amounts to changing the
+     * data values represented by the dataset.  Therefore, the dataset that is
+     * using this delegate is responsible for generating the
+     * appropriate {@link DatasetChangeEvent}.
+     *
+     * @param d  the new interval position factor (in the range
+     *           &lt;code&gt;0.0&lt;/code&gt; to &lt;code&gt;1.0&lt;/code&gt; inclusive).
+     */
+    public void setIntervalPositionFactor(double d) {
+<span class="pc bpc" id="L196" title="2 of 4 branches missed.">        if (d &lt; 0.0 || 1.0 &lt; d) {</span>
+<span class="nc" id="L197">            throw new IllegalArgumentException(</span>
+                    &quot;Argument 'd' outside valid range.&quot;);
+        }
+<span class="fc" id="L200">        this.intervalPositionFactor = d;</span>
+<span class="fc" id="L201">    }</span>
+
+    /**
+     * Returns the fixed interval width.
+     *
+     * @return The fixed interval width.
+     */
+    public double getFixedIntervalWidth() {
+<span class="nc" id="L209">        return this.fixedIntervalWidth;</span>
+    }
+
+    /**
+     * Sets the fixed interval width and, as a side effect, sets the
+     * &lt;code&gt;autoWidth&lt;/code&gt; flag to &lt;code&gt;false&lt;/code&gt;.
+     * &lt;br&gt;&lt;br&gt;
+     * Note that changing the interval width amounts to changing the data
+     * values represented by the dataset.  Therefore, the dataset
+     * that is using this delegate is responsible for generating the
+     * appropriate {@link DatasetChangeEvent}.
+     *
+     * @param w  the width (negative values not permitted).
+     */
+    public void setFixedIntervalWidth(double w) {
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">        if (w &lt; 0.0) {</span>
+<span class="nc" id="L225">            throw new IllegalArgumentException(&quot;Negative 'w' argument.&quot;);</span>
+        }
+<span class="fc" id="L227">        this.fixedIntervalWidth = w;</span>
+<span class="fc" id="L228">        this.autoWidth = false;</span>
+<span class="fc" id="L229">    }</span>
+
+    /**
+     * Returns the interval width.  This method will return either the
+     * auto calculated interval width or the manually specified interval
+     * width, depending on the {@link #isAutoWidth()} result.
+     *
+     * @return The interval width to use.
+     */
+    public double getIntervalWidth() {
+<span class="pc bpc" id="L239" title="1 of 4 branches missed.">        if (isAutoWidth() &amp;&amp; !Double.isInfinite(this.autoIntervalWidth)) {</span>
+            // everything is fine: autoWidth is on, and an autoIntervalWidth
+            // was set.
+<span class="fc" id="L242">            return this.autoIntervalWidth;</span>
+        }
+        else {
+            // either autoWidth is off or autoIntervalWidth was not set.
+<span class="fc" id="L246">            return this.fixedIntervalWidth;</span>
+        }
+    }
+
+    /**
+     * Returns the start value of the x-interval for an item within a series.
+     *
+     * @param series  the series index.
+     * @param item  the item index.
+     *
+     * @return The start value of the x-interval (possibly &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #getStartXValue(int, int)
+     */
+    public Number getStartX(int series, int item) {
+<span class="fc" id="L261">        Number startX = null;</span>
+<span class="fc" id="L262">        Number x = this.dataset.getX(series, item);</span>
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">        if (x != null) {</span>
+<span class="fc" id="L264">            startX = new Double(x.doubleValue()</span>
+                     - (getIntervalPositionFactor() * getIntervalWidth()));
+        }
+<span class="fc" id="L267">        return startX;</span>
+    }
+
+    /**
+     * Returns the start value of the x-interval for an item within a series.
+     *
+     * @param series  the series index.
+     * @param item  the item index.
+     *
+     * @return The start value of the x-interval.
+     *
+     * @see #getStartX(int, int)
+     */
+    public double getStartXValue(int series, int item) {
+<span class="nc" id="L281">        return this.dataset.getXValue(series, item)</span>
+                - getIntervalPositionFactor() * getIntervalWidth();
+    }
+
+    /**
+     * Returns the end value of the x-interval for an item within a series.
+     *
+     * @param series  the series index.
+     * @param item  the item index.
+     *
+     * @return The end value of the x-interval (possibly &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #getEndXValue(int, int)
+     */
+    public Number getEndX(int series, int item) {
+<span class="fc" id="L296">        Number endX = null;</span>
+<span class="fc" id="L297">        Number x = this.dataset.getX(series, item);</span>
+<span class="pc bpc" id="L298" title="1 of 2 branches missed.">        if (x != null) {</span>
+<span class="fc" id="L299">            endX = new Double(x.doubleValue()</span>
+                + ((1.0 - getIntervalPositionFactor()) * getIntervalWidth()));
+        }
+<span class="fc" id="L302">        return endX;</span>
+    }
+
+    /**
+     * Returns the end value of the x-interval for an item within a series.
+     *
+     * @param series  the series index.
+     * @param item  the item index.
+     *
+     * @return The end value of the x-interval.
+     *
+     * @see #getEndX(int, int)
+     */
+    public double getEndXValue(int series, int item) {
+<span class="nc" id="L316">        return this.dataset.getXValue(series, item)</span>
+                + (1.0 - getIntervalPositionFactor()) * getIntervalWidth();
+    }
+
+    /**
+     * Returns the minimum x-value in the dataset.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         x-interval is taken into account.
+     *
+     * @return The minimum value.
+     */
+    @Override
+    public double getDomainLowerBound(boolean includeInterval) {
+<span class="fc" id="L330">        double result = Double.NaN;</span>
+<span class="fc" id="L331">        Range r = getDomainBounds(includeInterval);</span>
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">        if (r != null) {</span>
+<span class="fc" id="L333">            result = r.getLowerBound();</span>
+        }
+<span class="fc" id="L335">        return result;</span>
+    }
+
+    /**
+     * Returns the maximum x-value in the dataset.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         x-interval is taken into account.
+     *
+     * @return The maximum value.
+     */
+    @Override
+    public double getDomainUpperBound(boolean includeInterval) {
+<span class="fc" id="L348">        double result = Double.NaN;</span>
+<span class="fc" id="L349">        Range r = getDomainBounds(includeInterval);</span>
+<span class="pc bpc" id="L350" title="1 of 2 branches missed.">        if (r != null) {</span>
+<span class="fc" id="L351">            result = r.getUpperBound();</span>
+        }
+<span class="fc" id="L353">        return result;</span>
+    }
+
+    /**
+     * Returns the range of the values in the dataset's domain, including
+     * or excluding the interval around each x-value as specified.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         x-interval should be taken into account.
+     *
+     * @return The range.
+     */
+    @Override
+    public Range getDomainBounds(boolean includeInterval) {
+        // first get the range without the interval, then expand it for the
+        // interval width
+<span class="fc" id="L369">        Range range = DatasetUtilities.findDomainBounds(this.dataset, false);</span>
+<span class="pc bpc" id="L370" title="1 of 4 branches missed.">        if (includeInterval &amp;&amp; range != null) {</span>
+<span class="fc" id="L371">            double lowerAdj = getIntervalWidth() * getIntervalPositionFactor();</span>
+<span class="fc" id="L372">            double upperAdj = getIntervalWidth() - lowerAdj;</span>
+<span class="fc" id="L373">            range = new Range(range.getLowerBound() - lowerAdj,</span>
+                range.getUpperBound() + upperAdj);
+        }
+<span class="fc" id="L376">        return range;</span>
+    }
+
+    /**
+     * Handles events from the dataset by recalculating the interval if
+     * necessary.
+     *
+     * @param e  the event.
+     */
+    @Override
+    public void datasetChanged(DatasetChangeEvent e) {
+        // TODO: by coding the event with some information about what changed
+        // in the dataset, we could make the recalculation of the interval
+        // more efficient in some cases (for instance, if the change is
+        // just an update to a y-value, then the x-interval doesn't need
+        // updating)...
+<span class="fc bfc" id="L392" title="All 2 branches covered.">        if (this.autoWidth) {</span>
+<span class="fc" id="L393">            this.autoIntervalWidth = recalculateInterval();</span>
+        }
+<span class="fc" id="L395">    }</span>
+
+    /**
+     * Recalculate the minimum width &quot;from scratch&quot;.
+     *
+     * @return The minimum width.
+     */
+    private double recalculateInterval() {
+<span class="fc" id="L403">        double result = Double.POSITIVE_INFINITY;</span>
+<span class="fc" id="L404">        int seriesCount = this.dataset.getSeriesCount();</span>
+<span class="fc bfc" id="L405" title="All 2 branches covered.">        for (int series = 0; series &lt; seriesCount; series++) {</span>
+<span class="fc" id="L406">            result = Math.min(result, calculateIntervalForSeries(series));</span>
+        }
+<span class="fc" id="L408">        return result;</span>
+    }
+
+    /**
+     * Calculates the interval width for a given series.
+     *
+     * @param series  the series index.
+     *
+     * @return The interval width.
+     */
+    private double calculateIntervalForSeries(int series) {
+<span class="fc" id="L419">        double result = Double.POSITIVE_INFINITY;</span>
+<span class="fc" id="L420">        int itemCount = this.dataset.getItemCount(series);</span>
+<span class="fc bfc" id="L421" title="All 2 branches covered.">        if (itemCount &gt; 1) {</span>
+<span class="fc" id="L422">            double prev = this.dataset.getXValue(series, 0);</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">            for (int item = 1; item &lt; itemCount; item++) {</span>
+<span class="fc" id="L424">                double x = this.dataset.getXValue(series, item);</span>
+<span class="fc" id="L425">                result = Math.min(result, x - prev);</span>
+<span class="fc" id="L426">                prev = x;</span>
+            }
+        }
+<span class="fc" id="L429">        return result;</span>
+    }
+
+    /**
+     * Tests the delegate for equality with an arbitrary object.  The
+     * equality test considers two delegates to be equal if they would
+     * calculate the same intervals for any given dataset (for this reason, the
+     * dataset itself is NOT included in the equality test, because it is just
+     * a reference back to the current 'owner' of the delegate).
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L445" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L446">            return true;</span>
+        }
+<span class="pc bpc" id="L448" title="1 of 2 branches missed.">        if (!(obj instanceof IntervalXYDelegate)) {</span>
+<span class="nc" id="L449">            return false;</span>
+        }
+<span class="fc" id="L451">        IntervalXYDelegate that = (IntervalXYDelegate) obj;</span>
+<span class="fc bfc" id="L452" title="All 2 branches covered.">        if (this.autoWidth != that.autoWidth) {</span>
+<span class="fc" id="L453">            return false;</span>
+        }
+<span class="fc bfc" id="L455" title="All 2 branches covered.">        if (this.intervalPositionFactor != that.intervalPositionFactor) {</span>
+<span class="fc" id="L456">            return false;</span>
+        }
+<span class="fc bfc" id="L458" title="All 2 branches covered.">        if (this.fixedIntervalWidth != that.fixedIntervalWidth) {</span>
+<span class="fc" id="L459">            return false;</span>
+        }
+<span class="fc" id="L461">        return true;</span>
+    }
+
+    /**
+     * @return A clone of this delegate.
+     *
+     * @throws CloneNotSupportedException if the object cannot be cloned.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L471">        return super.clone();</span>
+    }
+
+    /**
+     * Returns a hash code for this instance.
+     *
+     * @return A hash code.
+     */
+    @Override
+    public int hashCode() {
+<span class="nc" id="L481">        int hash = 5;</span>
+<span class="nc" id="L482">        hash = HashUtilities.hashCode(hash, this.autoWidth);</span>
+<span class="nc" id="L483">        hash = HashUtilities.hashCode(hash, this.intervalPositionFactor);</span>
+<span class="nc" id="L484">        hash = HashUtilities.hashCode(hash, this.fixedIntervalWidth);</span>
+<span class="nc" id="L485">        return hash;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

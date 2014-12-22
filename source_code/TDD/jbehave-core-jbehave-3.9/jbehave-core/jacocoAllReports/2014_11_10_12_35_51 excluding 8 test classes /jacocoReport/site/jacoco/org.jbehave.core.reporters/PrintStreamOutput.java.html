@@ -1,0 +1,477 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>PrintStreamOutput.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.reporters</a> &gt; <span class="el_source">PrintStreamOutput.java</span></div><h1>PrintStreamOutput.java</h1><pre class="source lang-java linenums">package org.jbehave.core.reporters;
+
+import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.text.MessageFormat;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.Transformer;
+import org.apache.commons.lang.ArrayUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.builder.ToStringBuilder;
+import org.apache.commons.lang.builder.ToStringStyle;
+import org.jbehave.core.configuration.Keywords;
+import org.jbehave.core.failures.KnownFailure;
+import org.jbehave.core.failures.UUIDExceptionWrapper;
+import org.jbehave.core.model.ExamplesTable;
+import org.jbehave.core.model.GivenStories;
+import org.jbehave.core.model.GivenStory;
+import org.jbehave.core.model.Lifecycle;
+import org.jbehave.core.model.Meta;
+import org.jbehave.core.model.Narrative;
+import org.jbehave.core.model.OutcomesTable;
+import org.jbehave.core.model.OutcomesTable.Outcome;
+import org.jbehave.core.model.Scenario;
+import org.jbehave.core.model.Story;
+import org.jbehave.core.model.StoryDuration;
+
+import static org.apache.commons.lang.StringEscapeUtils.escapeHtml;
+import static org.apache.commons.lang.StringEscapeUtils.escapeXml;
+import static org.apache.commons.lang.StringUtils.substringBetween;
+import static org.jbehave.core.steps.StepCreator.PARAMETER_TABLE_END;
+import static org.jbehave.core.steps.StepCreator.PARAMETER_TABLE_START;
+import static org.jbehave.core.steps.StepCreator.PARAMETER_VALUE_END;
+import static org.jbehave.core.steps.StepCreator.PARAMETER_VALUE_NEWLINE;
+import static org.jbehave.core.steps.StepCreator.PARAMETER_VALUE_START;
+
+/**
+ * &lt;p&gt;
+ * Abstract story reporter that outputs to a PrintStream.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The output of the reported event is configurable via:
+ * &lt;ul&gt;
+ * &lt;li&gt;custom output patterns, providing only the patterns that differ from
+ * default&lt;/li&gt;
+ * &lt;li&gt;keywords localised for different languages, providing the i18n Locale&lt;/li&gt;
+ * &lt;li&gt;flag to report failure trace&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Let's look at example of providing custom output patterns, e.g. for the
+ * failed event. &lt;br/&gt;
+ * we'd need to provide the custom pattern, say we want to have something like
+ * &quot;(step being executed) &lt;&lt;&lt; FAILED&quot;, keyed on the method name:
+ * 
+ * &lt;pre&gt;
+ * Properties patterns = new Properties();
+ * patterns.setProperty(&amp;quot;failed&amp;quot;, &amp;quot;{0} &amp;lt;&amp;lt;&amp;lt; {1}&amp;quot;);
+ * &lt;/pre&gt;
+ * 
+ * The pattern is by default processed and formatted by the
+ * {@link MessageFormat}. Both the
+ * {@link #format(String key, String defaultPattern, Object... args)} and
+ * {@link #lookupPattern(String key, String defaultPattern)} methods are
+ * override-able and a different formatter or pattern lookup can be used by
+ * subclasses.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * If the keyword &quot;FAILED&quot; (or any other keyword used by the reporter) needs to
+ * be expressed in a different language, all we need to do is to provide an
+ * instance of {@link org.jbehave.core.i18n.LocalizedKeywords} using the
+ * appropriate {@link Locale}, e.g.
+ * 
+ * &lt;pre&gt;
+ * Keywords keywords = new LocalizedKeywords(new Locale(&amp;quot;it&amp;quot;));
+ * &lt;/pre&gt;
+ * 
+ * &lt;/p&gt;
+ */
+public abstract class PrintStreamOutput implements StoryReporter {
+
+    private static final String EMPTY = &quot;&quot;;
+
+<span class="pc" id="L92">    public enum Format {</span>
+<span class="fc" id="L93">        TXT, HTML, XML</span>
+    }
+
+    private final Format format;
+    private final PrintStream output;
+    private final Properties outputPatterns;
+    private final Keywords keywords;
+<span class="fc" id="L100">    private ThreadLocal&lt;Boolean&gt; reportFailureTrace = new ThreadLocal&lt;Boolean&gt;();</span>
+<span class="fc" id="L101">    private ThreadLocal&lt;Boolean&gt; compressFailureTrace = new ThreadLocal&lt;Boolean&gt;();</span>
+<span class="fc" id="L102">    private ThreadLocal&lt;Throwable&gt; cause = new ThreadLocal&lt;Throwable&gt;();</span>
+
+    protected PrintStreamOutput(Format format, PrintStream output, Properties outputPatterns, Keywords keywords,
+<span class="fc" id="L105">            boolean reportFailureTrace, boolean compressFailureTrace) {</span>
+<span class="fc" id="L106">        this.format = format;</span>
+<span class="fc" id="L107">        this.output = output;</span>
+<span class="fc" id="L108">        this.outputPatterns = outputPatterns;</span>
+<span class="fc" id="L109">        this.keywords = keywords;</span>
+<span class="fc" id="L110">        doReportFailureTrace(reportFailureTrace);</span>
+<span class="fc" id="L111">        doCompressFailureTrace(compressFailureTrace);</span>
+<span class="fc" id="L112">    }</span>
+
+    public void beforeStep(String step) {
+<span class="nc" id="L115">    }</span>
+
+    public void successful(String step) {
+<span class="fc" id="L118">        print(format(&quot;successful&quot;, &quot;{0}\n&quot;, step));</span>
+<span class="fc" id="L119">    }</span>
+
+    public void ignorable(String step) {
+<span class="fc" id="L122">        print(format(&quot;ignorable&quot;, &quot;{0}\n&quot;, step));</span>
+<span class="fc" id="L123">    }</span>
+
+    public void pending(String step) {
+<span class="fc" id="L126">        print(format(&quot;pending&quot;, &quot;{0} ({1})\n&quot;, step, keywords.pending()));</span>
+<span class="fc" id="L127">    }</span>
+
+    public void notPerformed(String step) {
+<span class="fc" id="L130">        print(format(&quot;notPerformed&quot;, &quot;{0} ({1})\n&quot;, step, keywords.notPerformed()));</span>
+<span class="fc" id="L131">    }</span>
+
+    public void failed(String step, Throwable storyFailure) {
+        // storyFailure be used if a subclass has rewritten the &quot;failed&quot; pattern
+        // to have a {3} as WebDriverHtmlOutput (jbehave-web) does.
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (storyFailure instanceof UUIDExceptionWrapper) {</span>
+<span class="fc" id="L137">            this.cause.set(storyFailure.getCause());</span>
+<span class="fc" id="L138">            print(format(&quot;failed&quot;, &quot;{0} ({1})\n({2})\n&quot;, step, keywords.failed(), storyFailure.getCause(),</span>
+                    ((UUIDExceptionWrapper) storyFailure).getUUID()));
+        } else {
+<span class="nc" id="L141">            throw new ClassCastException(storyFailure + &quot; should be an instance of UUIDExceptionWrapper&quot;);</span>
+        }
+<span class="fc" id="L143">    }</span>
+
+    public void failedOutcomes(String step, OutcomesTable table) {
+<span class="fc" id="L146">        failed(step, table.failureCause());</span>
+<span class="fc" id="L147">        print(table);</span>
+<span class="fc" id="L148">    }</span>
+
+    private void print(OutcomesTable table) {
+<span class="fc" id="L151">        print(format(&quot;outcomesTableStart&quot;, &quot;\n&quot;));</span>
+<span class="fc" id="L152">        List&lt;Outcome&lt;?&gt;&gt; rows = table.getOutcomes();</span>
+<span class="fc" id="L153">        print(format(&quot;outcomesTableHeadStart&quot;, &quot;|&quot;));</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        for (String field : table.getOutcomeFields()) {</span>
+<span class="fc" id="L155">            print(format(&quot;outcomesTableHeadCell&quot;, &quot;{0}|&quot;, field));</span>
+<span class="fc" id="L156">        }</span>
+<span class="fc" id="L157">        print(format(&quot;outcomesTableHeadEnd&quot;, &quot;\n&quot;));</span>
+<span class="fc" id="L158">        print(format(&quot;outcomesTableBodyStart&quot;, EMPTY));</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        for (Outcome&lt;?&gt; outcome : rows) {</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">            print(format(&quot;outcomesTableRowStart&quot;, &quot;|&quot;, outcome.isVerified() ? &quot;verified&quot; : &quot;notVerified&quot;));</span>
+<span class="fc" id="L161">            print(format(&quot;outcomesTableCell&quot;, &quot;{0}|&quot;, outcome.getDescription()));</span>
+<span class="fc" id="L162">            print(format(&quot;outcomesTableCell&quot;, &quot;{0}|&quot;, renderOutcomeValue(outcome.getValue(), table.getDateFormat())));</span>
+<span class="fc" id="L163">            print(format(&quot;outcomesTableCell&quot;, &quot;{0}|&quot;, outcome.getMatcher()));</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">            print(format(&quot;outcomesTableCell&quot;, &quot;{0}|&quot;, (outcome.isVerified() ? keywords.yes() : keywords.no())));</span>
+<span class="fc" id="L165">            print(format(&quot;outcomesTableRowEnd&quot;, &quot;\n&quot;));</span>
+<span class="fc" id="L166">        }</span>
+<span class="fc" id="L167">        print(format(&quot;outcomesTableBodyEnd&quot;, &quot;\n&quot;));</span>
+<span class="fc" id="L168">        print(format(&quot;outcomesTableEnd&quot;, &quot;\n&quot;));</span>
+<span class="fc" id="L169">    }</span>
+
+    private Object renderOutcomeValue(Object value, String dateFormat) {
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (value instanceof Date) {</span>
+<span class="fc" id="L173">            return new SimpleDateFormat(dateFormat).format(value);</span>
+        } else {
+<span class="fc" id="L175">            return value;</span>
+        }
+    }
+
+    public void storyNotAllowed(Story story, String filter) {
+<span class="nc" id="L180">        print(format(&quot;filter&quot;, &quot;{0}\n&quot;, filter));</span>
+<span class="nc" id="L181">    }</span>
+
+    public void storyCancelled(Story story, StoryDuration storyDuration) {
+<span class="fc" id="L184">        print(format(&quot;storyCancelled&quot;, &quot;{0}: {1} ({2} s)\n&quot;, keywords.storyCancelled(), keywords.duration(),</span>
+                storyDuration.getDurationInSecs()));
+<span class="fc" id="L186">    }</span>
+
+    public void beforeStory(Story story, boolean givenStory) {
+<span class="fc" id="L189">        print(format(&quot;beforeStory&quot;, &quot;{0}\n({1})\n&quot;, story.getDescription().asString(), story.getPath()));</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">        if (!story.getMeta().isEmpty()) {</span>
+<span class="fc" id="L191">            Meta meta = story.getMeta();</span>
+<span class="fc" id="L192">            print(meta);</span>
+        }
+<span class="fc" id="L194">    }</span>
+
+    public void narrative(Narrative narrative) {
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">        if (!narrative.isEmpty()) {</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">            if (!narrative.isAlternative()) {</span>
+<span class="fc" id="L199">                print(format(&quot;narrative&quot;, &quot;{0}\n{1} {2}\n{3} {4}\n{5} {6}\n&quot;, keywords.narrative(),</span>
+                        keywords.inOrderTo(), narrative.inOrderTo(), keywords.asA(), narrative.asA(),
+                        keywords.iWantTo(), narrative.iWantTo()));
+            } else {
+<span class="nc" id="L203">                print(format(&quot;narrative&quot;, &quot;{0}\n{1} {2}\n{3} {4}\n{5} {6}\n&quot;, keywords.narrative(), keywords.asA(),</span>
+                        narrative.asA(), keywords.iWantTo(), narrative.iWantTo(), keywords.soThat(), narrative.soThat()));
+            }
+        }
+<span class="fc" id="L207">    }</span>
+
+    public void lifecyle(Lifecycle lifecycle) {
+<span class="nc bnc" id="L210" title="All 2 branches missed.">        if (!lifecycle.isEmpty()) {</span>
+<span class="nc" id="L211">            print(format(&quot;lifecycleStart&quot;, &quot;{0}\n&quot;, keywords.lifecycle()));</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">            if (!lifecycle.getBeforeSteps().isEmpty()) {</span>
+<span class="nc" id="L213">                print(format(&quot;lifecycleBeforeStart&quot;, &quot;{0}\n&quot;, keywords.before()));</span>
+<span class="nc" id="L214">                print(lifecycle.getBeforeSteps());</span>
+<span class="nc" id="L215">                print(format(&quot;lifecycleBeforeEnd&quot;, &quot;&quot;));</span>
+            }
+<span class="nc bnc" id="L217" title="All 2 branches missed.">            if (!lifecycle.getAfterSteps().isEmpty()) {</span>
+<span class="nc" id="L218">                print(format(&quot;lifecycleAfterStart&quot;, &quot;{0}\n&quot;, keywords.after()));</span>
+<span class="nc" id="L219">                print(lifecycle.getAfterSteps());</span>
+<span class="nc" id="L220">                print(format(&quot;lifecycleAfterEnd&quot;, &quot;&quot;));</span>
+            }
+<span class="nc" id="L222">            print(format(&quot;lifecycleEnd&quot;, &quot;\n&quot;));</span>
+        }
+<span class="nc" id="L224">    }</span>
+
+    private void print(List&lt;String&gt; steps) {
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        for (String step : steps) {</span>
+<span class="nc" id="L228">            print(format(&quot;lifecycleStep&quot;, &quot;{0}\n&quot;, step));</span>
+<span class="nc" id="L229">        }</span>
+<span class="nc" id="L230">    }</span>
+
+    private void print(Meta meta) {
+<span class="fc" id="L233">        print(format(&quot;metaStart&quot;, &quot;{0}\n&quot;, keywords.meta()));</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        for (String name : meta.getPropertyNames()) {</span>
+<span class="fc" id="L235">            print(format(&quot;metaProperty&quot;, &quot;{0}{1} {2}&quot;, keywords.metaProperty(), name, meta.getProperty(name)));</span>
+<span class="fc" id="L236">        }</span>
+<span class="fc" id="L237">        print(format(&quot;metaEnd&quot;, &quot;\n&quot;));</span>
+<span class="fc" id="L238">    }</span>
+
+    public void afterStory(boolean givenStory) {
+<span class="fc" id="L241">        print(format(&quot;afterStory&quot;, &quot;\n&quot;));</span>
+        // take care not to close System.out
+        // which is used for ConsoleOutput
+<span class="pc bpc" id="L244" title="2 of 4 branches missed.">        if (!givenStory &amp;&amp; output != System.out) {</span>
+<span class="fc" id="L245">            output.close();</span>
+        }
+<span class="fc" id="L247">    }</span>
+
+    public void givenStories(GivenStories givenStories) {
+<span class="fc" id="L250">        print(format(&quot;givenStoriesStart&quot;, &quot;{0}\n&quot;, keywords.givenStories()));</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">        for (GivenStory givenStory : givenStories.getStories()) {</span>
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">            print(format(&quot;givenStory&quot;, &quot;{0} {1}\n&quot;, givenStory.asString(),</span>
+                    (givenStory.hasAnchor() ? givenStory.getParameters() : &quot;&quot;)));
+<span class="fc" id="L254">        }</span>
+<span class="fc" id="L255">        print(format(&quot;givenStoriesEnd&quot;, &quot;\n&quot;));</span>
+<span class="fc" id="L256">    }</span>
+
+    public void givenStories(List&lt;String&gt; storyPaths) {
+<span class="fc" id="L259">        givenStories(new GivenStories(StringUtils.join(storyPaths, &quot;,&quot;)));</span>
+<span class="fc" id="L260">    }</span>
+
+    public void scenarioNotAllowed(Scenario scenario, String filter) {
+<span class="fc" id="L263">        print(format(&quot;filter&quot;, &quot;{0}\n&quot;, filter));</span>
+<span class="fc" id="L264">    }</span>
+
+    public void beforeScenario(String title) {
+<span class="fc" id="L267">        cause.set(null);</span>
+<span class="fc" id="L268">        print(format(&quot;beforeScenario&quot;, &quot;{0} {1}\n&quot;, keywords.scenario(), title));</span>
+<span class="fc" id="L269">    }</span>
+
+    public void scenarioMeta(Meta meta) {
+<span class="nc bnc" id="L272" title="All 2 branches missed.">        if (!meta.isEmpty()) {</span>
+<span class="nc" id="L273">            print(meta);</span>
+        }
+<span class="nc" id="L275">    }</span>
+
+    public void afterScenario() {
+<span class="fc bfc" id="L278" title="All 6 branches covered.">        if (cause.get() != null &amp;&amp; !(cause.get() instanceof KnownFailure) &amp;&amp; reportFailureTrace() ) {</span>
+<span class="fc" id="L279">            print(format(&quot;afterScenarioWithFailure&quot;, &quot;\n{0}\n&quot;,</span>
+                    new StackTraceFormatter(compressFailureTrace()).stackTrace(cause.get())));
+        } else {
+<span class="fc" id="L282">            print(format(&quot;afterScenario&quot;, &quot;\n&quot;));</span>
+        }
+<span class="fc" id="L284">    }</span>
+
+    public void beforeExamples(List&lt;String&gt; steps, ExamplesTable table) {
+<span class="fc" id="L287">        print(format(&quot;beforeExamples&quot;, &quot;{0}\n&quot;, keywords.examplesTable()));</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">        for (String step : steps) {</span>
+<span class="fc" id="L289">            print(format(&quot;examplesStep&quot;, &quot;{0}\n&quot;, step));</span>
+<span class="fc" id="L290">        }</span>
+<span class="fc" id="L291">        print(formatTable(table));</span>
+<span class="fc" id="L292">    }</span>
+
+    public void example(Map&lt;String, String&gt; tableRow) {
+<span class="fc" id="L295">        print(format(&quot;example&quot;, &quot;\n{0} {1}\n&quot;, keywords.examplesTableRow(), tableRow));</span>
+<span class="fc" id="L296">    }</span>
+
+    public void afterExamples() {
+<span class="fc" id="L299">        print(format(&quot;afterExamples&quot;, &quot;\n&quot;));</span>
+<span class="fc" id="L300">    }</span>
+
+    public void dryRun() {
+<span class="fc" id="L303">        print(format(&quot;dryRun&quot;, &quot;{0}\n&quot;, keywords.dryRun()));</span>
+<span class="fc" id="L304">    }</span>
+
+    public void pendingMethods(List&lt;String&gt; methods) {
+<span class="fc bfc" id="L307" title="All 2 branches covered.">        for (String method : methods) {</span>
+<span class="fc" id="L308">            print(format(&quot;pendingMethod&quot;, &quot;{0}\n&quot;, method));</span>
+<span class="fc" id="L309">        }</span>
+<span class="fc" id="L310">    }</span>
+
+    public void restarted(String step, Throwable cause) {
+<span class="fc" id="L313">        print(format(&quot;restarted&quot;, &quot;{0} {1}\n&quot;, step, cause.getMessage()));</span>
+<span class="fc" id="L314">    }</span>
+
+    /**
+     * Formats event output by key, usually equal to the method name.
+     * 
+     * @param key the event key
+     * @param defaultPattern the default pattern to return if a custom pattern
+     *            is not found
+     * @param args the args used to format output
+     * @return A formatted event output
+     */
+    protected String format(String key, String defaultPattern, Object... args) {
+<span class="fc" id="L326">        String escape = escape(defaultPattern);</span>
+<span class="fc" id="L327">        String s = lookupPattern(key, escape);</span>
+<span class="fc" id="L328">        Object[] objects = escapeAll(args);</span>
+<span class="fc" id="L329">        return MessageFormat.format(s, objects);</span>
+    }
+
+    protected String formatTable(ExamplesTable table) {
+<span class="fc" id="L333">        OutputStream formatted = new ByteArrayOutputStream();</span>
+<span class="fc" id="L334">        PrintStream out = new PrintStream(formatted);</span>
+<span class="fc" id="L335">        out.print(format(&quot;examplesTableStart&quot;, &quot;\n&quot;));</span>
+<span class="fc" id="L336">        List&lt;Map&lt;String, String&gt;&gt; rows = table.getRows();</span>
+<span class="fc" id="L337">        List&lt;String&gt; headers = table.getHeaders();</span>
+<span class="fc" id="L338">        out.print(format(&quot;examplesTableHeadStart&quot;, &quot;|&quot;));</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        for (String header : headers) {</span>
+<span class="fc" id="L340">            out.print(format(&quot;examplesTableHeadCell&quot;, &quot;{0}|&quot;, header));</span>
+<span class="fc" id="L341">        }</span>
+<span class="fc" id="L342">        out.print(format(&quot;examplesTableHeadEnd&quot;, &quot;\n&quot;));</span>
+<span class="fc" id="L343">        out.print(format(&quot;examplesTableBodyStart&quot;, EMPTY));</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        for (Map&lt;String, String&gt; row : rows) {</span>
+<span class="fc" id="L345">            out.print(format(&quot;examplesTableRowStart&quot;, &quot;|&quot;));</span>
+<span class="fc bfc" id="L346" title="All 2 branches covered.">            for (String header : headers) {</span>
+<span class="fc" id="L347">                out.print(format(&quot;examplesTableCell&quot;, &quot;{0}|&quot;, row.get(header)));</span>
+<span class="fc" id="L348">            }</span>
+<span class="fc" id="L349">            out.print(format(&quot;examplesTableRowEnd&quot;, &quot;\n&quot;));</span>
+<span class="fc" id="L350">        }</span>
+<span class="fc" id="L351">        out.print(format(&quot;examplesTableBodyEnd&quot;, &quot;&quot;));</span>
+<span class="fc" id="L352">        out.print(format(&quot;examplesTableEnd&quot;, &quot;&quot;));</span>
+<span class="fc" id="L353">        return formatted.toString();</span>
+    }
+
+    private String escape(String defaultPattern) {
+<span class="fc" id="L357">        return (String) escapeAll(defaultPattern)[0];</span>
+    }
+
+    private Object[] escapeAll(Object... args) {
+<span class="fc" id="L361">        return escape(format, args);</span>
+    }
+
+    /**
+     * Escapes args' string values according to format
+     * 
+     * @param format the Format used by the PrintStream
+     * @param args the array of args to escape
+     * @return The cloned and escaped array of args
+     */
+    protected Object[] escape(final Format format, Object... args) {
+        // Transformer that escapes HTML and XML strings
+<span class="fc" id="L373">        Transformer escapingTransformer = new Transformer() {</span>
+            public Object transform(Object object) {
+<span class="pc bfc" id="L375" title="All 3 branches covered.">                switch (format) {</span>
+                case HTML:
+<span class="fc" id="L377">                    return escapeHtml(asString(object));</span>
+                case XML:
+<span class="fc" id="L379">                    return escapeXml(asString(object));</span>
+                default:
+<span class="fc" id="L381">                    return object;</span>
+                }
+            }
+
+            private String asString(Object object) {
+<span class="pc bpc" id="L386" title="1 of 2 branches missed.">                return (object != null ? object.toString() : EMPTY);</span>
+            }
+        };
+<span class="fc" id="L389">        List&lt;?&gt; list = Arrays.asList(ArrayUtils.clone(args));</span>
+<span class="fc" id="L390">        CollectionUtils.transform(list, escapingTransformer);</span>
+<span class="fc" id="L391">        return list.toArray();</span>
+    }
+
+    /**
+     * Looks up the format pattern for the event output by key, conventionally
+     * equal to the method name. The pattern is used by the
+     * {#format(String,String,Object...)} method and by default is formatted
+     * using the {@link MessageFormat#format(String, Object...)} method. If no
+     * pattern is found for key or needs to be overridden, the default pattern
+     * should be returned.
+     * 
+     * @param key the format pattern key
+     * @param defaultPattern the default pattern if no pattern is
+     * @return The format patter for the given key
+     */
+    protected String lookupPattern(String key, String defaultPattern) {
+<span class="fc bfc" id="L407" title="All 2 branches covered.">        if (outputPatterns.containsKey(key)) {</span>
+<span class="fc" id="L408">            return outputPatterns.getProperty(key);</span>
+        }
+<span class="fc" id="L410">        return defaultPattern;</span>
+    }
+
+    public boolean reportFailureTrace() {
+<span class="fc" id="L414">        Boolean reportFailure = reportFailureTrace.get();</span>
+<span class="pc bpc" id="L415" title="1 of 2 branches missed.">        if ( reportFailure != null ){</span>
+<span class="fc" id="L416">            return reportFailure;</span>
+        }
+<span class="nc" id="L418">        return false;</span>
+    }
+
+    public PrintStreamOutput doReportFailureTrace(boolean reportFailureTrace) {
+<span class="fc" id="L422">        this.reportFailureTrace.set(reportFailureTrace);</span>
+<span class="fc" id="L423">        return this;</span>
+    }
+
+    public boolean compressFailureTrace() {
+<span class="fc" id="L427">        return compressFailureTrace.get();</span>
+    }
+
+    public PrintStreamOutput doCompressFailureTrace(boolean compressFailureTrace) {
+<span class="fc" id="L431">        this.compressFailureTrace.set(compressFailureTrace);</span>
+<span class="fc" id="L432">        return this;</span>
+    }
+
+    protected void overwritePattern(String key, String pattern) {
+<span class="fc" id="L436">        outputPatterns.put(key, pattern);</span>
+<span class="fc" id="L437">    }</span>
+
+    /**
+     * Prints text to output stream, replacing parameter start and end
+     * placeholders
+     * 
+     * @param text the String to print
+     */
+    protected void print(String text) {
+<span class="pc bpc" id="L446" title="1 of 2 branches missed.">        if (containsTable(text)) {</span>
+<span class="nc" id="L447">            String tableStart = format(PARAMETER_TABLE_START, PARAMETER_TABLE_START);</span>
+<span class="nc" id="L448">            String tableEnd = format(PARAMETER_TABLE_END, PARAMETER_TABLE_END);</span>
+<span class="nc" id="L449">            String tableAsString = substringBetween(text, tableStart, tableEnd);</span>
+<span class="nc" id="L450">            output.print(text</span>
+                    .replace(tableAsString, formatTable(new ExamplesTable(tableAsString)))
+                    .replace(tableStart, format(&quot;parameterValueStart&quot;, EMPTY))
+                    .replace(tableEnd, format(&quot;parameterValueEnd&quot;, EMPTY))
+                    .replace(format(PARAMETER_VALUE_NEWLINE, PARAMETER_VALUE_NEWLINE),
+                            format(&quot;parameterValueNewline&quot;, &quot;\n&quot;)));
+<span class="nc" id="L456">        } else {</span>
+<span class="fc" id="L457">            output.print(text</span>
+                    .replace(format(PARAMETER_VALUE_START, PARAMETER_VALUE_START), format(&quot;parameterValueStart&quot;, EMPTY))
+                    .replace(format(PARAMETER_VALUE_END, PARAMETER_VALUE_END), format(&quot;parameterValueEnd&quot;, EMPTY))
+                    .replace(format(PARAMETER_VALUE_NEWLINE, PARAMETER_VALUE_NEWLINE),
+                            format(&quot;parameterValueNewline&quot;, &quot;\n&quot;)));
+        }
+<span class="fc" id="L463">    }</span>
+
+    private boolean containsTable(String text) {
+<span class="fc" id="L466">        String tableStart = format(PARAMETER_TABLE_START, PARAMETER_TABLE_START);</span>
+<span class="fc" id="L467">        String tableEnd = format(PARAMETER_TABLE_END, PARAMETER_TABLE_END);</span>
+<span class="pc bpc" id="L468" title="3 of 4 branches missed.">        return text.contains(tableStart) &amp;&amp; text.contains(tableEnd);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L473">        return new ToStringBuilder(this, ToStringStyle.SHORT_PREFIX_STYLE).append(format).append(output).toString();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -56,7 +56,6 @@ public class Analyzer {
 	 *            the output instance that will coverage data for every analyzed
 	 *            class
 	 */
-
 	public Analyzer(final ExecutionDataStore executionData,
 			final ICoverageVisitor coverageVisitor) {
 		this.executionData = executionData;

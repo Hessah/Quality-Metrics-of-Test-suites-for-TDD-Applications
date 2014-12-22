@@ -1,0 +1,332 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StoryManager.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.embedder</a> &gt; <span class="el_source">StoryManager.java</span></div><h1>StoryManager.java</h1><pre class="source lang-java linenums">package org.jbehave.core.embedder;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+
+import org.jbehave.core.configuration.Configuration;
+import org.jbehave.core.embedder.StoryRunner.State;
+import org.jbehave.core.failures.BatchFailures;
+import org.jbehave.core.model.Story;
+import org.jbehave.core.model.StoryDuration;
+import org.jbehave.core.steps.CandidateSteps;
+import org.jbehave.core.steps.InjectableStepsFactory;
+import org.jbehave.core.steps.StepCollector.Stage;
+
+/**
+ * Manages the execution and outcomes of running stories. While each story is
+ * run by the {@link StoryRunner}, the manager is responsible for the concurrent
+ * submission and monitoring of their execution via the {@link ExecutorService}.
+ */
+public class StoryManager {
+
+    private final Configuration configuration;
+    private final EmbedderControls embedderControls;
+    private final EmbedderMonitor embedderMonitor;
+    private final ExecutorService executorService;
+    private final InjectableStepsFactory stepsFactory;
+    private final StoryRunner storyRunner;
+<span class="fc" id="L34">    private final Map&lt;String, RunningStory&gt; runningStories = new HashMap&lt;String, RunningStory&gt;();</span>
+<span class="fc" id="L35">    private final Map&lt;MetaFilter, List&lt;Story&gt;&gt; excludedStories = new HashMap&lt;MetaFilter, List&lt;Story&gt;&gt;();</span>
+
+    public StoryManager(Configuration configuration, EmbedderControls embedderControls,
+            EmbedderMonitor embedderMonitor, ExecutorService executorService, InjectableStepsFactory stepsFactory,
+<span class="fc" id="L39">            StoryRunner storyRunner) {</span>
+<span class="fc" id="L40">        this.configuration = configuration;</span>
+<span class="fc" id="L41">        this.embedderControls = embedderControls;</span>
+<span class="fc" id="L42">        this.embedderMonitor = embedderMonitor;</span>
+<span class="fc" id="L43">        this.executorService = executorService;</span>
+<span class="fc" id="L44">        this.stepsFactory = stepsFactory;</span>
+<span class="fc" id="L45">        this.storyRunner = storyRunner;</span>
+<span class="fc" id="L46">    }</span>
+
+    public Story storyOfPath(String storyPath) {
+<span class="fc" id="L49">        return storyRunner.storyOfPath(configuration, storyPath);</span>
+    }
+
+    public Story storyOfText(String storyAsText, String storyId) {
+<span class="nc" id="L53">        return storyRunner.storyOfText(configuration, storyAsText, storyId);</span>
+    }
+
+    public void clear() {
+<span class="nc" id="L57">        runningStories.clear();</span>
+<span class="nc" id="L58">    }</span>
+
+    public List&lt;StoryOutcome&gt; outcomes() {
+<span class="nc" id="L61">        List&lt;StoryOutcome&gt; outcomes = new ArrayList&lt;StoryOutcome&gt;();</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        for (RunningStory story : runningStories.values()) {</span>
+<span class="nc" id="L63">            outcomes.add(new StoryOutcome(story));</span>
+<span class="nc" id="L64">        }</span>
+<span class="nc" id="L65">        return outcomes;</span>
+    }
+    
+    public void runStories(List&lt;String&gt; storyPaths, MetaFilter filter, BatchFailures failures) {
+        // configure cross reference with meta filter
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        if ( configuration.storyReporterBuilder().hasCrossReference() ){</span>
+<span class="nc" id="L71">            configuration.storyReporterBuilder().crossReference().withMetaFilter(filter.asString());</span>
+        }
+        
+        // run before stories
+<span class="fc" id="L75">        State beforeStories = runBeforeOrAfterStories(failures, Stage.BEFORE);</span>
+
+        // run stories as paths
+<span class="fc" id="L78">        runningStoriesAsPaths(storyPaths, filter, beforeStories);</span>
+<span class="fc" id="L79">        waitUntilAllDoneOrFailed(failures);</span>
+<span class="fc" id="L80">        List&lt;Story&gt; notAllowed = notAllowedBy(filter);</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">        if (!notAllowed.isEmpty()) {</span>
+<span class="nc" id="L82">            embedderMonitor.storiesNotAllowed(notAllowed, filter, embedderControls.verboseFiltering());</span>
+        }
+
+        // run after stories
+<span class="fc" id="L86">       runBeforeOrAfterStories(failures, Stage.AFTER);</span>
+<span class="fc" id="L87">    }</span>
+
+    public State runBeforeOrAfterStories(BatchFailures failures, Stage stage) {
+<span class="fc" id="L90">        List&lt;CandidateSteps&gt; candidateSteps = stepsFactory.createCandidateSteps();</span>
+<span class="fc" id="L91">        State state = storyRunner.runBeforeOrAfterStories(configuration, candidateSteps, stage);</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if (storyRunner.failed(state)) {</span>
+<span class="nc" id="L93">            failures.put(state.toString(), storyRunner.failure(state));</span>
+        }
+<span class="fc" id="L95">        return state;</span>
+    }
+
+    public Map&lt;String, RunningStory&gt; runningStoriesAsPaths(List&lt;String&gt; storyPaths, MetaFilter filter,
+            State beforeStories) {
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        for (String storyPath : storyPaths) {</span>
+<span class="fc" id="L101">            filterRunning(filter, beforeStories, storyPath, storyOfPath(storyPath));</span>
+<span class="fc" id="L102">        }</span>
+<span class="fc" id="L103">        return runningStories;</span>
+    }
+
+    public Map&lt;String, RunningStory&gt; runningStories(List&lt;Story&gt; stories, MetaFilter filter, State beforeStories) {
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        for (Story story : stories) {</span>
+<span class="nc" id="L108">            filterRunning(filter, beforeStories, story.getPath(), story);</span>
+<span class="nc" id="L109">        }</span>
+<span class="nc" id="L110">        return runningStories;</span>
+    }
+
+    private void filterRunning(MetaFilter filter, State beforeStories, String storyPath, Story story) {
+<span class="fc" id="L114">        FilteredStory filteredStory = new FilteredStory(filter, story, configuration.storyControls());</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        if (filteredStory.allowed()) {</span>
+<span class="fc" id="L116">            runningStories.put(storyPath, runningStory(storyPath, story, filter, beforeStories));</span>
+        } else {
+<span class="nc" id="L118">            notAllowedBy(filter).add(story);</span>
+        }
+<span class="fc" id="L120">    }</span>
+
+    public List&lt;Story&gt; notAllowedBy(MetaFilter filter) {
+<span class="fc" id="L123">        List&lt;Story&gt; stories = excludedStories.get(filter);</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        if (stories == null) {</span>
+<span class="fc" id="L125">            stories = new ArrayList&lt;Story&gt;();</span>
+<span class="fc" id="L126">            excludedStories.put(filter, stories);</span>
+        }
+<span class="fc" id="L128">        return stories;</span>
+    }
+
+    public RunningStory runningStory(String storyPath, Story story, MetaFilter filter, State beforeStories) {
+<span class="fc" id="L132">        return submit(new EnqueuedStory(storyRunner, configuration, stepsFactory, embedderControls, embedderMonitor,</span>
+                storyPath, story, filter, beforeStories));
+    }
+
+    public void waitUntilAllDoneOrFailed(BatchFailures failures) {
+<span class="fc" id="L137">        long start = System.currentTimeMillis();</span>
+<span class="fc" id="L138">        boolean allDone = false;</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        while (!allDone) {</span>
+<span class="fc" id="L140">            allDone = true;</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            for (RunningStory runningStory : runningStories.values()) {</span>
+<span class="fc" id="L142">                Future&lt;ThrowableStory&gt; future = runningStory.getFuture();</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                if (!future.isDone()) {</span>
+<span class="fc" id="L144">                    allDone = false;</span>
+<span class="fc" id="L145">                    long durationInSecs = storyDurationInSecs(start);</span>
+<span class="fc" id="L146">                    long timeoutInSecs = embedderControls.storyTimeoutInSecs();</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">                    if (durationInSecs &gt; timeoutInSecs) {</span>
+<span class="fc" id="L148">                        Story story = runningStory.getStory();</span>
+<span class="fc" id="L149">                        StoryDuration storyDuration = new StoryDuration(durationInSecs, timeoutInSecs);</span>
+<span class="fc" id="L150">                        embedderMonitor.storyTimeout(story, storyDuration);</span>
+<span class="fc" id="L151">                        storyRunner.cancelStory(story, storyDuration);</span>
+<span class="fc" id="L152">                        future.cancel(true);</span>
+<span class="fc" id="L153">                    }</span>
+                    break;
+                } else {
+<span class="fc" id="L156">                    Story story = runningStory.getStory();</span>
+                    try {
+<span class="fc" id="L158">                        ThrowableStory throwableStory = future.get();</span>
+<span class="fc" id="L159">                        Throwable throwable = throwableStory.getThrowable();</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                        if (throwable != null) {</span>
+<span class="fc" id="L161">                            failures.put(story.getPath(), throwable);</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">                            if (!embedderControls.ignoreFailureInStories()) {</span>
+<span class="fc" id="L163">                                break;</span>
+                            }
+                        }
+<span class="fc" id="L166">                    } catch (Throwable e) {</span>
+<span class="fc" id="L167">                        failures.put(story.getPath(), e);</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                        if (!embedderControls.ignoreFailureInStories()) {</span>
+<span class="fc" id="L169">                            break;</span>
+                        }
+<span class="fc" id="L171">                    }</span>
+                }
+<span class="fc" id="L173">            }</span>
+<span class="fc" id="L174">            tickTock();</span>
+        }
+        // cancel any outstanding execution which is not done before returning
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        for (RunningStory runningStory : runningStories.values()) {</span>
+<span class="fc" id="L178">            Future&lt;ThrowableStory&gt; future = runningStory.getFuture();</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">            if (!future.isDone()) {</span>
+<span class="nc" id="L180">                future.cancel(true);</span>
+            }
+<span class="fc" id="L182">        }</span>
+
+<span class="fc" id="L184">    }</span>
+
+    private void tickTock() {
+        try {
+<span class="fc" id="L188">            Thread.sleep(100);</span>
+<span class="nc" id="L189">        } catch (InterruptedException e) {</span>
+<span class="fc" id="L190">        }</span>
+<span class="fc" id="L191">    }</span>
+
+    private long storyDurationInSecs(long start) {
+<span class="fc" id="L194">        return (System.currentTimeMillis() - start) / 1000;</span>
+    }
+
+    private synchronized RunningStory submit(EnqueuedStory enqueuedStory) {
+<span class="fc" id="L198">        return new RunningStory(enqueuedStory.getStory(), executorService.submit(enqueuedStory));</span>
+    }
+
+    private static class EnqueuedStory implements Callable&lt;ThrowableStory&gt; {
+        private final StoryRunner storyRunner;
+        private final Configuration configuration;
+        private final InjectableStepsFactory stepsFactory;
+        private final EmbedderControls embedderControls;
+        private final EmbedderMonitor embedderMonitor;
+        private final String storyPath;
+        private final Story story;
+        private final MetaFilter filter;
+        private final State beforeStories;
+
+        private EnqueuedStory(StoryRunner storyRunner, Configuration configuration,
+                InjectableStepsFactory stepsFactory, EmbedderControls embedderControls,
+<span class="fc" id="L214">                EmbedderMonitor embedderMonitor, String storyPath, Story story, MetaFilter filter, State beforeStories) {</span>
+<span class="fc" id="L215">            this.storyRunner = storyRunner;</span>
+<span class="fc" id="L216">            this.configuration = configuration;</span>
+<span class="fc" id="L217">            this.stepsFactory = stepsFactory;</span>
+<span class="fc" id="L218">            this.embedderControls = embedderControls;</span>
+<span class="fc" id="L219">            this.embedderMonitor = embedderMonitor;</span>
+<span class="fc" id="L220">            this.storyPath = storyPath;</span>
+<span class="fc" id="L221">            this.story = story;</span>
+<span class="fc" id="L222">            this.filter = filter;</span>
+<span class="fc" id="L223">            this.beforeStories = beforeStories;</span>
+<span class="fc" id="L224">        }</span>
+
+        public ThrowableStory call() throws Exception {
+            try {
+<span class="fc" id="L228">                embedderMonitor.runningStory(storyPath);</span>
+<span class="fc" id="L229">                storyRunner.run(configuration, stepsFactory, story, filter, beforeStories);</span>
+<span class="fc" id="L230">            } catch (Throwable e) {</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                if (embedderControls.ignoreFailureInStories()) {</span>
+<span class="fc" id="L232">                    embedderMonitor.storyFailed(storyPath, e);</span>
+                } else {
+<span class="fc" id="L234">                    return new ThrowableStory(story, new StoryExecutionFailed(storyPath, e));</span>
+                }
+<span class="fc" id="L236">            }</span>
+<span class="fc" id="L237">            return new ThrowableStory(story, null);</span>
+        }
+
+        public Story getStory() {
+<span class="fc" id="L241">            return story;</span>
+        }
+
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class StoryExecutionFailed extends RuntimeException {
+
+        public StoryExecutionFailed(String storyPath, Throwable failure) {
+<span class="fc" id="L250">            super(storyPath, failure);</span>
+<span class="fc" id="L251">        }</span>
+
+    }
+
+    public static class ThrowableStory {
+        private Story story;
+        private Throwable throwable;
+
+<span class="fc" id="L259">        public ThrowableStory(Story story, Throwable throwable) {</span>
+<span class="fc" id="L260">            this.story = story;</span>
+<span class="fc" id="L261">            this.throwable = throwable;</span>
+<span class="fc" id="L262">        }</span>
+
+        public Story getStory() {
+<span class="nc" id="L265">            return story;</span>
+        }
+
+        public Throwable getThrowable() {
+<span class="fc" id="L269">            return throwable;</span>
+        }
+    }
+
+    public static class RunningStory {
+        private Story story;
+        private Future&lt;ThrowableStory&gt; future;
+
+<span class="fc" id="L277">        public RunningStory(Story story, Future&lt;ThrowableStory&gt; future) {</span>
+<span class="fc" id="L278">            this.story = story;</span>
+<span class="fc" id="L279">            this.future = future;</span>
+<span class="fc" id="L280">        }</span>
+
+        public Future&lt;ThrowableStory&gt; getFuture() {
+<span class="fc" id="L283">            return future;</span>
+        }
+
+        public Story getStory() {
+<span class="fc" id="L287">            return story;</span>
+        }
+
+        public boolean isDone() {
+<span class="nc" id="L291">            return future.isDone();</span>
+        }
+
+        public boolean isFailed() {
+<span class="nc bnc" id="L295" title="All 2 branches missed.">            if (isDone()) {</span>
+                try {
+<span class="nc bnc" id="L297" title="All 2 branches missed.">                    return future.get().getThrowable() != null;</span>
+<span class="nc" id="L298">                } catch (InterruptedException e) {</span>
+<span class="nc" id="L299">                } catch (ExecutionException e) {</span>
+<span class="nc" id="L300">                }</span>
+            }
+<span class="nc" id="L302">            return false;</span>
+        }
+    }
+
+    public static class StoryOutcome {
+        private String path;
+        private Boolean done;
+        private Boolean failed;
+
+<span class="nc" id="L311">        public StoryOutcome(RunningStory story) {</span>
+<span class="nc" id="L312">            this.path = story.getStory().getPath();</span>
+<span class="nc" id="L313">            this.done = story.isDone();</span>
+<span class="nc" id="L314">            this.failed = story.isFailed();</span>
+<span class="nc" id="L315">        }</span>
+
+        public String getPath() {
+<span class="nc" id="L318">            return path;</span>
+        }
+
+        public Boolean isDone() {
+<span class="nc" id="L322">            return done;</span>
+        }
+
+        public Boolean isFailed() {
+<span class="nc" id="L326">            return failed;</span>
+        }
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,761 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>XYSeriesCollection.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.data.xy</a> &gt; <span class="el_source">XYSeriesCollection.java</span></div><h1>XYSeriesCollection.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * -----------------------
+ * XYSeriesCollection.java
+ * -----------------------
+ * (C) Copyright 2001-2013, by Object Refinery Limited and Contributors.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   Aaron Metzger;
+ *
+ * Changes
+ * -------
+ * 15-Nov-2001 : Version 1 (DG);
+ * 03-Apr-2002 : Added change listener code (DG);
+ * 29-Apr-2002 : Added removeSeries, removeAllSeries methods (ARM);
+ * 07-Oct-2002 : Fixed errors reported by Checkstyle (DG);
+ * 26-Mar-2003 : Implemented Serializable (DG);
+ * 04-Aug-2003 : Added getSeries() method (DG);
+ * 31-Mar-2004 : Modified to use an XYIntervalDelegate.
+ * 05-May-2004 : Now extends AbstractIntervalXYDataset (DG);
+ * 18-Aug-2004 : Moved from org.jfree.data --&gt; org.jfree.data.xy (DG);
+ * 17-Nov-2004 : Updated for changes to DomainInfo interface (DG);
+ * 11-Jan-2005 : Removed deprecated code in preparation for 1.0.0 release (DG);
+ * 28-Mar-2005 : Fixed bug in getSeries(int) method (1170825) (DG);
+ * 05-Oct-2005 : Made the interval delegate a dataset listener (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 27-Nov-2006 : Added clone() override (DG);
+ * 08-May-2007 : Added indexOf(XYSeries) method (DG);
+ * 03-Dec-2007 : Added getSeries(Comparable) method (DG);
+ * 22-Apr-2008 : Implemented PublicCloneable (DG);
+ * 27-Feb-2009 : Overridden getDomainOrder() to detect when all series are
+ *               sorted in ascending order (DG);
+ * 06-Mar-2009 : Implemented RangeInfo (DG);
+ * 06-Mar-2009 : Fixed equals() implementation (DG);
+ * 10-Jun-2009 : Simplified code in getX() and getY() methods (DG);
+ * 02-Jul-2013 : Use ParamChecks (DG);
+ * 21-Nov-2013 : Fixed bug where removeSeries(int) was not deregistering 
+ *               vetoable listener (DG);
+ *
+ */
+
+package org.jfree.data.xy;
+
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyVetoException;
+import java.beans.VetoableChangeListener;
+import java.io.Serializable;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+
+import org.jfree.chart.HashUtilities;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.data.DomainInfo;
+import org.jfree.data.DomainOrder;
+import org.jfree.data.Range;
+import org.jfree.data.RangeInfo;
+import org.jfree.data.UnknownKeyException;
+import org.jfree.data.general.DatasetChangeEvent;
+import org.jfree.data.general.Series;
+import org.jfree.util.ObjectUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * Represents a collection of {@link XYSeries} objects that can be used as a
+ * dataset.
+ */
+public class XYSeriesCollection extends AbstractIntervalXYDataset
+        implements IntervalXYDataset, DomainInfo, RangeInfo, 
+        VetoableChangeListener, PublicCloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = -7590013825931496766L;
+
+    /** The series that are included in the collection. */
+    private List data;
+
+    /** The interval delegate (used to calculate the start and end x-values). */
+    private IntervalXYDelegate intervalDelegate;
+
+    /**
+     * Constructs an empty dataset.
+     */
+    public XYSeriesCollection() {
+<span class="fc" id="L109">        this(null);</span>
+<span class="fc" id="L110">    }</span>
+
+    /**
+     * Constructs a dataset and populates it with a single series.
+     *
+     * @param series  the series (&lt;code&gt;null&lt;/code&gt; ignored).
+     */
+<span class="fc" id="L117">    public XYSeriesCollection(XYSeries series) {</span>
+<span class="fc" id="L118">        this.data = new java.util.ArrayList();</span>
+<span class="fc" id="L119">        this.intervalDelegate = new IntervalXYDelegate(this, false);</span>
+<span class="fc" id="L120">        addChangeListener(this.intervalDelegate);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (series != null) {</span>
+<span class="fc" id="L122">            this.data.add(series);</span>
+<span class="fc" id="L123">            series.addChangeListener(this);</span>
+<span class="fc" id="L124">            series.addVetoableChangeListener(this);</span>
+        }
+<span class="fc" id="L126">    }</span>
+
+    /**
+     * Returns the order of the domain (X) values, if this is known.
+     *
+     * @return The domain order.
+     */
+    @Override
+    public DomainOrder getDomainOrder() {
+<span class="fc" id="L135">        int seriesCount = getSeriesCount();</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        for (int i = 0; i &lt; seriesCount; i++) {</span>
+<span class="fc" id="L137">            XYSeries s = getSeries(i);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            if (!s.getAutoSort()) {</span>
+<span class="fc" id="L139">                return DomainOrder.NONE;  // we can't be sure of the order</span>
+            }
+        }
+<span class="fc" id="L142">        return DomainOrder.ASCENDING;</span>
+    }
+
+    /**
+     * Adds a series to the collection and sends a {@link DatasetChangeEvent}
+     * to all registered listeners.
+     *
+     * @param series  the series (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * 
+     * @throws IllegalArgumentException if the key for the series is null or
+     *     not unique within the dataset.
+     */
+    public void addSeries(XYSeries series) {
+<span class="fc" id="L155">        ParamChecks.nullNotPermitted(series, &quot;series&quot;);</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (getSeriesIndex(series.getKey()) &gt;= 0) {</span>
+<span class="fc" id="L157">            throw new IllegalArgumentException(</span>
+                &quot;This dataset already contains a series with the key &quot; 
+                + series.getKey());
+        }
+<span class="fc" id="L161">        this.data.add(series);</span>
+<span class="fc" id="L162">        series.addChangeListener(this);</span>
+<span class="fc" id="L163">        series.addVetoableChangeListener(this);</span>
+<span class="fc" id="L164">        fireDatasetChanged();</span>
+<span class="fc" id="L165">    }</span>
+
+    /**
+     * Removes a series from the collection and sends a
+     * {@link DatasetChangeEvent} to all registered listeners.
+     *
+     * @param series  the series index (zero-based).
+     */
+    public void removeSeries(int series) {
+<span class="fc bfc" id="L174" title="All 4 branches covered.">        if ((series &lt; 0) || (series &gt;= getSeriesCount())) {</span>
+<span class="fc" id="L175">            throw new IllegalArgumentException(&quot;Series index out of bounds.&quot;);</span>
+        }
+<span class="fc" id="L177">        XYSeries s = (XYSeries) this.data.get(series);</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        if (s != null) {</span>
+<span class="fc" id="L179">            removeSeries(s);</span>
+        }
+<span class="fc" id="L181">    }</span>
+
+    /**
+     * Removes a series from the collection and sends a
+     * {@link DatasetChangeEvent} to all registered listeners.
+     *
+     * @param series  the series (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void removeSeries(XYSeries series) {
+<span class="fc" id="L190">        ParamChecks.nullNotPermitted(series, &quot;series&quot;);</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        if (this.data.contains(series)) {</span>
+<span class="fc" id="L192">            series.removeChangeListener(this);</span>
+<span class="fc" id="L193">            series.removeVetoableChangeListener(this);</span>
+<span class="fc" id="L194">            this.data.remove(series);</span>
+<span class="fc" id="L195">            fireDatasetChanged();</span>
+        }
+<span class="fc" id="L197">    }</span>
+
+    /**
+     * Removes all the series from the collection and sends a
+     * {@link DatasetChangeEvent} to all registered listeners.
+     */
+    public void removeAllSeries() {
+        // Unregister the collection as a change listener to each series in
+        // the collection.
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        for (int i = 0; i &lt; this.data.size(); i++) {</span>
+<span class="fc" id="L207">          XYSeries series = (XYSeries) this.data.get(i);</span>
+<span class="fc" id="L208">          series.removeChangeListener(this);</span>
+<span class="fc" id="L209">          series.removeVetoableChangeListener(this);</span>
+        }
+
+        // Remove all the series from the collection and notify listeners.
+<span class="fc" id="L213">        this.data.clear();</span>
+<span class="fc" id="L214">        fireDatasetChanged();</span>
+<span class="fc" id="L215">    }</span>
+
+    /**
+     * Returns the number of series in the collection.
+     *
+     * @return The series count.
+     */
+    @Override
+    public int getSeriesCount() {
+<span class="fc" id="L224">        return this.data.size();</span>
+    }
+
+    /**
+     * Returns a list of all the series in the collection.
+     *
+     * @return The list (which is unmodifiable).
+     */
+    public List getSeries() {
+<span class="nc" id="L233">        return Collections.unmodifiableList(this.data);</span>
+    }
+
+    /**
+     * Returns the index of the specified series, or -1 if that series is not
+     * present in the dataset.
+     *
+     * @param series  the series (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return The series index.
+     *
+     * @since 1.0.6
+     */
+    public int indexOf(XYSeries series) {
+<span class="fc" id="L247">        ParamChecks.nullNotPermitted(series, &quot;series&quot;);</span>
+<span class="fc" id="L248">        return this.data.indexOf(series);</span>
+    }
+
+    /**
+     * Returns a series from the collection.
+     *
+     * @param series  the series index (zero-based).
+     *
+     * @return The series.
+     *
+     * @throws IllegalArgumentException if &lt;code&gt;series&lt;/code&gt; is not in the
+     *     range &lt;code&gt;0&lt;/code&gt; to &lt;code&gt;getSeriesCount() - 1&lt;/code&gt;.
+     */
+    public XYSeries getSeries(int series) {
+<span class="fc bfc" id="L262" title="All 4 branches covered.">        if ((series &lt; 0) || (series &gt;= getSeriesCount())) {</span>
+<span class="fc" id="L263">            throw new IllegalArgumentException(&quot;Series index out of bounds&quot;);</span>
+        }
+<span class="fc" id="L265">        return (XYSeries) this.data.get(series);</span>
+    }
+
+    /**
+     * Returns a series from the collection.
+     *
+     * @param key  the key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return The series with the specified key.
+     *
+     * @throws UnknownKeyException if &lt;code&gt;key&lt;/code&gt; is not found in the
+     *         collection.
+     *
+     * @since 1.0.9
+     */
+    public XYSeries getSeries(Comparable key) {
+<span class="fc" id="L281">        ParamChecks.nullNotPermitted(key, &quot;key&quot;);</span>
+<span class="fc" id="L282">        Iterator iterator = this.data.iterator();</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">        while (iterator.hasNext()) {</span>
+<span class="fc" id="L284">            XYSeries series = (XYSeries) iterator.next();</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">            if (key.equals(series.getKey())) {</span>
+<span class="fc" id="L286">                return series;</span>
+            }
+<span class="fc" id="L288">        }</span>
+<span class="fc" id="L289">        throw new UnknownKeyException(&quot;Key not found: &quot; + key);</span>
+    }
+
+    /**
+     * Returns the key for a series.
+     *
+     * @param series  the series index (in the range &lt;code&gt;0&lt;/code&gt; to
+     *     &lt;code&gt;getSeriesCount() - 1&lt;/code&gt;).
+     *
+     * @return The key for a series.
+     *
+     * @throws IllegalArgumentException if &lt;code&gt;series&lt;/code&gt; is not in the
+     *     specified range.
+     */
+    @Override
+    public Comparable getSeriesKey(int series) {
+        // defer argument checking
+<span class="fc" id="L306">        return getSeries(series).getKey();</span>
+    }
+
+    /**
+     * Returns the index of the series with the specified key, or -1 if no
+     * series has that key.
+     * 
+     * @param key  the key (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * 
+     * @return The index.
+     * 
+     * @since 1.0.14
+     */
+    public int getSeriesIndex(Comparable key) {
+<span class="fc" id="L320">        ParamChecks.nullNotPermitted(key, &quot;key&quot;);</span>
+<span class="fc" id="L321">        int seriesCount = getSeriesCount();</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        for (int i = 0; i &lt; seriesCount; i++) {</span>
+<span class="fc" id="L323">            XYSeries series = (XYSeries) this.data.get(i);</span>
+<span class="fc bfc" id="L324" title="All 2 branches covered.">            if (key.equals(series.getKey())) {</span>
+<span class="fc" id="L325">                return i;</span>
+            }
+        }
+<span class="fc" id="L328">        return -1;</span>
+    }
+
+    /**
+     * Returns the number of items in the specified series.
+     *
+     * @param series  the series (zero-based index).
+     *
+     * @return The item count.
+     *
+     * @throws IllegalArgumentException if &lt;code&gt;series&lt;/code&gt; is not in the
+     *     range &lt;code&gt;0&lt;/code&gt; to &lt;code&gt;getSeriesCount() - 1&lt;/code&gt;.
+     */
+    @Override
+    public int getItemCount(int series) {
+        // defer argument checking
+<span class="fc" id="L344">        return getSeries(series).getItemCount();</span>
+    }
+
+    /**
+     * Returns the x-value for the specified series and item.
+     *
+     * @param series  the series (zero-based index).
+     * @param item  the item (zero-based index).
+     *
+     * @return The value.
+     */
+    @Override
+    public Number getX(int series, int item) {
+<span class="fc" id="L357">        XYSeries s = (XYSeries) this.data.get(series);</span>
+<span class="fc" id="L358">        return s.getX(item);</span>
+    }
+
+    /**
+     * Returns the starting X value for the specified series and item.
+     *
+     * @param series  the series (zero-based index).
+     * @param item  the item (zero-based index).
+     *
+     * @return The starting X value.
+     */
+    @Override
+    public Number getStartX(int series, int item) {
+<span class="fc" id="L371">        return this.intervalDelegate.getStartX(series, item);</span>
+    }
+
+    /**
+     * Returns the ending X value for the specified series and item.
+     *
+     * @param series  the series (zero-based index).
+     * @param item  the item (zero-based index).
+     *
+     * @return The ending X value.
+     */
+    @Override
+    public Number getEndX(int series, int item) {
+<span class="fc" id="L384">        return this.intervalDelegate.getEndX(series, item);</span>
+    }
+
+    /**
+     * Returns the y-value for the specified series and item.
+     *
+     * @param series  the series (zero-based index).
+     * @param index  the index of the item of interest (zero-based).
+     *
+     * @return The value (possibly &lt;code&gt;null&lt;/code&gt;).
+     */
+    @Override
+    public Number getY(int series, int index) {
+<span class="fc" id="L397">        XYSeries s = (XYSeries) this.data.get(series);</span>
+<span class="fc" id="L398">        return s.getY(index);</span>
+    }
+
+    /**
+     * Returns the starting Y value for the specified series and item.
+     *
+     * @param series  the series (zero-based index).
+     * @param item  the item (zero-based index).
+     *
+     * @return The starting Y value.
+     */
+    @Override
+    public Number getStartY(int series, int item) {
+<span class="fc" id="L411">        return getY(series, item);</span>
+    }
+
+    /**
+     * Returns the ending Y value for the specified series and item.
+     *
+     * @param series  the series (zero-based index).
+     * @param item  the item (zero-based index).
+     *
+     * @return The ending Y value.
+     */
+    @Override
+    public Number getEndY(int series, int item) {
+<span class="fc" id="L424">        return getY(series, item);</span>
+    }
+
+    /**
+     * Tests this collection for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L436" title="All 2 branches covered.">        if (obj == this) {</span>
+<span class="fc" id="L437">            return true;</span>
+        }
+<span class="pc bpc" id="L439" title="1 of 2 branches missed.">        if (!(obj instanceof XYSeriesCollection)) {</span>
+<span class="nc" id="L440">            return false;</span>
+        }
+<span class="fc" id="L442">        XYSeriesCollection that = (XYSeriesCollection) obj;</span>
+<span class="fc bfc" id="L443" title="All 2 branches covered.">        if (!this.intervalDelegate.equals(that.intervalDelegate)) {</span>
+<span class="fc" id="L444">            return false;</span>
+        }
+<span class="fc" id="L446">        return ObjectUtilities.equal(this.data, that.data);</span>
+    }
+
+    /**
+     * Returns a clone of this instance.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException if there is a problem.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L458">        XYSeriesCollection clone = (XYSeriesCollection) super.clone();</span>
+<span class="fc" id="L459">        clone.data = (List) ObjectUtilities.deepClone(this.data);</span>
+<span class="fc" id="L460">        clone.intervalDelegate</span>
+                = (IntervalXYDelegate) this.intervalDelegate.clone();
+<span class="fc" id="L462">        return clone;</span>
+    }
+
+    /**
+     * Returns a hash code.
+     *
+     * @return A hash code.
+     */
+    @Override
+    public int hashCode() {
+<span class="nc" id="L472">        int hash = 5;</span>
+<span class="nc" id="L473">        hash = HashUtilities.hashCode(hash, this.intervalDelegate);</span>
+<span class="nc" id="L474">        hash = HashUtilities.hashCode(hash, this.data);</span>
+<span class="nc" id="L475">        return hash;</span>
+    }
+
+    /**
+     * Returns the minimum x-value in the dataset.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         x-interval is taken into account.
+     *
+     * @return The minimum value.
+     */
+    @Override
+    public double getDomainLowerBound(boolean includeInterval) {
+<span class="pc bpc" id="L488" title="1 of 2 branches missed.">        if (includeInterval) {</span>
+<span class="fc" id="L489">            return this.intervalDelegate.getDomainLowerBound(includeInterval);</span>
+        }
+<span class="nc" id="L491">        double result = Double.NaN;</span>
+<span class="nc" id="L492">        int seriesCount = getSeriesCount();</span>
+<span class="nc bnc" id="L493" title="All 2 branches missed.">        for (int s = 0; s &lt; seriesCount; s++) {</span>
+<span class="nc" id="L494">            XYSeries series = getSeries(s);</span>
+<span class="nc" id="L495">            double lowX = series.getMinX();</span>
+<span class="nc bnc" id="L496" title="All 2 branches missed.">            if (Double.isNaN(result)) {</span>
+<span class="nc" id="L497">                result = lowX;</span>
+            }
+            else {
+<span class="nc bnc" id="L500" title="All 2 branches missed.">                if (!Double.isNaN(lowX)) {</span>
+<span class="nc" id="L501">                    result = Math.min(result, lowX);</span>
+                }
+            }
+        }
+<span class="nc" id="L505">        return result;</span>
+    }
+
+    /**
+     * Returns the maximum x-value in the dataset.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         x-interval is taken into account.
+     *
+     * @return The maximum value.
+     */
+    @Override
+    public double getDomainUpperBound(boolean includeInterval) {
+<span class="pc bpc" id="L518" title="1 of 2 branches missed.">        if (includeInterval) {</span>
+<span class="fc" id="L519">            return this.intervalDelegate.getDomainUpperBound(includeInterval);</span>
+        }
+        else {
+<span class="nc" id="L522">            double result = Double.NaN;</span>
+<span class="nc" id="L523">            int seriesCount = getSeriesCount();</span>
+<span class="nc bnc" id="L524" title="All 2 branches missed.">            for (int s = 0; s &lt; seriesCount; s++) {</span>
+<span class="nc" id="L525">                XYSeries series = getSeries(s);</span>
+<span class="nc" id="L526">                double hiX = series.getMaxX();</span>
+<span class="nc bnc" id="L527" title="All 2 branches missed.">                if (Double.isNaN(result)) {</span>
+<span class="nc" id="L528">                    result = hiX;</span>
+                }
+                else {
+<span class="nc bnc" id="L531" title="All 2 branches missed.">                    if (!Double.isNaN(hiX)) {</span>
+<span class="nc" id="L532">                        result = Math.max(result, hiX);</span>
+                    }
+                }
+            }
+<span class="nc" id="L536">            return result;</span>
+        }
+    }
+
+    /**
+     * Returns the range of the values in this dataset's domain.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         x-interval is taken into account.
+     *
+     * @return The range (or &lt;code&gt;null&lt;/code&gt; if the dataset contains no
+     *     values).
+     */
+    @Override
+    public Range getDomainBounds(boolean includeInterval) {
+<span class="fc bfc" id="L551" title="All 2 branches covered.">        if (includeInterval) {</span>
+<span class="fc" id="L552">            return this.intervalDelegate.getDomainBounds(includeInterval);</span>
+        }
+        else {
+<span class="fc" id="L555">            double lower = Double.POSITIVE_INFINITY;</span>
+<span class="fc" id="L556">            double upper = Double.NEGATIVE_INFINITY;</span>
+<span class="fc" id="L557">            int seriesCount = getSeriesCount();</span>
+<span class="fc bfc" id="L558" title="All 2 branches covered.">            for (int s = 0; s &lt; seriesCount; s++) {</span>
+<span class="fc" id="L559">                XYSeries series = getSeries(s);</span>
+<span class="fc" id="L560">                double minX = series.getMinX();</span>
+<span class="fc bfc" id="L561" title="All 2 branches covered.">                if (!Double.isNaN(minX)) {</span>
+<span class="fc" id="L562">                    lower = Math.min(lower, minX);</span>
+                }
+<span class="fc" id="L564">                double maxX = series.getMaxX();</span>
+<span class="fc bfc" id="L565" title="All 2 branches covered.">                if (!Double.isNaN(maxX)) {</span>
+<span class="fc" id="L566">                    upper = Math.max(upper, maxX);</span>
+                }
+            }
+<span class="fc bfc" id="L569" title="All 2 branches covered.">            if (lower &gt; upper) {</span>
+<span class="fc" id="L570">                return null;</span>
+            }
+            else {
+<span class="fc" id="L573">                return new Range(lower, upper);</span>
+            }
+        }
+    }
+
+    /**
+     * Returns the interval width. This is used to calculate the start and end
+     * x-values, if/when the dataset is used as an {@link IntervalXYDataset}.
+     *
+     * @return The interval width.
+     */
+    public double getIntervalWidth() {
+<span class="fc" id="L585">        return this.intervalDelegate.getIntervalWidth();</span>
+    }
+
+    /**
+     * Sets the interval width and sends a {@link DatasetChangeEvent} to all
+     * registered listeners.
+     *
+     * @param width  the width (negative values not permitted).
+     */
+    public void setIntervalWidth(double width) {
+<span class="pc bpc" id="L595" title="1 of 2 branches missed.">        if (width &lt; 0.0) {</span>
+<span class="nc" id="L596">            throw new IllegalArgumentException(&quot;Negative 'width' argument.&quot;);</span>
+        }
+<span class="fc" id="L598">        this.intervalDelegate.setFixedIntervalWidth(width);</span>
+<span class="fc" id="L599">        fireDatasetChanged();</span>
+<span class="fc" id="L600">    }</span>
+
+    /**
+     * Returns the interval position factor.
+     *
+     * @return The interval position factor.
+     */
+    public double getIntervalPositionFactor() {
+<span class="fc" id="L608">        return this.intervalDelegate.getIntervalPositionFactor();</span>
+    }
+
+    /**
+     * Sets the interval position factor. This controls where the x-value is in
+     * relation to the interval surrounding the x-value (0.0 means the x-value
+     * will be positioned at the start, 0.5 in the middle, and 1.0 at the end).
+     *
+     * @param factor  the factor.
+     */
+    public void setIntervalPositionFactor(double factor) {
+<span class="fc" id="L619">        this.intervalDelegate.setIntervalPositionFactor(factor);</span>
+<span class="fc" id="L620">        fireDatasetChanged();</span>
+<span class="fc" id="L621">    }</span>
+
+    /**
+     * Returns whether the interval width is automatically calculated or not.
+     *
+     * @return Whether the width is automatically calculated or not.
+     */
+    public boolean isAutoWidth() {
+<span class="nc" id="L629">        return this.intervalDelegate.isAutoWidth();</span>
+    }
+
+    /**
+     * Sets the flag that indicates whether the interval width is automatically
+     * calculated or not.
+     *
+     * @param b  a boolean.
+     */
+    public void setAutoWidth(boolean b) {
+<span class="fc" id="L639">        this.intervalDelegate.setAutoWidth(b);</span>
+<span class="fc" id="L640">        fireDatasetChanged();</span>
+<span class="fc" id="L641">    }</span>
+
+    /**
+     * Returns the range of the values in this dataset's range.
+     *
+     * @param includeInterval  ignored.
+     *
+     * @return The range (or &lt;code&gt;null&lt;/code&gt; if the dataset contains no
+     *     values).
+     */
+    @Override
+    public Range getRangeBounds(boolean includeInterval) {
+<span class="fc" id="L653">        double lower = Double.POSITIVE_INFINITY;</span>
+<span class="fc" id="L654">        double upper = Double.NEGATIVE_INFINITY;</span>
+<span class="fc" id="L655">        int seriesCount = getSeriesCount();</span>
+<span class="fc bfc" id="L656" title="All 2 branches covered.">        for (int s = 0; s &lt; seriesCount; s++) {</span>
+<span class="fc" id="L657">            XYSeries series = getSeries(s);</span>
+<span class="fc" id="L658">            double minY = series.getMinY();</span>
+<span class="fc bfc" id="L659" title="All 2 branches covered.">            if (!Double.isNaN(minY)) {</span>
+<span class="fc" id="L660">                lower = Math.min(lower, minY);</span>
+            }
+<span class="fc" id="L662">            double maxY = series.getMaxY();</span>
+<span class="fc bfc" id="L663" title="All 2 branches covered.">            if (!Double.isNaN(maxY)) {</span>
+<span class="fc" id="L664">                upper = Math.max(upper, maxY);</span>
+            }
+        }
+<span class="fc bfc" id="L667" title="All 2 branches covered.">        if (lower &gt; upper) {</span>
+<span class="fc" id="L668">            return null;</span>
+        }
+        else {
+<span class="fc" id="L671">            return new Range(lower, upper);</span>
+        }
+    }
+
+    /**
+     * Returns the minimum y-value in the dataset.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         y-interval is taken into account.
+     *
+     * @return The minimum value.
+     */
+    @Override
+    public double getRangeLowerBound(boolean includeInterval) {
+<span class="fc" id="L685">        double result = Double.NaN;</span>
+<span class="fc" id="L686">        int seriesCount = getSeriesCount();</span>
+<span class="fc bfc" id="L687" title="All 2 branches covered.">        for (int s = 0; s &lt; seriesCount; s++) {</span>
+<span class="fc" id="L688">            XYSeries series = getSeries(s);</span>
+<span class="fc" id="L689">            double lowY = series.getMinY();</span>
+<span class="fc bfc" id="L690" title="All 2 branches covered.">            if (Double.isNaN(result)) {</span>
+<span class="fc" id="L691">                result = lowY;</span>
+            }
+            else {
+<span class="pc bpc" id="L694" title="1 of 2 branches missed.">                if (!Double.isNaN(lowY)) {</span>
+<span class="fc" id="L695">                    result = Math.min(result, lowY);</span>
+                }
+            }
+        }
+<span class="fc" id="L699">        return result;</span>
+    }
+
+    /**
+     * Returns the maximum y-value in the dataset.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         y-interval is taken into account.
+     *
+     * @return The maximum value.
+     */
+    @Override
+    public double getRangeUpperBound(boolean includeInterval) {
+<span class="fc" id="L712">        double result = Double.NaN;</span>
+<span class="fc" id="L713">        int seriesCount = getSeriesCount();</span>
+<span class="fc bfc" id="L714" title="All 2 branches covered.">        for (int s = 0; s &lt; seriesCount; s++) {</span>
+<span class="fc" id="L715">            XYSeries series = getSeries(s);</span>
+<span class="fc" id="L716">            double hiY = series.getMaxY();</span>
+<span class="fc bfc" id="L717" title="All 2 branches covered.">            if (Double.isNaN(result)) {</span>
+<span class="fc" id="L718">                result = hiY;</span>
+            }
+            else {
+<span class="pc bpc" id="L721" title="1 of 2 branches missed.">                if (!Double.isNaN(hiY)) {</span>
+<span class="fc" id="L722">                    result = Math.max(result, hiY);</span>
+                }
+            }
+        }
+<span class="fc" id="L726">        return result;</span>
+    }
+
+    /**
+     * Receives notification that the key for one of the series in the 
+     * collection has changed, and vetos it if the key is already present in 
+     * the collection.
+     * 
+     * @param e  the event.
+     * 
+     * @since 1.0.14
+     */
+    @Override
+    public void vetoableChange(PropertyChangeEvent e)
+            throws PropertyVetoException {
+        // if it is not the series name, then we have no interest
+<span class="pc bpc" id="L742" title="1 of 2 branches missed.">        if (!&quot;Key&quot;.equals(e.getPropertyName())) {</span>
+<span class="nc" id="L743">            return;</span>
+        }
+        
+        // to be defensive, let's check that the source series does in fact
+        // belong to this collection
+<span class="fc" id="L748">        Series s = (Series) e.getSource();</span>
+<span class="pc bpc" id="L749" title="1 of 2 branches missed.">        if (getSeriesIndex(s.getKey()) == -1) {</span>
+<span class="nc" id="L750">            throw new IllegalStateException(&quot;Receiving events from a series &quot; +</span>
+                    &quot;that does not belong to this collection.&quot;);
+        }
+        // check if the new series name already exists for another series
+<span class="fc" id="L754">        Comparable key = (Comparable) e.getNewValue();</span>
+<span class="fc bfc" id="L755" title="All 2 branches covered.">        if (getSeriesIndex(key) &gt;= 0) {</span>
+<span class="fc" id="L756">            throw new PropertyVetoException(&quot;Duplicate key2&quot;, e);</span>
+        }
+<span class="fc" id="L758">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,684 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>XYTextAnnotation.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.annotations</a> &gt; <span class="el_source">XYTextAnnotation.java</span></div><h1>XYTextAnnotation.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ---------------------
+ * XYTextAnnotation.java
+ * ---------------------
+ * (C) Copyright 2002-2013, by Object Refinery Limited and Contributors.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   Peter Kolb (patch 2809117);
+ *
+ * Changes:
+ * --------
+ * 28-Aug-2002 : Version 1 (DG);
+ * 07-Nov-2002 : Fixed errors reported by Checkstyle (DG);
+ * 13-Jan-2003 : Reviewed Javadocs (DG);
+ * 26-Mar-2003 : Implemented Serializable (DG);
+ * 02-Jul-2003 : Added new text alignment and rotation options (DG);
+ * 19-Aug-2003 : Implemented Cloneable (DG);
+ * 17-Jan-2003 : Added fix for bug 878706, where the annotation is placed
+ *               incorrectly for a plot with horizontal orientation (thanks to
+ *               Ed Yu for the fix) (DG);
+ * 21-Jan-2004 : Update for renamed method in ValueAxis (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 26-Jan-2006 : Fixed equals() method (bug 1415480) (DG);
+ * 06-Mar-2007 : Added argument checks, re-implemented hashCode() method (DG);
+ * 12-Feb-2009 : Added background paint and outline paint/stroke (DG);
+ * 01-Apr-2009 : Fixed bug in hotspot calculation (DG);
+ * 24-Jun-2009 : Fire change events (see patch 2809117) (DG);
+ *
+ */
+
+package org.jfree.chart.annotations;
+
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+
+import org.jfree.chart.HashUtilities;
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.event.AnnotationChangeEvent;
+import org.jfree.chart.plot.Plot;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.plot.PlotRenderingInfo;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.io.SerialUtilities;
+import org.jfree.text.TextUtilities;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.ui.TextAnchor;
+import org.jfree.util.PaintUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A text annotation that can be placed at a particular (x, y) location on an
+ * {@link XYPlot}.
+ */
+public class XYTextAnnotation extends AbstractXYAnnotation
+        implements Cloneable, PublicCloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = -2946063342782506328L;
+
+    /** The default font. */
+<span class="fc" id="L97">    public static final Font DEFAULT_FONT = new Font(&quot;SansSerif&quot;, Font.PLAIN,</span>
+            10);
+
+    /** The default paint. */
+<span class="fc" id="L101">    public static final Paint DEFAULT_PAINT = Color.black;</span>
+
+    /** The default text anchor. */
+<span class="fc" id="L104">    public static final TextAnchor DEFAULT_TEXT_ANCHOR = TextAnchor.CENTER;</span>
+
+    /** The default rotation anchor. */
+<span class="fc" id="L107">    public static final TextAnchor DEFAULT_ROTATION_ANCHOR = TextAnchor.CENTER;</span>
+
+    /** The default rotation angle. */
+    public static final double DEFAULT_ROTATION_ANGLE = 0.0;
+
+    /** The text. */
+    private String text;
+
+    /** The font. */
+    private Font font;
+
+    /** The paint. */
+    private transient Paint paint;
+
+    /** The x-coordinate. */
+    private double x;
+
+    /** The y-coordinate. */
+    private double y;
+
+    /** The text anchor (to be aligned with (x, y)). */
+    private TextAnchor textAnchor;
+
+    /** The rotation anchor. */
+    private TextAnchor rotationAnchor;
+
+    /** The rotation angle. */
+    private double rotationAngle;
+
+    /**
+     * The background paint (possibly null).
+     *
+     * @since 1.0.13
+     */
+    private transient Paint backgroundPaint;
+
+    /**
+     * The flag that controls the visibility of the outline.
+     *
+     * @since 1.0.13
+     */
+    private boolean outlineVisible;
+
+    /**
+     * The outline paint (never null).
+     *
+     * @since 1.0.13
+     */
+    private transient Paint outlinePaint;
+
+    /**
+     * The outline stroke (never null).
+     *
+     * @since 1.0.13
+     */
+    private transient Stroke outlineStroke;
+
+    /**
+     * Creates a new annotation to be displayed at the given coordinates.  The
+     * coordinates are specified in data space (they will be converted to
+     * Java2D space for display).
+     *
+     * @param text  the text (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param x  the x-coordinate (in data space).
+     * @param y  the y-coordinate (in data space).
+     */
+    public XYTextAnnotation(String text, double x, double y) {
+<span class="fc" id="L174">        super();</span>
+<span class="fc" id="L175">        ParamChecks.nullNotPermitted(text, &quot;text&quot;);</span>
+<span class="fc" id="L176">        this.text = text;</span>
+<span class="fc" id="L177">        this.font = DEFAULT_FONT;</span>
+<span class="fc" id="L178">        this.paint = DEFAULT_PAINT;</span>
+<span class="fc" id="L179">        this.x = x;</span>
+<span class="fc" id="L180">        this.y = y;</span>
+<span class="fc" id="L181">        this.textAnchor = DEFAULT_TEXT_ANCHOR;</span>
+<span class="fc" id="L182">        this.rotationAnchor = DEFAULT_ROTATION_ANCHOR;</span>
+<span class="fc" id="L183">        this.rotationAngle = DEFAULT_ROTATION_ANGLE;</span>
+
+        // by default the outline and background won't be visible
+<span class="fc" id="L186">        this.backgroundPaint = null;</span>
+<span class="fc" id="L187">        this.outlineVisible = false;</span>
+<span class="fc" id="L188">        this.outlinePaint = Color.black;</span>
+<span class="fc" id="L189">        this.outlineStroke = new BasicStroke(0.5f);</span>
+<span class="fc" id="L190">    }</span>
+
+    /**
+     * Returns the text for the annotation.
+     *
+     * @return The text (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setText(String)
+     */
+    public String getText() {
+<span class="fc" id="L200">        return this.text;</span>
+    }
+
+    /**
+     * Sets the text for the annotation.
+     *
+     * @param text  the text (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getText()
+     */
+    public void setText(String text) {
+<span class="nc" id="L211">        ParamChecks.nullNotPermitted(text, &quot;text&quot;);</span>
+<span class="nc" id="L212">        this.text = text;</span>
+<span class="nc" id="L213">        fireAnnotationChanged();</span>
+<span class="nc" id="L214">    }</span>
+
+    /**
+     * Returns the font for the annotation.
+     *
+     * @return The font (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setFont(Font)
+     */
+    public Font getFont() {
+<span class="fc" id="L224">        return this.font;</span>
+    }
+
+    /**
+     * Sets the font for the annotation and sends an
+     * {@link AnnotationChangeEvent} to all registered listeners.
+     *
+     * @param font  the font (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getFont()
+     */
+    public void setFont(Font font) {
+<span class="fc" id="L236">        ParamChecks.nullNotPermitted(font, &quot;font&quot;);</span>
+<span class="fc" id="L237">        this.font = font;</span>
+<span class="fc" id="L238">        fireAnnotationChanged();</span>
+<span class="fc" id="L239">    }</span>
+
+    /**
+     * Returns the paint for the annotation.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setPaint(Paint)
+     */
+    public Paint getPaint() {
+<span class="fc" id="L249">        return this.paint;</span>
+    }
+
+    /**
+     * Sets the paint for the annotation and sends an
+     * {@link AnnotationChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getPaint()
+     */
+    public void setPaint(Paint paint) {
+<span class="fc" id="L261">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L262">        this.paint = paint;</span>
+<span class="fc" id="L263">        fireAnnotationChanged();</span>
+<span class="fc" id="L264">    }</span>
+
+    /**
+     * Returns the text anchor.
+     *
+     * @return The text anchor (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setTextAnchor(TextAnchor)
+     */
+    public TextAnchor getTextAnchor() {
+<span class="fc" id="L274">        return this.textAnchor;</span>
+    }
+
+    /**
+     * Sets the text anchor (the point on the text bounding rectangle that is
+     * aligned to the (x, y) coordinate of the annotation) and sends an
+     * {@link AnnotationChangeEvent} to all registered listeners.
+     *
+     * @param anchor  the anchor point (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getTextAnchor()
+     */
+    public void setTextAnchor(TextAnchor anchor) {
+<span class="fc" id="L287">        ParamChecks.nullNotPermitted(anchor, &quot;anchor&quot;);</span>
+<span class="fc" id="L288">        this.textAnchor = anchor;</span>
+<span class="fc" id="L289">        fireAnnotationChanged();</span>
+<span class="fc" id="L290">    }</span>
+
+    /**
+     * Returns the rotation anchor.
+     *
+     * @return The rotation anchor point (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setRotationAnchor(TextAnchor)
+     */
+    public TextAnchor getRotationAnchor() {
+<span class="fc" id="L300">        return this.rotationAnchor;</span>
+    }
+
+    /**
+     * Sets the rotation anchor point and sends an
+     * {@link AnnotationChangeEvent} to all registered listeners.
+     *
+     * @param anchor  the anchor (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getRotationAnchor()
+     */
+    public void setRotationAnchor(TextAnchor anchor) {
+<span class="fc" id="L312">        ParamChecks.nullNotPermitted(anchor, &quot;anchor&quot;);</span>
+<span class="fc" id="L313">        this.rotationAnchor = anchor;</span>
+<span class="fc" id="L314">        fireAnnotationChanged();</span>
+<span class="fc" id="L315">    }</span>
+
+    /**
+     * Returns the rotation angle.
+     *
+     * @return The rotation angle.
+     *
+     * @see #setRotationAngle(double)
+     */
+    public double getRotationAngle() {
+<span class="fc" id="L325">        return this.rotationAngle;</span>
+    }
+
+    /**
+     * Sets the rotation angle and sends an {@link AnnotationChangeEvent} to
+     * all registered listeners.  The angle is measured clockwise in radians.
+     *
+     * @param angle  the angle (in radians).
+     *
+     * @see #getRotationAngle()
+     */
+    public void setRotationAngle(double angle) {
+<span class="fc" id="L337">        this.rotationAngle = angle;</span>
+<span class="fc" id="L338">        fireAnnotationChanged();</span>
+<span class="fc" id="L339">    }</span>
+
+    /**
+     * Returns the x coordinate for the text anchor point (measured against the
+     * domain axis).
+     *
+     * @return The x coordinate (in data space).
+     *
+     * @see #setX(double)
+     */
+    public double getX() {
+<span class="nc" id="L350">        return this.x;</span>
+    }
+
+    /**
+     * Sets the x coordinate for the text anchor point (measured against the
+     * domain axis) and sends an {@link AnnotationChangeEvent} to all
+     * registered listeners.
+     *
+     * @param x  the x coordinate (in data space).
+     *
+     * @see #getX()
+     */
+    public void setX(double x) {
+<span class="fc" id="L363">        this.x = x;</span>
+<span class="fc" id="L364">        fireAnnotationChanged();</span>
+<span class="fc" id="L365">    }</span>
+
+    /**
+     * Returns the y coordinate for the text anchor point (measured against the
+     * range axis).
+     *
+     * @return The y coordinate (in data space).
+     *
+     * @see #setY(double)
+     */
+    public double getY() {
+<span class="nc" id="L376">        return this.y;</span>
+    }
+
+    /**
+     * Sets the y coordinate for the text anchor point (measured against the
+     * range axis) and sends an {@link AnnotationChangeEvent} to all registered
+     * listeners.
+     *
+     * @param y  the y coordinate.
+     *
+     * @see #getY()
+     */
+    public void setY(double y) {
+<span class="fc" id="L389">        this.y = y;</span>
+<span class="fc" id="L390">        fireAnnotationChanged();</span>
+<span class="fc" id="L391">    }</span>
+
+    /**
+     * Returns the background paint for the annotation.
+     *
+     * @return The background paint (possibly &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setBackgroundPaint(Paint)
+     *
+     * @since 1.0.13
+     */
+    public Paint getBackgroundPaint() {
+<span class="nc" id="L403">        return this.backgroundPaint;</span>
+    }
+
+    /**
+     * Sets the background paint for the annotation and sends an
+     * {@link AnnotationChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @see #getBackgroundPaint()
+     *
+     * @since 1.0.13
+     */
+    public void setBackgroundPaint(Paint paint) {
+<span class="fc" id="L417">        this.backgroundPaint = paint;</span>
+<span class="fc" id="L418">        fireAnnotationChanged();</span>
+<span class="fc" id="L419">    }</span>
+
+    /**
+     * Returns the outline paint for the annotation.
+     *
+     * @return The outline paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setOutlinePaint(Paint)
+     *
+     * @since 1.0.13
+     */
+    public Paint getOutlinePaint() {
+<span class="nc" id="L431">        return this.outlinePaint;</span>
+    }
+
+    /**
+     * Sets the outline paint for the annotation and sends an
+     * {@link AnnotationChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getOutlinePaint()
+     *
+     * @since 1.0.13
+     */
+    public void setOutlinePaint(Paint paint) {
+<span class="fc" id="L445">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L446">        this.outlinePaint = paint;</span>
+<span class="fc" id="L447">        fireAnnotationChanged();</span>
+<span class="fc" id="L448">    }</span>
+
+    /**
+     * Returns the outline stroke for the annotation.
+     *
+     * @return The outline stroke (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setOutlineStroke(Stroke)
+     *
+     * @since 1.0.13
+     */
+    public Stroke getOutlineStroke() {
+<span class="nc" id="L460">        return this.outlineStroke;</span>
+    }
+
+    /**
+     * Sets the outline stroke for the annotation and sends an
+     * {@link AnnotationChangeEvent} to all registered listeners.
+     *
+     * @param stroke  the stroke (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getOutlineStroke()
+     *
+     * @since 1.0.13
+     */
+    public void setOutlineStroke(Stroke stroke) {
+<span class="fc" id="L474">        ParamChecks.nullNotPermitted(stroke, &quot;stroke&quot;);</span>
+<span class="fc" id="L475">        this.outlineStroke = stroke;</span>
+<span class="fc" id="L476">        fireAnnotationChanged();</span>
+<span class="fc" id="L477">    }</span>
+
+    /**
+     * Returns the flag that controls whether or not the outline is drawn.
+     *
+     * @return A boolean.
+     *
+     * @since 1.0.13
+     */
+    public boolean isOutlineVisible() {
+<span class="fc" id="L487">        return this.outlineVisible;</span>
+    }
+
+    /**
+     * Sets the flag that controls whether or not the outline is drawn and
+     * sends an {@link AnnotationChangeEvent} to all registered listeners.
+     *
+     * @param visible  the new flag value.
+     *
+     * @since 1.0.13
+     */
+    public void setOutlineVisible(boolean visible) {
+<span class="fc" id="L499">        this.outlineVisible = visible;</span>
+<span class="fc" id="L500">        fireAnnotationChanged();</span>
+<span class="fc" id="L501">    }</span>
+
+    /**
+     * Draws the annotation.
+     *
+     * @param g2  the graphics device.
+     * @param plot  the plot.
+     * @param dataArea  the data area.
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param rendererIndex  the renderer index.
+     * @param info  an optional info object that will be populated with
+     *              entity information.
+     */
+    @Override
+    public void draw(Graphics2D g2, XYPlot plot, Rectangle2D dataArea,
+                     ValueAxis domainAxis, ValueAxis rangeAxis,
+                     int rendererIndex, PlotRenderingInfo info) {
+
+<span class="fc" id="L520">        PlotOrientation orientation = plot.getOrientation();</span>
+<span class="fc" id="L521">        RectangleEdge domainEdge = Plot.resolveDomainAxisLocation(</span>
+                plot.getDomainAxisLocation(), orientation);
+<span class="fc" id="L523">        RectangleEdge rangeEdge = Plot.resolveRangeAxisLocation(</span>
+                plot.getRangeAxisLocation(), orientation);
+
+<span class="fc" id="L526">        float anchorX = (float) domainAxis.valueToJava2D(</span>
+                this.x, dataArea, domainEdge);
+<span class="fc" id="L528">        float anchorY = (float) rangeAxis.valueToJava2D(</span>
+                this.y, dataArea, rangeEdge);
+
+<span class="pc bpc" id="L531" title="1 of 2 branches missed.">        if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L532">            float tempAnchor = anchorX;</span>
+<span class="nc" id="L533">            anchorX = anchorY;</span>
+<span class="nc" id="L534">            anchorY = tempAnchor;</span>
+        }
+
+<span class="fc" id="L537">        g2.setFont(getFont());</span>
+<span class="fc" id="L538">        Shape hotspot = TextUtilities.calculateRotatedStringBounds(</span>
+                getText(), g2, anchorX, anchorY, getTextAnchor(),
+                getRotationAngle(), getRotationAnchor());
+<span class="pc bpc" id="L541" title="1 of 2 branches missed.">        if (this.backgroundPaint != null) {</span>
+<span class="nc" id="L542">            g2.setPaint(this.backgroundPaint);</span>
+<span class="nc" id="L543">            g2.fill(hotspot);</span>
+        }
+<span class="fc" id="L545">        g2.setPaint(getPaint());</span>
+<span class="fc" id="L546">        TextUtilities.drawRotatedString(getText(), g2, anchorX, anchorY,</span>
+                getTextAnchor(), getRotationAngle(), getRotationAnchor());
+<span class="pc bpc" id="L548" title="1 of 2 branches missed.">        if (this.outlineVisible) {</span>
+<span class="nc" id="L549">            g2.setStroke(this.outlineStroke);</span>
+<span class="nc" id="L550">            g2.setPaint(this.outlinePaint);</span>
+<span class="nc" id="L551">            g2.draw(hotspot);</span>
+        }
+
+<span class="fc" id="L554">        String toolTip = getToolTipText();</span>
+<span class="fc" id="L555">        String url = getURL();</span>
+<span class="pc bpc" id="L556" title="2 of 4 branches missed.">        if (toolTip != null || url != null) {</span>
+<span class="nc" id="L557">            addEntity(info, hotspot, rendererIndex, toolTip, url);</span>
+        }
+
+<span class="fc" id="L560">    }</span>
+
+    /**
+     * Tests this annotation for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L571" title="All 2 branches covered.">        if (obj == this) {</span>
+<span class="fc" id="L572">            return true;</span>
+        }
+<span class="pc bpc" id="L574" title="1 of 2 branches missed.">        if (!(obj instanceof XYTextAnnotation)) {</span>
+<span class="nc" id="L575">            return false;</span>
+        }
+<span class="fc" id="L577">        XYTextAnnotation that = (XYTextAnnotation) obj;</span>
+<span class="fc bfc" id="L578" title="All 2 branches covered.">        if (!this.text.equals(that.text)) {</span>
+<span class="fc" id="L579">            return false;</span>
+        }
+<span class="fc bfc" id="L581" title="All 2 branches covered.">        if (this.x != that.x) {</span>
+<span class="fc" id="L582">            return false;</span>
+        }
+<span class="fc bfc" id="L584" title="All 2 branches covered.">        if (this.y != that.y) {</span>
+<span class="fc" id="L585">            return false;</span>
+        }
+<span class="fc bfc" id="L587" title="All 2 branches covered.">        if (!this.font.equals(that.font)) {</span>
+<span class="fc" id="L588">            return false;</span>
+        }
+<span class="fc bfc" id="L590" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.paint, that.paint)) {</span>
+<span class="fc" id="L591">            return false;</span>
+        }
+<span class="fc bfc" id="L593" title="All 2 branches covered.">        if (!this.rotationAnchor.equals(that.rotationAnchor)) {</span>
+<span class="fc" id="L594">            return false;</span>
+        }
+<span class="fc bfc" id="L596" title="All 2 branches covered.">        if (this.rotationAngle != that.rotationAngle) {</span>
+<span class="fc" id="L597">            return false;</span>
+        }
+<span class="fc bfc" id="L599" title="All 2 branches covered.">        if (!this.textAnchor.equals(that.textAnchor)) {</span>
+<span class="fc" id="L600">            return false;</span>
+        }
+<span class="fc bfc" id="L602" title="All 2 branches covered.">        if (this.outlineVisible != that.outlineVisible) {</span>
+<span class="fc" id="L603">            return false;</span>
+        }
+<span class="fc bfc" id="L605" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.backgroundPaint, that.backgroundPaint)) {</span>
+<span class="fc" id="L606">            return false;</span>
+        }
+<span class="fc bfc" id="L608" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.outlinePaint, that.outlinePaint)) {</span>
+<span class="fc" id="L609">            return false;</span>
+        }
+<span class="fc bfc" id="L611" title="All 2 branches covered.">        if (!(this.outlineStroke.equals(that.outlineStroke))) {</span>
+<span class="fc" id="L612">            return false;</span>
+        }
+<span class="fc" id="L614">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Returns a hash code for the object.
+     *
+     * @return A hash code.
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L624">        int result = 193;</span>
+<span class="fc" id="L625">        result = 37 * result + this.text.hashCode();</span>
+<span class="fc" id="L626">        result = 37 * result + this.font.hashCode();</span>
+<span class="fc" id="L627">        result = 37 * result + HashUtilities.hashCodeForPaint(this.paint);</span>
+<span class="fc" id="L628">        long temp = Double.doubleToLongBits(this.x);</span>
+<span class="fc" id="L629">        result = 37 * result + (int) (temp ^ (temp &gt;&gt;&gt; 32));</span>
+<span class="fc" id="L630">        temp = Double.doubleToLongBits(this.y);</span>
+<span class="fc" id="L631">        result = 37 * result + (int) (temp ^ (temp &gt;&gt;&gt; 32));</span>
+<span class="fc" id="L632">        result = 37 * result + this.textAnchor.hashCode();</span>
+<span class="fc" id="L633">        result = 37 * result + this.rotationAnchor.hashCode();</span>
+<span class="fc" id="L634">        temp = Double.doubleToLongBits(this.rotationAngle);</span>
+<span class="fc" id="L635">        result = 37 * result + (int) (temp ^ (temp &gt;&gt;&gt; 32));</span>
+<span class="fc" id="L636">        return result;</span>
+    }
+
+    /**
+     * Returns a clone of the annotation.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException  if the annotation can't be cloned.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L648">        return super.clone();</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L659">        stream.defaultWriteObject();</span>
+<span class="fc" id="L660">        SerialUtilities.writePaint(this.paint, stream);</span>
+<span class="fc" id="L661">        SerialUtilities.writePaint(this.backgroundPaint, stream);</span>
+<span class="fc" id="L662">        SerialUtilities.writePaint(this.outlinePaint, stream);</span>
+<span class="fc" id="L663">        SerialUtilities.writeStroke(this.outlineStroke, stream);</span>
+<span class="fc" id="L664">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+        throws IOException, ClassNotFoundException {
+<span class="fc" id="L676">        stream.defaultReadObject();</span>
+<span class="fc" id="L677">        this.paint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L678">        this.backgroundPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L679">        this.outlinePaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L680">        this.outlineStroke = SerialUtilities.readStroke(stream);</span>
+<span class="fc" id="L681">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

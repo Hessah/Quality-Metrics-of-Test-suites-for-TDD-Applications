@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>AnnotationBuilder.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.configuration</a> &gt; <span class="el_source">AnnotationBuilder.java</span></div><h1>AnnotationBuilder.java</h1><pre class="source lang-java linenums">package org.jbehave.core.configuration;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+
+import org.jbehave.core.ConfigurableEmbedder;
+import org.jbehave.core.Embeddable;
+import org.jbehave.core.annotations.Configure;
+import org.jbehave.core.annotations.UsingEmbedder;
+import org.jbehave.core.annotations.UsingPaths;
+import org.jbehave.core.annotations.UsingSteps;
+import org.jbehave.core.embedder.Embedder;
+import org.jbehave.core.embedder.StoryControls;
+import org.jbehave.core.failures.FailureStrategy;
+import org.jbehave.core.failures.PendingStepStrategy;
+import org.jbehave.core.io.PathCalculator;
+import org.jbehave.core.io.StoryFinder;
+import org.jbehave.core.io.StoryLoader;
+import org.jbehave.core.io.StoryPathResolver;
+import org.jbehave.core.parsers.StepPatternParser;
+import org.jbehave.core.parsers.StoryParser;
+import org.jbehave.core.reporters.StepdocReporter;
+import org.jbehave.core.reporters.StoryReporter;
+import org.jbehave.core.reporters.StoryReporterBuilder;
+import org.jbehave.core.reporters.ViewGenerator;
+import org.jbehave.core.steps.CandidateSteps;
+import org.jbehave.core.steps.InjectableStepsFactory;
+import org.jbehave.core.steps.InstanceStepsFactory;
+import org.jbehave.core.steps.ParameterControls;
+import org.jbehave.core.steps.ParameterConverters;
+import org.jbehave.core.steps.ParameterConverters.ParameterConverter;
+import org.jbehave.core.steps.StepCollector;
+import org.jbehave.core.steps.StepFinder;
+import org.jbehave.core.steps.StepMonitor;
+
+import com.thoughtworks.paranamer.Paranamer;
+
+/**
+ * Allows the building of {@link Configuration}, {@link CandidateSteps} and
+ * {@link Embedder} from an annotated class.
+ * 
+ * @author Cristiano Gavião
+ * @author Mauro Talevi
+ */
+public class AnnotationBuilder {
+
+    private final AnnotationMonitor annotationMonitor;
+
+    private final Class&lt;?&gt; annotatedClass;
+    private final AnnotationFinder finder;
+
+    public AnnotationBuilder(Class&lt;?&gt; annotatedClass) {
+<span class="fc" id="L57">        this(annotatedClass, new PrintStreamAnnotationMonitor());</span>
+<span class="fc" id="L58">    }</span>
+
+<span class="fc" id="L60">    public AnnotationBuilder(Class&lt;?&gt; annotatedClass, AnnotationMonitor annotationMonitor) {</span>
+<span class="fc" id="L61">        this.annotationMonitor = annotationMonitor;</span>
+<span class="fc" id="L62">        this.annotatedClass = annotatedClass;</span>
+<span class="fc" id="L63">        this.finder = new AnnotationFinder(annotatedClass);</span>
+<span class="fc" id="L64">    }</span>
+
+    public Class&lt;?&gt; annotatedClass() {
+<span class="fc" id="L67">        return annotatedClass;</span>
+    }
+
+    /**
+     * Builds a Configuration instance based on annotation {@link Configure}
+     * found in the annotated object instance
+     * 
+     * @return A Configuration instance
+     */
+    public Configuration buildConfiguration() throws AnnotationRequired {
+
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (!finder.isAnnotationPresent(Configure.class)) {</span>
+            // not using annotation configuration, default to most useful
+            // configuration
+<span class="fc" id="L81">            return new MostUsefulConfiguration();</span>
+        }
+
+<span class="fc" id="L84">        Configuration configuration = configurationElement(finder, &quot;using&quot;, Configuration.class);</span>
+<span class="fc" id="L85">        configuration.useKeywords(configurationElement(finder, &quot;keywords&quot;, Keywords.class));</span>
+<span class="fc" id="L86">        configuration.useFailureStrategy(configurationElement(finder, &quot;failureStrategy&quot;, FailureStrategy.class));</span>
+<span class="fc" id="L87">        configuration.usePendingStepStrategy(configurationElement(finder, &quot;pendingStepStrategy&quot;,</span>
+                PendingStepStrategy.class));
+<span class="fc" id="L89">        configuration.useParanamer(configurationElement(finder, &quot;paranamer&quot;, Paranamer.class));</span>
+<span class="fc" id="L90">        configuration.useStoryControls(configurationElement(finder, &quot;storyControls&quot;, StoryControls.class));</span>
+<span class="fc" id="L91">        configuration.useStepCollector(configurationElement(finder, &quot;stepCollector&quot;, StepCollector.class));</span>
+<span class="fc" id="L92">        configuration.useStepdocReporter(configurationElement(finder, &quot;stepdocReporter&quot;, StepdocReporter.class));</span>
+<span class="fc" id="L93">        configuration.useStepFinder(configurationElement(finder, &quot;stepFinder&quot;, StepFinder.class));</span>
+<span class="fc" id="L94">        configuration.useStepMonitor(configurationElement(finder, &quot;stepMonitor&quot;, StepMonitor.class));</span>
+<span class="fc" id="L95">        configuration.useStepPatternParser(configurationElement(finder, &quot;stepPatternParser&quot;, StepPatternParser.class));</span>
+<span class="fc" id="L96">        configuration.useStoryLoader(configurationElement(finder, &quot;storyLoader&quot;, StoryLoader.class));</span>
+<span class="fc" id="L97">        configuration.useStoryParser(configurationElement(finder, &quot;storyParser&quot;, StoryParser.class));</span>
+<span class="fc" id="L98">        configuration.useStoryPathResolver(configurationElement(finder, &quot;storyPathResolver&quot;, StoryPathResolver.class));</span>
+<span class="fc" id="L99">        configuration</span>
+                .useDefaultStoryReporter(configurationElement(finder, &quot;defaultStoryReporter&quot;, StoryReporter.class));
+<span class="fc" id="L101">        configuration.useStoryReporterBuilder(configurationElement(finder, &quot;storyReporterBuilder&quot;,</span>
+                StoryReporterBuilder.class));
+<span class="fc" id="L103">        configuration.useViewGenerator(configurationElement(finder, &quot;viewGenerator&quot;, ViewGenerator.class));</span>
+<span class="fc" id="L104">        configuration.useParameterConverters(parameterConverters(finder));</span>
+<span class="fc" id="L105">        configuration.useParameterControls(configurationElement(finder, &quot;parameterControls&quot;, ParameterControls.class));</span>
+<span class="fc" id="L106">        configuration.usePathCalculator(configurationElement(finder, &quot;pathCalculator&quot;, PathCalculator.class));</span>
+<span class="fc" id="L107">        return configuration;</span>
+    }
+
+    /**
+     * Builds CandidateSteps using annotation {@link UsingSteps} found in the
+     * annotated object instance and using the configuration build by
+     * {@link #buildConfiguration()}
+     * 
+     * @return A List of CandidateSteps instances
+     */
+    public List&lt;CandidateSteps&gt; buildCandidateSteps() {
+<span class="fc" id="L118">        return buildCandidateSteps(buildConfiguration());</span>
+    }
+
+    /**
+     * Builds CandidateSteps using annotation {@link UsingSteps} found in the
+     * annotated object instance and the configuration provided
+     * 
+     * @param configuration the Configuration
+     * @return A List of CandidateSteps instances
+     */
+    public List&lt;CandidateSteps&gt; buildCandidateSteps(Configuration configuration) {
+<span class="fc" id="L129">        return buildStepsFactory(configuration).createCandidateSteps();</span>
+    }
+
+    /**
+     * Builds the {@link InjectableStepsFactory} using annotation
+     * {@link UsingSteps} found in the annotated object instance and the
+     * configuration provided
+     * 
+     * @param configuration the Configuration
+     * @return A {@link InjectableStepsFactory}
+     */
+    public InjectableStepsFactory buildStepsFactory(Configuration configuration) {
+<span class="fc" id="L141">        List&lt;Object&gt; stepsInstances = new ArrayList&lt;Object&gt;();</span>
+<span class="fc" id="L142">        InjectableStepsFactory factory = null;</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (finder.isAnnotationPresent(UsingSteps.class)) {</span>
+<span class="fc" id="L144">            List&lt;Class&lt;Object&gt;&gt; stepsClasses = finder.getAnnotatedClasses(UsingSteps.class, Object.class, &quot;instances&quot;);</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            for (Class&lt;Object&gt; stepsClass : stepsClasses) {</span>
+<span class="fc" id="L146">                stepsInstances.add(instanceOf(Object.class, stepsClass));</span>
+<span class="fc" id="L147">            }</span>
+<span class="fc" id="L148">            factory = new InstanceStepsFactory(configuration, stepsInstances);</span>
+<span class="fc" id="L149">        } else {</span>
+<span class="fc" id="L150">            annotationMonitor.annotationNotFound(UsingSteps.class, annotatedClass);</span>
+        }
+
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (factory == null) {</span>
+<span class="fc" id="L154">            factory = new InstanceStepsFactory(configuration);</span>
+        }
+<span class="fc" id="L156">        return factory;</span>
+    }
+
+    public Embedder buildEmbedder() {
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        if (!finder.isAnnotationPresent(UsingEmbedder.class)) {</span>
+<span class="fc" id="L161">            return new Embedder();</span>
+        }
+
+<span class="fc" id="L164">        boolean batch = control(finder, &quot;batch&quot;);</span>
+<span class="fc" id="L165">        boolean skip = control(finder, &quot;skip&quot;);</span>
+<span class="fc" id="L166">        boolean generateViewAfterStories = control(finder, &quot;generateViewAfterStories&quot;);</span>
+<span class="fc" id="L167">        boolean ignoreFailureInStories = control(finder, &quot;ignoreFailureInStories&quot;);</span>
+<span class="fc" id="L168">        boolean ignoreFailureInView = control(finder, &quot;ignoreFailureInView&quot;);</span>
+<span class="fc" id="L169">        boolean verboseFailures = control(finder, &quot;verboseFailures&quot;);</span>
+<span class="fc" id="L170">        boolean verboseFiltering = control(finder, &quot;verboseFiltering&quot;);</span>
+<span class="fc" id="L171">        long storyTimeoutInSecs = finder.getAnnotatedValue(UsingEmbedder.class, Long.class, &quot;storyTimeoutInSecs&quot;);</span>
+<span class="fc" id="L172">        int threads = finder.getAnnotatedValue(UsingEmbedder.class, Integer.class, &quot;threads&quot;);</span>
+<span class="fc" id="L173">        Embedder embedder = embedder();</span>
+<span class="fc" id="L174">        embedder.embedderControls().doBatch(batch).doSkip(skip).doGenerateViewAfterStories(generateViewAfterStories)</span>
+                .doIgnoreFailureInStories(ignoreFailureInStories).doIgnoreFailureInView(ignoreFailureInView)
+                .doVerboseFailures(verboseFailures).doVerboseFiltering(verboseFiltering).useStoryTimeoutInSecs(storyTimeoutInSecs).useThreads(threads);
+<span class="fc" id="L177">        Configuration configuration = buildConfiguration();</span>
+<span class="fc" id="L178">        embedder.useConfiguration(configuration);</span>
+<span class="fc" id="L179">        boolean useStepsFactory = finder.getAnnotatedValue(UsingEmbedder.class, Boolean.class, &quot;stepsFactory&quot;);</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (useStepsFactory) {</span>
+<span class="fc" id="L181">            embedder.useStepsFactory(buildStepsFactory(configuration));</span>
+        } else {
+<span class="fc" id="L183">            embedder.useCandidateSteps(buildCandidateSteps(configuration));</span>
+        }
+<span class="fc" id="L185">        List&lt;String&gt; metaFilters = finder.getAnnotatedValues(UsingEmbedder.class, String.class, &quot;metaFilters&quot;);</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        if (!metaFilters.isEmpty()) {</span>
+<span class="fc" id="L187">            embedder.useMetaFilters(metaFilters);</span>
+        }
+<span class="fc" id="L189">        Properties systemProperties = loadProperties(finder.getAnnotatedValue(UsingEmbedder.class, String.class,</span>
+                &quot;systemProperties&quot;));
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        if (!systemProperties.isEmpty()) {</span>
+<span class="fc" id="L192">            embedder.useSystemProperties(systemProperties);</span>
+        }
+<span class="fc" id="L194">        return embedder;</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private Embedder embedder() {
+<span class="fc" id="L199">        return instanceOf(Embedder.class,</span>
+                (Class&lt;? extends Embedder&gt;) finder.getAnnotatedValue(UsingEmbedder.class, Class.class, &quot;embedder&quot;));
+    }
+
+    public List&lt;String&gt; findPaths() {
+<span class="fc bfc" id="L204" title="All 2 branches covered.">        if (!finder.isAnnotationPresent(UsingPaths.class)) {</span>
+<span class="fc" id="L205">            return new ArrayList&lt;String&gt;();</span>
+        }
+
+<span class="fc" id="L208">        String searchIn = finder.getAnnotatedValue(UsingPaths.class, String.class, &quot;searchIn&quot;);</span>
+<span class="fc" id="L209">        List&lt;String&gt; includes = finder.getAnnotatedValues(UsingPaths.class, String.class, &quot;includes&quot;);</span>
+<span class="fc" id="L210">        List&lt;String&gt; excludes = finder.getAnnotatedValues(UsingPaths.class, String.class, &quot;excludes&quot;);</span>
+<span class="fc" id="L211">        return storyFinder().findPaths(searchIn, includes, excludes);</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private StoryFinder storyFinder() {
+<span class="fc" id="L216">        return instanceOf(StoryFinder.class, (Class&lt;? extends StoryFinder&gt;)finder.getAnnotatedValue(UsingPaths.class, Class.class, &quot;storyFinder&quot;));</span>
+    }
+
+    private boolean control(AnnotationFinder finder, String name) {
+<span class="fc" id="L220">        return finder.getAnnotatedValue(UsingEmbedder.class, Boolean.class, name);</span>
+    }
+
+    private &lt;T&gt; T configurationElement(AnnotationFinder finder, String name, Class&lt;T&gt; type) {
+<span class="fc" id="L224">        Class&lt;T&gt; implementation = elementImplementation(finder, name);</span>
+<span class="fc" id="L225">        return instanceOf(type, implementation);</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private &lt;T&gt; Class&lt;T&gt; elementImplementation(AnnotationFinder finder, String name) {
+<span class="fc" id="L230">        return finder.getAnnotatedValue(Configure.class, Class.class, name);</span>
+    }
+
+    private Properties loadProperties(String systemPropertiesCSV) {
+<span class="fc" id="L234">        Properties properties = new Properties();</span>
+        try {
+<span class="fc" id="L236">            properties.load(new ByteArrayInputStream(systemPropertiesCSV.replace(&quot;,&quot;, &quot;\n&quot;).getBytes()));</span>
+<span class="nc" id="L237">        } catch (IOException e) {</span>
+            // return empty map
+<span class="fc" id="L239">        }</span>
+<span class="fc" id="L240">        return properties;</span>
+    }
+
+    protected ParameterConverters parameterConverters(AnnotationFinder annotationFinder) {
+<span class="fc" id="L244">        List&lt;ParameterConverter&gt; converters = new ArrayList&lt;ParameterConverter&gt;();</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        for (Class&lt;ParameterConverter&gt; converterClass : annotationFinder.getAnnotatedClasses(Configure.class,</span>
+                ParameterConverter.class, &quot;parameterConverters&quot;)) {
+<span class="fc" id="L247">            converters.add(instanceOf(ParameterConverter.class, converterClass));</span>
+<span class="fc" id="L248">        }</span>
+<span class="fc" id="L249">        return new ParameterConverters().addConverters(converters);</span>
+    }
+
+    protected &lt;T, V extends T&gt; T instanceOf(Class&lt;T&gt; type, Class&lt;V&gt; ofClass) {
+    	try { 
+    	    // by classloader constructor
+    		try {
+<span class="fc" id="L256">    			Constructor&lt;V&gt; constructor =</span>
+    					ofClass.getConstructor(new Class&lt;?&gt;[]{ClassLoader.class});
+<span class="fc" id="L258">    			return constructor.newInstance(annotatedClass.getClassLoader());</span>
+    		}
+<span class="fc" id="L260">    		catch(NoSuchMethodException ns){</span>
+    		}
+    		// by class constructor
+    		try {
+<span class="fc" id="L264">    			Constructor&lt;V&gt; constructor =</span>
+    					ofClass.getConstructor(new Class&lt;?&gt;[]{Class.class});
+<span class="fc" id="L266">    			return constructor.newInstance(annotatedClass);</span>
+    		}
+<span class="fc" id="L268">    		catch(NoSuchMethodException ns){</span>
+    		}    	     	
+    		// by class instance
+<span class="fc" id="L271">            return ofClass.newInstance();</span>
+    	}
+<span class="fc" id="L273">    	catch (Exception e) {</span>
+<span class="fc" id="L274">            annotationMonitor.elementCreationFailed(ofClass, e);</span>
+<span class="fc" id="L275">            throw new InstantiationFailed(ofClass, type, e);</span>
+        }
+    }
+
+    protected AnnotationMonitor annotationMonitor() {
+<span class="fc" id="L280">        return annotationMonitor;</span>
+    }
+
+    protected AnnotationFinder annotationFinder() {
+<span class="fc" id="L284">        return finder;</span>
+    }
+
+    public Object embeddableInstance() {
+<span class="fc" id="L288">        return injectEmbedder(buildEmbedder(), annotatedClass);</span>
+    }
+
+    protected Object injectEmbedder(Embedder embedder, Class&lt;?&gt; annotatedClass) {
+        try {
+<span class="fc" id="L293">            Object instance = annotatedClass.newInstance();</span>
+<span class="fc bfc" id="L294" title="All 2 branches covered.">            if (instance instanceof Embeddable) {</span>
+<span class="fc" id="L295">                Embeddable embeddable = (Embeddable) instance;</span>
+<span class="fc" id="L296">                embeddable.useEmbedder(embedder);</span>
+            }
+<span class="fc bfc" id="L298" title="All 2 branches covered.">            if (instance instanceof ConfigurableEmbedder) {</span>
+<span class="fc" id="L299">                ConfigurableEmbedder configurableEmbedder = (ConfigurableEmbedder) instance;</span>
+<span class="fc" id="L300">                configurableEmbedder.useConfiguration(embedder.configuration());</span>
+<span class="fc" id="L301">                configurableEmbedder.addSteps(embedder.candidateSteps());</span>
+<span class="fc" id="L302">                configurableEmbedder.useStepsFactory(embedder.stepsFactory());</span>
+            }
+<span class="fc" id="L304">            return instance;</span>
+<span class="fc" id="L305">        } catch (Exception e) {</span>
+<span class="fc" id="L306">            annotationMonitor.elementCreationFailed(annotatedClass, e);</span>
+<span class="fc" id="L307">            throw new InstantiationFailed(annotatedClass, e);</span>
+        }
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class InstantiationFailed extends RuntimeException {
+
+        public InstantiationFailed(Class&lt;?&gt; ofClass, Class&lt;?&gt; type, Throwable cause) {
+<span class="fc" id="L315">            super(&quot;Failed to instantiate &quot; + ofClass + &quot; of type &quot; + type, cause);</span>
+<span class="fc" id="L316">        }</span>
+
+        public InstantiationFailed(Class&lt;?&gt; ofClass, Throwable cause) {
+<span class="fc" id="L319">            super(&quot;Failed to instantiate &quot; + ofClass, cause);</span>
+<span class="fc" id="L320">        }</span>
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

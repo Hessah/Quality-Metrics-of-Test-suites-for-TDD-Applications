@@ -1,0 +1,580 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Embedder.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.embedder</a> &gt; <span class="el_source">Embedder.java</span></div><h1>Embedder.java</h1><pre class="source lang-java linenums">package org.jbehave.core.embedder;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.builder.ToStringBuilder;
+import org.apache.commons.lang.builder.ToStringStyle;
+import org.jbehave.core.ConfigurableEmbedder;
+import org.jbehave.core.Embeddable;
+import org.jbehave.core.configuration.Configuration;
+import org.jbehave.core.configuration.MostUsefulConfiguration;
+import org.jbehave.core.embedder.executors.FixedThreadExecutors;
+import org.jbehave.core.failures.BatchFailures;
+import org.jbehave.core.failures.FailingUponPendingStep;
+import org.jbehave.core.junit.AnnotatedEmbedderRunner;
+import org.jbehave.core.junit.AnnotatedEmbedderUtils;
+import org.jbehave.core.model.Story;
+import org.jbehave.core.model.StoryMaps;
+import org.jbehave.core.reporters.ReportsCount;
+import org.jbehave.core.reporters.StepdocReporter;
+import org.jbehave.core.reporters.StoryReporterBuilder;
+import org.jbehave.core.reporters.ViewGenerator;
+import org.jbehave.core.steps.CandidateSteps;
+import org.jbehave.core.steps.InjectableStepsFactory;
+import org.jbehave.core.steps.ProvidedStepsFactory;
+import org.jbehave.core.steps.StepFinder;
+import org.jbehave.core.steps.Stepdoc;
+
+/**
+ * The Embedder is a facade allowing all functionality to be embedded into other
+ * run contexts, such as IDEs (e.g. via JUnit support) or CLIs (via Ant or
+ * Maven).
+ */
+public class Embedder {
+
+    private StoryMapper storyMapper;
+    private StoryRunner storyRunner;
+    private EmbedderMonitor embedderMonitor;
+    private EmbedderClassLoader classLoader;
+    private EmbedderControls embedderControls;
+    private EmbedderFailureStrategy embedderFailureStrategy;
+    private Configuration configuration;
+    private List&lt;CandidateSteps&gt; candidateSteps;
+    private InjectableStepsFactory stepsFactory;
+    private List&lt;String&gt; metaFilters;
+    private Properties systemProperties;
+    private ExecutorService executorService;
+    private boolean executorServiceCreated;
+    private StoryManager storyManager;
+
+    public Embedder() {
+<span class="fc" id="L57">        this(new StoryMapper(), new StoryRunner(), new PrintStreamEmbedderMonitor());</span>
+<span class="fc" id="L58">    }</span>
+
+<span class="fc" id="L60">    public Embedder(StoryMapper storyMapper, StoryRunner storyRunner, EmbedderMonitor embedderMonitor) {</span>
+<span class="fc" id="L61">        this.storyMapper = storyMapper;</span>
+<span class="fc" id="L62">        this.storyRunner = storyRunner;</span>
+<span class="fc" id="L63">        this.embedderMonitor = embedderMonitor;</span>
+<span class="fc" id="L64">    }</span>
+
+    public void mapStoriesAsPaths(List&lt;String&gt; storyPaths) {
+<span class="fc" id="L67">        EmbedderControls embedderControls = embedderControls();</span>
+<span class="fc" id="L68">        embedderMonitor.usingControls(embedderControls);</span>
+
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        if (embedderControls.skip()) {</span>
+<span class="nc" id="L71">            embedderMonitor.storiesSkipped(storyPaths);</span>
+<span class="nc" id="L72">            return;</span>
+        }
+
+<span class="fc" id="L75">        processSystemProperties();</span>
+
+<span class="fc" id="L77">        StoryManager storyManager = storyManager();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        for (String storyPath : storyPaths) {</span>
+<span class="fc" id="L79">            Story story = storyManager.storyOfPath(storyPath);</span>
+<span class="fc" id="L80">            embedderMonitor.mappingStory(storyPath, metaFilters());</span>
+<span class="fc" id="L81">            storyMapper.map(story, new MetaFilter(&quot;&quot;));</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">            for (String filter : metaFilters) {</span>
+<span class="nc" id="L83">                storyMapper.map(story, new MetaFilter(filter));</span>
+<span class="nc" id="L84">            }</span>
+<span class="fc" id="L85">        }</span>
+
+<span class="fc" id="L87">        generateMapsView(storyMapper.getStoryMaps());</span>
+
+<span class="fc" id="L89">    }</span>
+
+    private void generateMapsView(StoryMaps storyMaps) {
+<span class="fc" id="L92">        Configuration configuration = configuration();</span>
+<span class="fc" id="L93">        StoryReporterBuilder builder = configuration.storyReporterBuilder();</span>
+<span class="fc" id="L94">        File outputDirectory = builder.outputDirectory();</span>
+<span class="fc" id="L95">        Properties viewResources = builder.viewResources();</span>
+<span class="fc" id="L96">        ViewGenerator viewGenerator = configuration.viewGenerator();</span>
+        try {
+<span class="fc" id="L98">            embedderMonitor.generatingMapsView(outputDirectory, storyMaps, viewResources);</span>
+<span class="fc" id="L99">            viewGenerator.generateMapsView(outputDirectory, storyMaps, viewResources);</span>
+<span class="nc" id="L100">        } catch (RuntimeException e) {</span>
+<span class="nc" id="L101">            embedderMonitor.mapsViewGenerationFailed(outputDirectory, storyMaps, viewResources, e);</span>
+<span class="nc" id="L102">            throw new ViewGenerationFailed(outputDirectory, storyMaps, viewResources, e);</span>
+<span class="fc" id="L103">        }</span>
+<span class="fc" id="L104">    }</span>
+
+    public void runAsEmbeddables(List&lt;String&gt; classNames) {
+<span class="fc" id="L107">        EmbedderControls embedderControls = embedderControls();</span>
+<span class="fc" id="L108">        embedderMonitor.usingControls(embedderControls);</span>
+
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (embedderControls.skip()) {</span>
+<span class="fc" id="L111">            embedderMonitor.embeddablesSkipped(classNames);</span>
+<span class="fc" id="L112">            return;</span>
+        }
+
+<span class="fc" id="L115">        BatchFailures failures = new BatchFailures(embedderControls.verboseFailures());</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        for (Embeddable embeddable : embeddables(classNames, classLoader())) {</span>
+<span class="fc" id="L117">            String name = embeddable.getClass().getName();</span>
+            try {
+<span class="fc" id="L119">                embedderMonitor.runningEmbeddable(name);</span>
+<span class="fc" id="L120">                embeddable.useEmbedder(this);</span>
+<span class="fc" id="L121">                embeddable.run();</span>
+<span class="fc" id="L122">            } catch (Throwable e) {</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                if (embedderControls.batch()) {</span>
+                    // collect and postpone decision to throw exception
+<span class="fc" id="L125">                    failures.put(name, e);</span>
+                } else {
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                    if (ignoreFailure(embedderControls)) {</span>
+<span class="fc" id="L128">                        embedderMonitor.embeddableFailed(name, e);</span>
+                    } else {
+<span class="fc" id="L130">                        throw new RunningEmbeddablesFailed(name, e);</span>
+                    }
+                }
+<span class="fc" id="L133">            }</span>
+<span class="fc" id="L134">        }</span>
+
+<span class="fc bfc" id="L136" title="All 4 branches covered.">        if (embedderControls.batch() &amp;&amp; failures.size() &gt; 0) {</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">            if (ignoreFailure(embedderControls)) {</span>
+<span class="fc" id="L138">                embedderMonitor.batchFailed(failures);</span>
+            } else {
+<span class="fc" id="L140">                throw new RunningEmbeddablesFailed(failures);</span>
+            }
+        }
+
+<span class="fc" id="L144">    }</span>
+
+    private boolean ignoreFailure(EmbedderControls embedderControls) {
+<span class="fc" id="L147">        boolean ignore = embedderControls.ignoreFailureInStories();</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">        if (embedderControls.generateViewAfterStories()) {</span>
+<span class="pc bpc" id="L149" title="1 of 4 branches missed.">            ignore = ignore &amp;&amp; embedderControls.ignoreFailureInView();</span>
+        }
+<span class="fc" id="L151">        return ignore;</span>
+    }
+
+    private List&lt;Embeddable&gt; embeddables(List&lt;String&gt; classNames, EmbedderClassLoader classLoader) {
+<span class="fc" id="L155">        List&lt;Embeddable&gt; embeddables = new ArrayList&lt;Embeddable&gt;();</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        for (String className : classNames) {</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (!classLoader.isAbstract(className)) {</span>
+<span class="fc" id="L158">                embeddables.add(classLoader.newInstance(Embeddable.class, className));</span>
+            }
+<span class="fc" id="L160">        }</span>
+<span class="fc" id="L161">        return embeddables;</span>
+    }
+
+    public void runStoriesWithAnnotatedEmbedderRunner(List&lt;String&gt; classNames) {
+<span class="fc" id="L165">        EmbedderClassLoader classLoader = classLoader();</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        for (String className : classNames) {</span>
+<span class="fc" id="L167">            embedderMonitor.runningWithAnnotatedEmbedderRunner(className);</span>
+<span class="fc" id="L168">            AnnotatedEmbedderRunner runner = AnnotatedEmbedderUtils.annotatedEmbedderRunner(className, classLoader);</span>
+            try {
+<span class="fc" id="L170">                Object annotatedInstance = runner.createTest();</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">                if (annotatedInstance instanceof Embeddable) {</span>
+<span class="fc" id="L172">                    ((Embeddable) annotatedInstance).run();</span>
+                } else {
+<span class="fc" id="L174">                    embedderMonitor.annotatedInstanceNotOfType(annotatedInstance, Embeddable.class);</span>
+                }
+<span class="fc" id="L176">            } catch (Throwable e) {</span>
+<span class="fc" id="L177">                throw new AnnotatedEmbedderRunFailed(runner, e);</span>
+<span class="fc" id="L178">            }</span>
+<span class="fc" id="L179">        }</span>
+<span class="fc" id="L180">    }</span>
+
+    public void runStoriesAsPaths(List&lt;String&gt; storyPaths) {
+
+<span class="fc" id="L184">        processSystemProperties();</span>
+
+<span class="fc" id="L186">        EmbedderControls embedderControls = embedderControls();</span>
+
+<span class="fc" id="L188">        embedderMonitor.usingControls(embedderControls);</span>
+
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        if (embedderControls.skip()) {</span>
+<span class="fc" id="L191">            embedderMonitor.storiesSkipped(storyPaths);</span>
+<span class="fc" id="L192">            return;</span>
+        }
+
+        try {
+
+            // set up run context
+<span class="fc" id="L198">            StoryManager storyManager = createStoryManager();</span>
+<span class="fc" id="L199">            MetaFilter filter = metaFilter();</span>
+<span class="fc" id="L200">            BatchFailures failures = new BatchFailures(embedderControls.verboseFailures());</span>
+
+            // run stories
+<span class="fc" id="L203">            storyManager.runStories(storyPaths, filter, failures);</span>
+
+            // handle any failures
+<span class="fc" id="L206">            handleFailures(failures);</span>
+
+        } finally {
+            // generate reports view regardless of failures in running stories
+            // (if configured to do so)
+<span class="fc" id="L211">            try {</span>
+<span class="pc bpc" id="L212" title="1 of 4 branches missed.">                if (embedderControls.generateViewAfterStories()) {</span>
+<span class="fc" id="L213">                    generateReportsView();</span>
+                }
+            } finally {
+                // shutdown regardless of failures in reports view
+<span class="pc" id="L217">                shutdownExecutorService();</span>
+<span class="fc" id="L218">            }</span>
+
+<span class="fc" id="L220">        }</span>
+<span class="fc" id="L221">    }</span>
+
+    private void handleFailures(BatchFailures failures) {
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">        if (failures.size() &gt; 0) {</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">            if (embedderControls().ignoreFailureInStories()) {</span>
+<span class="nc" id="L226">                embedderMonitor.batchFailed(failures);</span>
+            } else {
+<span class="nc" id="L228">                embedderFailureStrategy().handleFailures(failures);</span>
+            }
+        }
+<span class="fc" id="L231">    }</span>
+
+    public void generateReportsView() {
+<span class="fc" id="L234">        StoryReporterBuilder builder = configuration().storyReporterBuilder();</span>
+<span class="fc" id="L235">        File outputDirectory = builder.outputDirectory();</span>
+<span class="fc" id="L236">        List&lt;String&gt; formatNames = builder.formatNames(true);</span>
+<span class="fc" id="L237">        generateReportsView(outputDirectory, formatNames, builder.viewResources());</span>
+<span class="fc" id="L238">    }</span>
+
+    public void generateReportsView(File outputDirectory, List&lt;String&gt; formats, Properties viewResources) {
+
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        if (embedderControls().skip()) {</span>
+<span class="fc" id="L243">            embedderMonitor.reportsViewNotGenerated();</span>
+<span class="fc" id="L244">            return;</span>
+        }
+<span class="fc" id="L246">        ViewGenerator viewGenerator = configuration().viewGenerator();</span>
+        try {
+<span class="fc" id="L248">            embedderMonitor.generatingReportsView(outputDirectory, formats, viewResources);</span>
+<span class="fc" id="L249">            viewGenerator.generateReportsView(outputDirectory, formats, viewResources);</span>
+<span class="fc" id="L250">        } catch (RuntimeException e) {</span>
+<span class="fc" id="L251">            embedderMonitor.reportsViewGenerationFailed(outputDirectory, formats, viewResources, e);</span>
+<span class="fc" id="L252">            throw new ViewGenerationFailed(outputDirectory, formats, viewResources, e);</span>
+<span class="fc" id="L253">        }</span>
+<span class="fc" id="L254">        ReportsCount count = viewGenerator.getReportsCount();</span>
+<span class="fc" id="L255">        embedderMonitor.reportsViewGenerated(count);</span>
+<span class="fc" id="L256">        handleFailures(count);</span>
+
+<span class="fc" id="L258">    }</span>
+
+    private void handleFailures(ReportsCount count) {
+<span class="fc" id="L261">        boolean failed = count.failed();</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        if (configuration().pendingStepStrategy() instanceof FailingUponPendingStep) {</span>
+<span class="pc bpc" id="L263" title="2 of 4 branches missed.">            failed = failed || count.pending();</span>
+        }
+<span class="fc bfc" id="L265" title="All 2 branches covered.">        if (failed) {</span>
+<span class="fc bfc" id="L266" title="All 2 branches covered.">            if (embedderControls().ignoreFailureInView()) {</span>
+<span class="fc" id="L267">                embedderMonitor.reportsViewFailures(count);</span>
+            } else {
+<span class="fc" id="L269">                embedderFailureStrategy().handleFailures(count);</span>
+            }
+        }
+<span class="fc" id="L272">    }</span>
+
+    public void generateCrossReference() {
+<span class="fc" id="L275">        StoryReporterBuilder builder = configuration().storyReporterBuilder();</span>
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">        if (builder.hasCrossReference()) {</span>
+<span class="fc" id="L277">            builder.crossReference().outputToFiles(builder);</span>
+        }
+<span class="fc" id="L279">    }</span>
+
+    public void reportStepdocs() {
+<span class="fc" id="L282">        reportStepdocs(configuration(), candidateSteps());</span>
+<span class="fc" id="L283">    }</span>
+
+    public void reportStepdocsAsEmbeddables(List&lt;String&gt; classNames) {
+<span class="nc" id="L286">        EmbedderControls embedderControls = embedderControls();</span>
+<span class="nc bnc" id="L287" title="All 2 branches missed.">        if (embedderControls.skip()) {</span>
+<span class="nc" id="L288">            embedderMonitor.embeddablesSkipped(classNames);</span>
+<span class="nc" id="L289">            return;</span>
+        }
+
+<span class="nc bnc" id="L292" title="All 2 branches missed.">        for (Embeddable embeddable : embeddables(classNames, classLoader())) {</span>
+<span class="nc bnc" id="L293" title="All 2 branches missed.">            if (embeddable instanceof ConfigurableEmbedder) {</span>
+<span class="nc" id="L294">                ConfigurableEmbedder configurableEmbedder = (ConfigurableEmbedder) embeddable;</span>
+<span class="nc" id="L295">                List&lt;CandidateSteps&gt; steps = configurableEmbedder.candidateSteps();</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">                if (steps.isEmpty()) {</span>
+<span class="nc" id="L297">                    steps = configurableEmbedder.stepsFactory().createCandidateSteps();</span>
+                }
+<span class="nc" id="L299">                reportStepdocs(configurableEmbedder.configuration(), steps);</span>
+<span class="nc" id="L300">            } else {</span>
+<span class="nc" id="L301">                embedderMonitor.embeddableNotConfigurable(embeddable.getClass().getName());</span>
+            }
+<span class="nc" id="L303">        }</span>
+<span class="nc" id="L304">    }</span>
+
+    public void reportStepdocs(Configuration configuration, List&lt;CandidateSteps&gt; candidateSteps) {
+<span class="fc" id="L307">        StepFinder finder = configuration.stepFinder();</span>
+<span class="fc" id="L308">        StepdocReporter reporter = configuration.stepdocReporter();</span>
+<span class="fc" id="L309">        List&lt;Object&gt; stepsInstances = finder.stepsInstances(candidateSteps);</span>
+<span class="fc" id="L310">        reporter.stepdocs(finder.stepdocs(candidateSteps), stepsInstances);</span>
+<span class="fc" id="L311">    }</span>
+
+    public void reportMatchingStepdocs(String stepAsString) {
+<span class="fc" id="L314">        Configuration configuration = configuration();</span>
+<span class="fc" id="L315">        List&lt;CandidateSteps&gt; candidateSteps = candidateSteps();</span>
+<span class="fc" id="L316">        StepFinder finder = configuration.stepFinder();</span>
+<span class="fc" id="L317">        StepdocReporter reporter = configuration.stepdocReporter();</span>
+<span class="fc" id="L318">        List&lt;Stepdoc&gt; matching = finder.findMatching(stepAsString, candidateSteps);</span>
+<span class="fc" id="L319">        List&lt;Object&gt; stepsInstances = finder.stepsInstances(candidateSteps);</span>
+<span class="fc" id="L320">        reporter.stepdocsMatching(stepAsString, matching, stepsInstances);</span>
+<span class="fc" id="L321">    }</span>
+
+    public void processSystemProperties() {
+<span class="fc" id="L324">        Properties properties = systemProperties();</span>
+<span class="fc" id="L325">        embedderMonitor.processingSystemProperties(properties);</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        if (!properties.isEmpty()) {</span>
+<span class="fc bfc" id="L327" title="All 2 branches covered.">            for (Object key : properties.keySet()) {</span>
+<span class="fc" id="L328">                String name = (String) key;</span>
+<span class="fc" id="L329">                String value = properties.getProperty(name);</span>
+<span class="fc" id="L330">                System.setProperty(name, value);</span>
+<span class="fc" id="L331">                embedderMonitor.systemPropertySet(name, value);</span>
+<span class="fc" id="L332">            }</span>
+        }
+<span class="fc" id="L334">    }</span>
+
+    public EmbedderClassLoader classLoader() {
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">        if (classLoader == null) {</span>
+<span class="nc" id="L338">            this.classLoader = new EmbedderClassLoader(this.getClass().getClassLoader());</span>
+        }
+<span class="fc" id="L340">        return classLoader;</span>
+    }
+
+    public Configuration configuration() {
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        if (configuration == null) {</span>
+<span class="fc" id="L345">            this.configuration = new MostUsefulConfiguration();</span>
+        }
+<span class="fc" id="L347">        configureThreads(configuration, embedderControls().threads());</span>
+<span class="fc" id="L348">        return configuration;</span>
+    }
+
+    public List&lt;CandidateSteps&gt; candidateSteps() {
+<span class="fc bfc" id="L352" title="All 2 branches covered.">        if (candidateSteps == null) {</span>
+<span class="fc" id="L353">            candidateSteps = new ArrayList&lt;CandidateSteps&gt;();</span>
+        }
+<span class="fc" id="L355">        return candidateSteps;</span>
+    }
+
+    public InjectableStepsFactory stepsFactory() {
+<span class="fc bfc" id="L359" title="All 2 branches covered.">        if (stepsFactory == null) {</span>
+<span class="fc" id="L360">            stepsFactory = new ProvidedStepsFactory(candidateSteps());</span>
+        }
+<span class="fc" id="L362">        return stepsFactory;</span>
+    }
+
+    public EmbedderControls embedderControls() {
+<span class="fc bfc" id="L366" title="All 2 branches covered.">        if (embedderControls == null) {</span>
+<span class="fc" id="L367">            embedderControls = new EmbedderControls();</span>
+        }
+<span class="fc" id="L369">        return embedderControls;</span>
+    }
+
+    public EmbedderMonitor embedderMonitor() {
+<span class="fc" id="L373">        return embedderMonitor;</span>
+    }
+
+    public EmbedderFailureStrategy embedderFailureStrategy() {
+<span class="fc bfc" id="L377" title="All 2 branches covered.">        if (embedderFailureStrategy == null) {</span>
+<span class="fc" id="L378">            this.embedderFailureStrategy = new ThrowingRunningStoriesFailed();</span>
+        }
+<span class="fc" id="L380">        return embedderFailureStrategy;</span>
+    }
+
+    public boolean hasExecutorService() {
+<span class="pc bpc" id="L384" title="1 of 2 branches missed.">        return executorService != null;</span>
+    }
+
+    public ExecutorService executorService() {
+<span class="pc bpc" id="L388" title="1 of 2 branches missed.">        if (executorService == null) {</span>
+<span class="fc" id="L389">            executorService = createExecutorService();</span>
+<span class="fc" id="L390">            executorServiceCreated = true;</span>
+        }
+<span class="fc" id="L392">        return executorService;</span>
+    }
+
+    /**
+     * Creates a {@link ThreadPoolExecutor} using the number of threads defined
+     * in the {@link EmbedderControls#threads()}
+     * 
+     * @return An ExecutorService
+     */
+    private ExecutorService createExecutorService() {
+<span class="fc" id="L402">        return new FixedThreadExecutors().create(embedderControls());</span>
+    }
+
+    /**
+     * Shuts down executor service, if it was created by Embedder.
+     * ExecutorServices provided by the
+     * {@link #useExecutorService(ExecutorService)} need to be managed by the
+     * provider.
+     */
+    protected void shutdownExecutorService() {
+<span class="pc bpc" id="L412" title="1 of 2 branches missed.">        if (executorServiceCreated) {</span>
+<span class="fc" id="L413">            executorService.shutdownNow();</span>
+<span class="fc" id="L414">            executorService = null;</span>
+<span class="fc" id="L415">            executorServiceCreated = false;</span>
+        }
+<span class="fc" id="L417">    }</span>
+
+    public StoryManager storyManager() {
+<span class="pc bpc" id="L420" title="1 of 2 branches missed.">        if (storyManager == null) {</span>
+<span class="fc" id="L421">            storyManager = createStoryManager();</span>
+        }
+<span class="fc" id="L423">        return storyManager;</span>
+    }
+
+    private StoryManager createStoryManager() {
+<span class="fc" id="L427">        return new StoryManager(configuration(), embedderControls(), embedderMonitor(), executorService(),</span>
+                stepsFactory(), storyRunner());
+    }
+
+    private void configureThreads(Configuration configuration, int threads) {
+<span class="fc" id="L432">        StoryReporterBuilder reporterBuilder = configuration.storyReporterBuilder();</span>
+<span class="pc bpc" id="L433" title="1 of 2 branches missed.">        reporterBuilder.withMultiThreading(threads &gt; 1);</span>
+<span class="fc" id="L434">        configuration.useStoryReporterBuilder(reporterBuilder);</span>
+<span class="fc" id="L435">    }</span>
+
+    public List&lt;String&gt; metaFilters() {
+<span class="fc bfc" id="L438" title="All 2 branches covered.">        if (metaFilters == null) {</span>
+<span class="fc" id="L439">            metaFilters = new ArrayList&lt;String&gt;();</span>
+        }
+<span class="fc" id="L441">        return metaFilters;</span>
+    }
+
+    public MetaFilter metaFilter() {
+<span class="fc" id="L445">        return new MetaFilter(StringUtils.join(metaFilters(), &quot; &quot;), embedderMonitor);</span>
+    }
+
+    public StoryRunner storyRunner() {
+<span class="fc" id="L449">        return storyRunner;</span>
+    }
+
+    public Properties systemProperties() {
+<span class="fc bfc" id="L453" title="All 2 branches covered.">        if (systemProperties == null) {</span>
+<span class="fc" id="L454">            systemProperties = new Properties();</span>
+        }
+<span class="fc" id="L456">        return systemProperties;</span>
+    }
+
+    public void useClassLoader(EmbedderClassLoader classLoader) {
+<span class="fc" id="L460">        this.classLoader = classLoader;</span>
+<span class="fc" id="L461">    }</span>
+
+    public void useConfiguration(Configuration configuration) {
+<span class="fc" id="L464">        this.configuration = configuration;</span>
+<span class="fc" id="L465">    }</span>
+
+    public void useCandidateSteps(List&lt;CandidateSteps&gt; candidateSteps) {
+<span class="fc" id="L468">        this.candidateSteps = candidateSteps;</span>
+<span class="fc" id="L469">    }</span>
+
+    public void useStepsFactory(InjectableStepsFactory stepsFactory) {
+<span class="fc" id="L472">        this.stepsFactory = stepsFactory;</span>
+<span class="fc" id="L473">    }</span>
+
+    public void useEmbedderControls(EmbedderControls embedderControls) {
+<span class="fc" id="L476">        this.embedderControls = embedderControls;</span>
+<span class="fc" id="L477">    }</span>
+
+    public void useEmbedderFailureStrategy(EmbedderFailureStrategy failureStategy) {
+<span class="fc" id="L480">        this.embedderFailureStrategy = failureStategy;</span>
+<span class="fc" id="L481">    }</span>
+
+    public void useEmbedderMonitor(EmbedderMonitor embedderMonitor) {
+<span class="fc" id="L484">        this.embedderMonitor = embedderMonitor;</span>
+<span class="fc" id="L485">    }</span>
+
+    public void useExecutorService(ExecutorService executorService) {
+<span class="nc" id="L488">        this.executorService = executorService;</span>
+<span class="nc" id="L489">        embedderMonitor.usingExecutorService(executorService);</span>
+<span class="nc" id="L490">    }</span>
+
+    public void useMetaFilters(List&lt;String&gt; metaFilters) {
+<span class="fc" id="L493">        this.metaFilters = metaFilters;</span>
+<span class="fc" id="L494">    }</span>
+
+    public void useStoryRunner(StoryRunner storyRunner) {
+<span class="fc" id="L497">        this.storyRunner = storyRunner;</span>
+<span class="fc" id="L498">    }</span>
+
+    public void useSystemProperties(Properties systemProperties) {
+<span class="fc" id="L501">        this.systemProperties = systemProperties;</span>
+<span class="fc" id="L502">    }</span>
+
+    @Override
+    public String toString() {
+<span class="fc" id="L506">        return ToStringBuilder.reflectionToString(this, ToStringStyle.SHORT_PREFIX_STYLE);</span>
+    }
+
+    public static interface EmbedderFailureStrategy {
+
+        void handleFailures(BatchFailures failures);
+
+        void handleFailures(ReportsCount count);
+
+    }
+
+<span class="fc" id="L517">    public static class ThrowingRunningStoriesFailed implements EmbedderFailureStrategy {</span>
+
+        public void handleFailures(BatchFailures failures) {
+<span class="fc" id="L520">            throw new RunningStoriesFailed(failures);</span>
+        }
+
+        public void handleFailures(ReportsCount count) {
+<span class="fc" id="L524">            throw new RunningStoriesFailed(count);</span>
+        }
+
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class AnnotatedEmbedderRunFailed extends RuntimeException {
+
+        public AnnotatedEmbedderRunFailed(AnnotatedEmbedderRunner runner, Throwable cause) {
+<span class="fc" id="L533">            super(&quot;Annotated embedder run failed with runner &quot; + runner.toString(), cause);</span>
+<span class="fc" id="L534">        }</span>
+
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class RunningEmbeddablesFailed extends RuntimeException {
+
+        public RunningEmbeddablesFailed(String name, Throwable failure) {
+<span class="fc" id="L542">            super(&quot;Failure in running embeddable: &quot; + name, failure);</span>
+<span class="fc" id="L543">        }</span>
+
+        public RunningEmbeddablesFailed(BatchFailures failures) {
+<span class="fc" id="L546">            super(&quot;Failures in running embeddables: &quot; + failures);</span>
+<span class="fc" id="L547">        }</span>
+
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class RunningStoriesFailed extends RuntimeException {
+
+        public RunningStoriesFailed(ReportsCount reportsCount) {
+<span class="fc" id="L555">            super(&quot;Failures in running stories: &quot; + reportsCount);</span>
+<span class="fc" id="L556">        }</span>
+
+        public RunningStoriesFailed(BatchFailures failures) {
+<span class="fc" id="L559">            super(&quot;Failures in running stories: &quot; + failures);</span>
+<span class="fc" id="L560">        }</span>
+
+    }
+
+    @SuppressWarnings(&quot;serial&quot;)
+    public static class ViewGenerationFailed extends RuntimeException {
+        public ViewGenerationFailed(File outputDirectory, List&lt;String&gt; formats, Properties viewResources,
+                RuntimeException cause) {
+<span class="fc" id="L568">            super(&quot;View generation failed to &quot; + outputDirectory + &quot; for formats &quot; + formats + &quot; and resources &quot;</span>
+                    + viewResources, cause);
+<span class="fc" id="L570">        }</span>
+
+        public ViewGenerationFailed(File outputDirectory, StoryMaps storyMaps, Properties viewResources,
+                RuntimeException cause) {
+<span class="nc" id="L574">            super(&quot;View generation failed to &quot; + outputDirectory + &quot; for story maps &quot; + storyMaps + &quot; for resources &quot;</span>
+                    + viewResources, cause);
+<span class="nc" id="L576">        }</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,780 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>JSONDataParser.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">twfbplayer</a> &gt; <a href="index.source.html" class="el_package">de.outstare.fortbattleplayer.parser</a> &gt; <span class="el_source">JSONDataParser.java</span></div><h1>JSONDataParser.java</h1><pre class="source lang-java linenums">package de.outstare.fortbattleplayer.parser;
+
+/*
+ Copyright (c) 2010 Daniel Raap
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the &quot;Software&quot;), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ */
+
+import java.awt.Color;
+import java.awt.Graphics;
+import java.awt.Image;
+import java.awt.Point;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.io.InputStream;
+import java.security.AccessControlException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.imageio.ImageIO;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import de.outstare.fortbattleplayer.logging.LogHelper;
+import de.outstare.fortbattleplayer.model.Area;
+import de.outstare.fortbattleplayer.model.Battlefield;
+import de.outstare.fortbattleplayer.model.CharacterClass;
+import de.outstare.fortbattleplayer.model.Combatant;
+import de.outstare.fortbattleplayer.model.CombatantObserver;
+import de.outstare.fortbattleplayer.model.CombatantSide;
+import de.outstare.fortbattleplayer.model.CombatantState;
+import de.outstare.fortbattleplayer.model.Fortbattle;
+import de.outstare.fortbattleplayer.model.Sector;
+import de.outstare.fortbattleplayer.model.Weapon;
+import de.outstare.fortbattleplayer.model.impl.SimpleArea;
+import de.outstare.fortbattleplayer.model.impl.SimpleBattleField;
+import de.outstare.fortbattleplayer.model.impl.SimpleCombatant;
+import de.outstare.fortbattleplayer.model.impl.SimpleSector;
+import de.outstare.fortbattleplayer.model.impl.SimpleWeapon;
+import de.outstare.fortbattleplayer.player.Action;
+import de.outstare.fortbattleplayer.player.Battleplan;
+import de.outstare.fortbattleplayer.player.CombatantTurn;
+import de.outstare.fortbattleplayer.player.PlayerConfiguration;
+import de.outstare.fortbattleplayer.player.Round;
+import de.outstare.fortbattleplayer.player.actions.MoveAction;
+import de.outstare.fortbattleplayer.player.actions.TargetAction;
+import de.outstare.fortbattleplayer.statistics.AllStatistics;
+import de.outstare.fortbattleplayer.statistics.BattleStatistics;
+import de.outstare.fortbattleplayer.statistics.CombatantStatType;
+import de.outstare.fortbattleplayer.statistics.CombatantStatistic;
+import de.outstare.fortbattleplayer.statistics.RoundStatGenerator;
+
+/**
+ * creates model objects out of the plain data according to
+ * http://devblog.the-west.net/?p=225&amp;lang=en
+ * 
+ * @author daniel
+ */
+public class JSONDataParser {
+	/**
+	 * visible for inner class
+	 */
+<span class="nc" id="L90">	static final transient Logger LOG = Logger.getLogger(JSONDataParser.class.getName());</span>
+
+	private final JSONObject data;
+	/**
+	 * visible for inner class
+	 */
+<span class="nc" id="L96">	Image mapImage = null;</span>
+<span class="nc" id="L97">	private Thread mapPaintThread = null;</span>
+	/**
+	 * lookup for {@link Area}s (maps the-west map indexes to model objects)
+	 */
+<span class="nc" id="L101">	private final Map&lt;Integer, Area&gt; areas = new HashMap&lt;Integer, Area&gt;();</span>
+	/**
+	 * lookup for {@link Combatant}s (maps the-west player IDs to model objects)
+	 */
+<span class="nc" id="L105">	private final Map&lt;Integer, Combatant&gt; westPlayers = new HashMap&lt;Integer, Combatant&gt;();</span>
+	/**
+	 * where the players placed the combatants (maybe multiple on same field)
+	 */
+<span class="nc" id="L109">	private final Map&lt;Combatant, CombatantState&gt; preBattleCombatantStates = new HashMap&lt;Combatant, CombatantState&gt;();</span>
+	/**
+	 * where the player actual stands at the beginning
+	 */
+<span class="nc" id="L113">	private final Map&lt;Combatant, CombatantState&gt; initialCombatantStates = new HashMap&lt;Combatant, CombatantState&gt;();</span>
+	private final CombatantStatistic combatantStats;
+<span class="nc" id="L115">	private final RoundStatGenerator roundStatistics = new RoundStatGenerator();</span>
+
+	/**
+	 * @param textdata
+	 *            a {@link JSONObject} in textformat
+	 * @throws JSONException
+	 *             if the textdata is not JSON
+	 */
+<span class="nc" id="L123">	public JSONDataParser(final String textdata) throws JSONException {</span>
+<span class="nc" id="L124">		data = new JSONObject(textdata);</span>
+<span class="nc" id="L125">		combatantStats = new CombatantStatistic(numberOfPlayedRounds());</span>
+<span class="nc" id="L126">	}</span>
+
+	/**
+	 * @return
+	 * @throws JSONException
+	 */
+	int numberOfPlayedRounds() throws JSONException {
+<span class="nc" id="L133">		return data.getInt(&quot;roundsplayed&quot;);</span>
+	}
+
+	/**
+	 * @return the fortbattle for the given data
+	 * @throws JSONException
+	 */
+	public Fortbattle getBattle() throws JSONException {
+		// to improve performance we disable player logging while parsing
+<span class="nc" id="L142">		disableAllOtherLogging();</span>
+<span class="nc" id="L143">		final long start = System.currentTimeMillis();</span>
+		// order is important!!
+		// 1. the map where the combatants will be placed
+<span class="nc" id="L146">		final Battlefield battlefield = getBattlefield();</span>
+		// 2. the combatants which execute actions
+<span class="nc" id="L148">		final Map&lt;CombatantSide, Set&lt;Combatant&gt;&gt; combatants = new HashMap&lt;CombatantSide, Set&lt;Combatant&gt;&gt;();</span>
+<span class="nc" id="L149">		final Set&lt;Combatant&gt; attackers = getAttackers();</span>
+<span class="nc" id="L150">		final Set&lt;Combatant&gt; defenders = getDefenders();</span>
+<span class="nc" id="L151">		combatants.put(CombatantSide.ATTACKER, attackers);</span>
+<span class="nc" id="L152">		combatants.put(CombatantSide.DEFENDER, defenders);</span>
+		// 3. the actions are the actual battle
+<span class="nc" id="L154">		final BattleStatistics battleStats = new BattleStatistics(attackers.size(), defenders.size());</span>
+<span class="nc" id="L155">		final Battleplan actions = getPlan(battleStats);</span>
+<span class="nc" id="L156">		final long end = System.currentTimeMillis();</span>
+<span class="nc" id="L157">		LogHelper.restoreLogLevels();</span>
+<span class="nc" id="L158">		LOG.info(&quot;parsed battle info in &quot; + (end - start) + &quot; ms&quot;);</span>
+
+<span class="nc" id="L160">		return new Fortbattle(getFortname(), combatants, battlefield, actions, new AllStatistics(combatantStats,</span>
+		        battleStats, roundStatistics), getMapImage());
+	}
+
+	/**
+	 * disable all logging and only keep our own logging
+	 * 
+	 * @throws SecurityException
+	 */
+	private void disableAllOtherLogging() throws SecurityException {
+		boolean logParsing;
+		try {
+<span class="nc" id="L172">			logParsing = Boolean.getBoolean(&quot;fbplayer.logParsing&quot;);</span>
+<span class="nc" id="L173">		} catch (final Exception e) {</span>
+			// in the applet accessing properties may not be allowed
+<span class="nc" id="L175">			logParsing = false;</span>
+<span class="nc" id="L176">		}</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">		if (!logParsing) {</span>
+<span class="nc" id="L178">			LogHelper.backupLogLevels();</span>
+<span class="nc" id="L179">			final Level ownLevelBackp = LOG.getLevel();</span>
+			// TODO just disable logging of gui, player and model?
+<span class="nc" id="L181">			LogHelper.setGlobalLogLevel(Level.OFF);</span>
+			try {
+<span class="nc" id="L183">				LOG.setLevel(ownLevelBackp);</span>
+<span class="nc" id="L184">			} catch (final AccessControlException e) {</span>
+<span class="nc" id="L185">				LOG.info(&quot;not allowed to set log level for parser.&quot;);</span>
+<span class="nc" id="L186">			}</span>
+		}
+<span class="nc" id="L188">	}</span>
+
+	/**
+	 * @return all attackers
+	 * @throws JSONException
+	 */
+	protected Set&lt;Combatant&gt; getAttackers() throws JSONException {
+<span class="nc" id="L195">		final Set&lt;Combatant&gt; attackers = new HashSet&lt;Combatant&gt;();</span>
+
+<span class="nc" id="L197">		final JSONArray list = data.getJSONArray(&quot;attackerlist&quot;);</span>
+<span class="nc" id="L198">		parsePlayers(attackers, CombatantSide.ATTACKER, list);</span>
+
+<span class="nc bnc" id="L200" title="All 2 branches missed.">		if (LOG.isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L201">			LOG.fine(&quot;parsed &quot; + attackers.size() + &quot; attackers&quot;);</span>
+		}
+<span class="nc" id="L203">		return attackers;</span>
+	}
+
+	/**
+	 * @return all defenders
+	 * @throws JSONException
+	 */
+	protected Set&lt;Combatant&gt; getDefenders() throws JSONException {
+<span class="nc" id="L211">		final Set&lt;Combatant&gt; defenders = new HashSet&lt;Combatant&gt;();</span>
+
+<span class="nc" id="L213">		final JSONArray list = data.getJSONArray(&quot;defenderlist&quot;);</span>
+<span class="nc" id="L214">		parsePlayers(defenders, CombatantSide.DEFENDER, list);</span>
+
+<span class="nc bnc" id="L216" title="All 2 branches missed.">		if (LOG.isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L217">			LOG.fine(&quot;parsed &quot; + defenders.size() + &quot; defenders&quot;);</span>
+		}
+<span class="nc" id="L219">		return defenders;</span>
+	}
+
+	/**
+	 * @param players
+	 *            store for parsed {@link Combatant}s
+	 * @param side
+	 *            of each parsed {@link Combatant}
+	 * @param list
+	 *            data to be parsed
+	 * @throws JSONException
+	 */
+	private void parsePlayers(final Set&lt;Combatant&gt; players, final CombatantSide side, final JSONArray list)
+	        throws JSONException {
+		final String posKey;
+		final boolean hasPreBattleData;
+		// initial position depends on version
+<span class="nc bnc" id="L236" title="All 4 branches missed.">		if (list.length() &gt; 0 &amp;&amp; list.getJSONObject(0).has(&quot;firstroundpos&quot;)) {</span>
+			// since fixed 1.29
+<span class="nc" id="L238">			posKey = &quot;firstroundpos&quot;;</span>
+<span class="nc" id="L239">			hasPreBattleData = true;</span>
+<span class="nc bnc" id="L240" title="All 4 branches missed.">		} else if (list.length() &gt; 0 &amp;&amp; list.getJSONObject(0).has(&quot;startposidx&quot;)) {</span>
+			// since 1.29
+<span class="nc" id="L242">			posKey = &quot;startposidx&quot;;</span>
+<span class="nc" id="L243">			hasPreBattleData = true;</span>
+		} else {
+			// death pos, not start pos :(
+<span class="nc" id="L246">			posKey = &quot;posidx&quot;;</span>
+<span class="nc" id="L247">			hasPreBattleData = false;</span>
+		}
+
+<span class="nc bnc" id="L250" title="All 2 branches missed.">		for (int i = 0; i &lt; list.length(); i++) {</span>
+<span class="nc" id="L251">			final JSONObject playerData = list.getJSONObject(i);</span>
+
+<span class="nc" id="L253">			final CombatantState firstRoundState = getCombatantState(posKey, playerData);</span>
+<span class="nc" id="L254">			final Combatant player = createCombatant(side, playerData, firstRoundState);</span>
+<span class="nc" id="L255">			initialCombatantStates.put(player, firstRoundState);</span>
+
+<span class="nc" id="L257">			final Integer playerID = Integer.valueOf(playerData.getInt(&quot;westid&quot;));</span>
+<span class="nc" id="L258">			westPlayers.put(playerID, player);</span>
+<span class="nc" id="L259">			players.add(player);</span>
+
+<span class="nc" id="L261">			updateStats(playerData, side);</span>
+
+<span class="nc bnc" id="L263" title="All 2 branches missed.">			if (hasPreBattleData) {</span>
+<span class="nc" id="L264">				createPreBattleState(playerData, firstRoundState, player);</span>
+			}
+		}
+<span class="nc" id="L267">	}</span>
+
+	/**
+	 * @param playerData
+	 * @param firstRoundState
+	 * @param player
+	 * @throws JSONException
+	 */
+	private void createPreBattleState(final JSONObject playerData, final CombatantState firstRoundState,
+	        final Combatant player) throws JSONException {
+		// location before start of battle
+<span class="nc" id="L278">		final Integer placingIndex = Integer.valueOf(playerData.getInt(&quot;startposidx&quot;));</span>
+<span class="nc" id="L279">		final Area placing = areas.get(placingIndex);</span>
+<span class="nc" id="L280">		final CombatantState preBattleState = firstRoundState.changePosition(placing);</span>
+<span class="nc" id="L281">		preBattleCombatantStates.put(player, preBattleState);</span>
+<span class="nc" id="L282">	}</span>
+
+	/**
+	 * @param side
+	 * @param playerData
+	 * @param firstRoundState
+	 * @return
+	 * @throws JSONException
+	 */
+	private Combatant createCombatant(final CombatantSide side, final JSONObject playerData,
+	        final CombatantState firstRoundState) throws JSONException {
+<span class="nc" id="L293">		final int maxLP = playerData.getInt(&quot;maxhp&quot;);</span>
+<span class="nc" id="L294">		final String playerName = playerData.getString(&quot;name&quot;);</span>
+<span class="nc" id="L295">		final String city = playerData.optString(&quot;townname&quot;);</span>
+		CharacterClass charClass;
+		try {
+<span class="nc" id="L298">			final int charClassNumber = playerData.getInt(&quot;charclass&quot;);</span>
+<span class="nc" id="L299">			charClass = CharacterClass.values()[charClassNumber + 1];</span>
+<span class="nc" id="L300">		} catch (final JSONException e) {</span>
+			// not present in old logs
+<span class="nc" id="L302">			charClass = null;</span>
+<span class="nc" id="L303">		}</span>
+<span class="nc" id="L304">		final int charLevel = playerData.optInt(&quot;charlevel&quot;);</span>
+<span class="nc" id="L305">		final Weapon weapon = getWeapon(playerData);</span>
+<span class="nc" id="L306">		final Combatant player = new SimpleCombatant(side, firstRoundState, maxLP, playerName, charClass, charLevel,</span>
+		        weapon, city);
+
+<span class="nc" id="L309">		return player;</span>
+	}
+
+	/**
+	 * @param playerData
+	 * @return the weapon in the playerData
+	 * @throws JSONException
+	 *             if the playerData does not contain weapon data
+	 */
+	private Weapon getWeapon(final JSONObject playerData) throws JSONException {
+<span class="nc" id="L319">		final int weaponId = playerData.getInt(&quot;weaponid&quot;);</span>
+<span class="nc" id="L320">		final String weaponName = playerData.getString(&quot;weaponname&quot;);</span>
+<span class="nc" id="L321">		final int minDmg = playerData.getInt(&quot;weaponmindmg&quot;);</span>
+<span class="nc" id="L322">		final int maxDmg = playerData.getInt(&quot;weaponmaxdmg&quot;);</span>
+<span class="nc" id="L323">		final SimpleWeapon weapon = new SimpleWeapon(weaponId, weaponName, minDmg, maxDmg);</span>
+<span class="nc" id="L324">		return weapon;</span>
+	}
+
+	/**
+	 * @param posKey
+	 * @param playerData
+	 * @return
+	 * @throws JSONException
+	 */
+	private CombatantState getCombatantState(final String posKey, final JSONObject playerData) throws JSONException {
+<span class="nc" id="L334">		final Integer posIndex = Integer.valueOf(playerData.optInt(posKey));</span>
+<span class="nc" id="L335">		final Integer targetIndex = Integer.valueOf(playerData.getInt(&quot;targetidx&quot;));</span>
+<span class="nc" id="L336">		final int curLP = playerData.getInt(&quot;starthp&quot;);</span>
+<span class="nc" id="L337">		final Area pos = areas.get(posIndex);</span>
+<span class="nc" id="L338">		final Area target = areas.get(targetIndex);</span>
+<span class="nc" id="L339">		final CombatantState firstRoundState = new CombatantState(pos, curLP, target, false);</span>
+<span class="nc" id="L340">		return firstRoundState;</span>
+	}
+
+	/**
+	 * @param playerData
+	 * @param side
+	 * @throws JSONException
+	 */
+	private void updateStats(final JSONObject playerData, final CombatantSide side) throws JSONException {
+<span class="nc" id="L349">		final Iterator&lt;String&gt; keys = playerData.keys();</span>
+<span class="nc bnc" id="L350" title="All 2 branches missed.">		while (keys.hasNext()) {</span>
+<span class="nc" id="L351">			final String key = keys.next();</span>
+			try {
+<span class="nc" id="L353">				final CombatantStatType statType = CombatantStatType.valueOf(key);</span>
+<span class="nc" id="L354">				combatantStats.addData(statType, side, playerData.getInt(key));</span>
+<span class="nc" id="L355">			} catch (final IllegalArgumentException e) {</span>
+				// key is not specified for statistics
+<span class="nc" id="L357">			}</span>
+<span class="nc" id="L358">		}</span>
+<span class="nc" id="L359">	}</span>
+
+	/**
+	 * @return the map on which the battle takes place
+	 * @throws JSONException
+	 */
+	protected Battlefield getBattlefield() throws JSONException {
+<span class="nc" id="L366">		final JSONObject map = data.getJSONObject(&quot;map&quot;);</span>
+<span class="nc" id="L367">		final int mapWidth = map.getInt(&quot;width&quot;);</span>
+<span class="nc" id="L368">		final int mapHeight = map.getInt(&quot;height&quot;);</span>
+<span class="nc" id="L369">		createFortImage(mapWidth, mapHeight, map.getJSONArray(&quot;tiles&quot;));</span>
+<span class="nc" id="L370">		final JSONArray sectorData = map.getJSONArray(&quot;sectors&quot;);</span>
+<span class="nc" id="L371">		final List&lt;Sector&gt; sectors = parseSectors(sectorData);</span>
+<span class="nc" id="L372">		final JSONArray cellData = map.getJSONArray(&quot;cells&quot;);</span>
+<span class="nc" id="L373">		final Set&lt;Area&gt; cells = parseCells(cellData, sectors, new MapCoordinates(mapWidth));</span>
+
+<span class="nc" id="L375">		return new SimpleBattleField(mapWidth, mapHeight, cells, sectors);</span>
+	}
+
+	/**
+	 * @return the image of the fort if it is already created, else
+	 *         &lt;code&gt;null&lt;/code&gt;
+	 */
+	protected Image getMapImage() {
+<span class="nc bnc" id="L383" title="All 2 branches missed.">		if (mapPaintThread != null) {</span>
+			// wait that image is created
+			try {
+<span class="nc" id="L386">				mapPaintThread.join();</span>
+<span class="nc" id="L387">			} catch (final InterruptedException e) {</span>
+<span class="nc" id="L388">				e.printStackTrace();</span>
+<span class="nc" id="L389">			}</span>
+		}
+<span class="nc" id="L391">		return mapImage;</span>
+	}
+
+	/**
+	 * @param jsonArray
+	 * @throws JSONException
+	 * @throws IOException
+	 */
+	private void createFortImage(final int mapWidth, final int mapHeight, final JSONArray tiles) throws JSONException {
+<span class="nc" id="L400">		final int tileSizeX = 24;</span>
+<span class="nc" id="L401">		final int tileSizeY = 24;</span>
+<span class="nc" id="L402">		mapImage = new BufferedImage(mapWidth * tileSizeX, mapHeight * tileSizeY, BufferedImage.TYPE_INT_ARGB);</span>
+		// don't wait that the image is loaded
+<span class="nc" id="L404">		mapPaintThread = new Thread() {</span>
+			@Override
+			public void run() {
+				try {
+<span class="nc" id="L408">					final String imageFilePath = &quot;/images/tiletexture.png&quot;;</span>
+<span class="nc" id="L409">					final InputStream imageInput = JSONDataParser.class.getResourceAsStream(imageFilePath);</span>
+					final BufferedImage texture;
+<span class="nc bnc" id="L411" title="All 2 branches missed.">					if (imageInput == null) {</span>
+						// paint all tiles in one color
+<span class="nc" id="L413">						texture = new BufferedImage(3120, 360, BufferedImage.TYPE_INT_ARGB);</span>
+<span class="nc" id="L414">						final Graphics textureGraphics = texture.getGraphics();</span>
+<span class="nc" id="L415">						textureGraphics.setColor(Color.ORANGE);</span>
+<span class="nc" id="L416">						textureGraphics.fillRect(0, 0, 3120, 360);</span>
+<span class="nc" id="L417">					} else {</span>
+<span class="nc" id="L418">						texture = ImageIO.read(imageInput);</span>
+					}
+
+<span class="nc" id="L421">					final Graphics g = mapImage.getGraphics();</span>
+					try {
+<span class="nc bnc" id="L423" title="All 2 branches missed.">						for (int i = 0; i &lt; tiles.length(); i++) {</span>
+<span class="nc" id="L424">							final JSONArray tile = tiles.getJSONArray(i);</span>
+<span class="nc" id="L425">							final int x = tile.getInt(0);</span>
+<span class="nc" id="L426">							final int y = tile.getInt(1);</span>
+<span class="nc" id="L427">							final int width = tile.getInt(2);</span>
+<span class="nc" id="L428">							final int height = tile.getInt(3);</span>
+<span class="nc" id="L429">							final int mapX = tile.getInt(4);</span>
+<span class="nc" id="L430">							final int mapY = tile.getInt(5);</span>
+
+<span class="nc bnc" id="L432" title="All 2 branches missed.">							if (LOG.isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L433">								LOG.fine(&quot;taking tile at &quot; + x * tileSizeX + &quot;/&quot; + y * tileSizeY + &quot; with size &quot;</span>
+								        + width * tileSizeX + &quot;x&quot; + height * tileSizeY);
+							}
+<span class="nc" id="L436">							g.drawImage(texture, mapX * tileSizeX, mapY * tileSizeY, (mapX + width) * tileSizeX,</span>
+							        (mapY + height) * tileSizeY, x * tileSizeX, y * tileSizeY, (x + width) * tileSizeX,
+							        (y + height) * tileSizeY, null);
+						}
+<span class="nc" id="L440">					} catch (final JSONException e) {</span>
+<span class="nc" id="L441">						e.printStackTrace();</span>
+					} finally {
+<span class="nc" id="L443">						g.dispose();</span>
+<span class="nc" id="L444">					}</span>
+<span class="nc" id="L445">				} catch (final IOException e) {</span>
+<span class="nc" id="L446">					e.printStackTrace();</span>
+<span class="nc" id="L447">				}</span>
+<span class="nc" id="L448">			}</span>
+		};
+<span class="nc" id="L450">		mapPaintThread.start();</span>
+<span class="nc" id="L451">	}</span>
+
+	/**
+	 * @param cellData
+	 * @param sectors
+	 * @param mapCoordinates
+	 * @return
+	 * @throws JSONException
+	 */
+	private Set&lt;Area&gt; parseCells(final JSONArray cellData, final List&lt;Sector&gt; sectors,
+	        final MapCoordinates mapCoordinates) throws JSONException {
+<span class="nc" id="L462">		final Set&lt;Area&gt; cells = new HashSet&lt;Area&gt;();</span>
+<span class="nc" id="L463">		areas.clear();</span>
+
+<span class="nc bnc" id="L465" title="All 2 branches missed.">		for (int index = 0; index &lt; cellData.length(); index++) {</span>
+<span class="nc" id="L466">			final Point coord = mapCoordinates.point(index);</span>
+<span class="nc" id="L467">			final int sectorID = cellData.getInt(index);</span>
+<span class="nc" id="L468">			final Area cell = new SimpleArea(coord, sectors.get(sectorID));</span>
+<span class="nc" id="L469">			cells.add(cell);</span>
+<span class="nc" id="L470">			areas.put(Integer.valueOf(index), cell);</span>
+		}
+
+<span class="nc" id="L473">		return cells;</span>
+	}
+
+	/**
+	 * @param sectorData
+	 * @return
+	 * @throws JSONException
+	 */
+	protected List&lt;Sector&gt; parseSectors(final JSONArray sectorData) throws JSONException {
+<span class="nc" id="L482">		final List&lt;Sector&gt; sectors = new ArrayList&lt;Sector&gt;();</span>
+<span class="nc bnc" id="L483" title="All 2 branches missed.">		for (int i = 0; i &lt; sectorData.length(); i++) {</span>
+<span class="nc" id="L484">			final JSONObject sector = sectorData.getJSONObject(i);</span>
+<span class="nc" id="L485">			final int height = sector.getInt(&quot;height&quot;);</span>
+<span class="nc" id="L486">			final boolean attackerSpawn = sector.optBoolean(&quot;attackerSpawn&quot;);</span>
+<span class="nc" id="L487">			final int attackerBonus = sector.optInt(&quot;attackerBonus&quot;);</span>
+<span class="nc" id="L488">			final boolean defenderSpawn = sector.optBoolean(&quot;defenderSpawn&quot;);</span>
+<span class="nc" id="L489">			final int defenderBonus = sector.optInt(&quot;defenderBonus&quot;);</span>
+<span class="nc" id="L490">			final int classBonus = sector.optInt(&quot;classBonus&quot;);</span>
+<span class="nc" id="L491">			CharacterClass bonusClass = null;</span>
+			try {
+<span class="nc" id="L493">				final int classTypeInt = sector.getInt(&quot;classType&quot;);</span>
+<span class="nc" id="L494">				bonusClass = CharacterClass.values()[classTypeInt + 1];</span>
+<span class="nc" id="L495">			} catch (final JSONException e) {</span>
+				// field may not exist
+<span class="nc" id="L497">			}</span>
+<span class="nc" id="L498">			final boolean isFlag = sector.optBoolean(&quot;flag&quot;);</span>
+<span class="nc" id="L499">			final Sector newSector = new SimpleSector(height, defenderSpawn, attackerSpawn, attackerBonus,</span>
+			        defenderBonus, isFlag, classBonus, bonusClass);
+<span class="nc" id="L501">			sectors.add(newSector);</span>
+		}
+<span class="nc" id="L503">		return sectors;</span>
+	}
+
+	/**
+	 * @param stats
+	 * @return the complete battle
+	 * @throws JSONException
+	 * @requires getAttackers() and getDefenders() has be called to parse the
+	 *           players
+	 */
+	protected Battleplan getPlan(final BattleStatistics stats) throws JSONException {
+<span class="nc" id="L514">		final List&lt;Round&gt; rounds = new LinkedList&lt;Round&gt;();</span>
+
+<span class="nc" id="L516">		final JSONArray typeNames = data.getJSONArray(&quot;logtypes&quot;);</span>
+<span class="nc" id="L517">		final JSONArray log = data.getJSONArray(&quot;log&quot;);</span>
+		/*
+		 * the log combines Rounds (all Players), Turns (one Player) and Actions
+		 * therefore the parsing code is also crap :(
+		 */
+<span class="nc" id="L522">		List&lt;CombatantTurn&gt; turns = null;</span>
+<span class="nc" id="L523">		Map&lt;Combatant, CombatantState&gt; states = createFirstRound(rounds);</span>
+<span class="nc" id="L524">		List&lt;Action&gt; actions = null;</span>
+<span class="nc" id="L525">		Combatant currentPlayer = null;</span>
+<span class="nc" id="L526">		addCombatantObserver(stats);</span>
+<span class="nc" id="L527">		int currentRound = 1;</span>
+<span class="nc bnc" id="L528" title="All 2 branches missed.">		for (int i = 0; i &lt; log.length(); i += 2) {</span>
+<span class="nc" id="L529">			final int typeValue = (int) log.getLong(i);</span>
+<span class="nc" id="L530">			final int value = (int) log.getLong(i + 1);</span>
+			try {
+<span class="nc" id="L532">				final LogType type = LogType.valueOf(typeNames.getString(typeValue));</span>
+				// System.out.println(type.toString() + &quot; &quot; +
+				// Integer.toString(value));
+
+<span class="nc bnc" id="L536" title="All 3 branches missed.">				switch (type) {</span>
+				case ROUNDSTART:
+					// store current round
+<span class="nc bnc" id="L539" title="All 2 branches missed.">					if (turns != null) {</span>
+<span class="nc bnc" id="L540" title="All 2 branches missed.">						if (actions != null) {</span>
+<span class="nc" id="L541">							turns.add(new CombatantTurn(actions));</span>
+<span class="nc" id="L542">							actions = null;</span>
+						}
+<span class="nc" id="L544">						states = saveRound(currentRound, rounds, turns, states);</span>
+					}
+					// create new round
+<span class="nc" id="L547">					currentRound = value;</span>
+<span class="nc" id="L548">					stats.setRound(currentRound);</span>
+<span class="nc" id="L549">					turns = new ArrayList&lt;CombatantTurn&gt;();</span>
+<span class="nc bnc" id="L550" title="All 2 branches missed.">					if (LOG.isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L551">						LOG.fine(&quot;Round &quot; + value);</span>
+					}
+					break;
+				case CHARTURN:
+					// save actions of current player
+<span class="nc bnc" id="L556" title="All 6 branches missed.">					if (currentPlayer != null &amp;&amp; actions != null &amp;&amp; turns != null) {</span>
+<span class="nc" id="L557">						turns.add(new CombatantTurn(actions));</span>
+					}
+					// select next player
+<span class="nc" id="L560">					currentPlayer = westPlayers.get(Integer.valueOf(value));</span>
+<span class="nc" id="L561">					actions = new ArrayList&lt;Action&gt;();</span>
+<span class="nc bnc" id="L562" title="All 2 branches missed.">					if (LOG.isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L563">						LOG.fine(&quot;  Player &quot; + currentPlayer.toString());</span>
+					}
+					break;
+				default:
+					// set actions for player
+<span class="nc" id="L568">					final Action action = type.parse(value, currentPlayer, areas, westPlayers);</span>
+<span class="nc bnc" id="L569" title="All 2 branches missed.">					if (action != null) {</span>
+<span class="nc bnc" id="L570" title="All 2 branches missed.">						if (actions == null) {</span>
+<span class="nc" id="L571">							LOG.warning(&quot;illegal state for &quot; + type);</span>
+<span class="nc" id="L572">							continue;</span>
+						}
+<span class="nc" id="L574">						actions.add(action);</span>
+<span class="nc bnc" id="L575" title="All 2 branches missed.">						if (LOG.isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L576">							LOG.fine(&quot;    Action &quot; + action);</span>
+						}
+					}
+				}
+<span class="nc" id="L580">			} catch (final IllegalArgumentException e) {</span>
+<span class="nc" id="L581">				LOG.warning(&quot;unknown log type: &quot; + typeNames.getString(typeValue) + &quot; [&quot; + typeValue + &quot;]&quot;);</span>
+<span class="nc" id="L582">				continue;</span>
+<span class="nc" id="L583">			}</span>
+		}
+		// add last actions
+<span class="nc bnc" id="L586" title="All 6 branches missed.">		if (currentPlayer != null &amp;&amp; actions != null &amp;&amp; turns != null) {</span>
+<span class="nc" id="L587">			turns.add(new CombatantTurn(actions));</span>
+		}
+		// add last round
+<span class="nc bnc" id="L590" title="All 2 branches missed.">		if (turns != null) {</span>
+<span class="nc" id="L591">			/* states = */saveRound(currentRound, rounds, turns, states);</span>
+		}
+<span class="nc" id="L593">		removeCombatantObserver(stats);</span>
+<span class="nc" id="L594">		resetAllStates();</span>
+
+<span class="nc" id="L596">		return new Battleplan(rounds);</span>
+	}
+
+	/**
+	 * @param currentRound
+	 * @param rounds
+	 * @param turns
+	 * @param states
+	 * @return
+	 */
+	private Map&lt;Combatant, CombatantState&gt; saveRound(final int roundNo, final List&lt;Round&gt; rounds,
+	        final List&lt;CombatantTurn&gt; turns, final Map&lt;Combatant, CombatantState&gt; states) {
+<span class="nc" id="L608">		final Round round = new Round(roundNo, states, turns);</span>
+<span class="nc" id="L609">		roundStatistics.addRoundState(states);</span>
+<span class="nc" id="L610">		rounds.add(round);</span>
+<span class="nc" id="L611">		final Map&lt;Combatant, CombatantState&gt; newStates = getStateAfterRound(round);</span>
+<span class="nc" id="L612">		return newStates;</span>
+	}
+
+	/**
+     * 
+     */
+	private void resetAllStates() {
+<span class="nc" id="L619">		resetBattlefieldState();</span>
+<span class="nc" id="L620">		resetCombatantStates();</span>
+<span class="nc" id="L621">	}</span>
+
+	/**
+     * 
+     */
+	private void removeCombatantObserver(final CombatantObserver stats) {
+<span class="nc bnc" id="L627" title="All 2 branches missed.">		for (final Combatant c : westPlayers.values()) {</span>
+<span class="nc" id="L628">			c.removeObserver(stats);</span>
+<span class="nc" id="L629">		}</span>
+<span class="nc" id="L630">	}</span>
+
+	/**
+     * 
+     */
+	private void addCombatantObserver(final CombatantObserver stats) {
+<span class="nc bnc" id="L636" title="All 2 branches missed.">		for (final Combatant c : westPlayers.values()) {</span>
+<span class="nc" id="L637">			c.addObserver(stats);</span>
+<span class="nc" id="L638">		}</span>
+<span class="nc" id="L639">	}</span>
+
+	/**
+	 * This will add the first round. Normally nothing happens here, but we show
+	 * the movement from the wanted positions to the actual positions. This also
+	 * initializes the states of the combatants.
+	 * 
+	 * @param rounds
+	 *            where this
+	 * @return
+	 */
+	private Map&lt;Combatant, CombatantState&gt; createFirstRound(final List&lt;Round&gt; rounds) {
+		final Map&lt;Combatant, CombatantState&gt; combatantStates;
+<span class="nc bnc" id="L652" title="All 2 branches missed.">		if (preBattleCombatantStates.isEmpty()) {</span>
+<span class="nc" id="L653">			combatantStates = initialCombatantStates;</span>
+		} else {
+<span class="nc" id="L655">			combatantStates = preBattleCombatantStates;</span>
+		}
+<span class="nc" id="L657">		final List&lt;CombatantTurn&gt; actions = new ArrayList&lt;CombatantTurn&gt;();</span>
+
+		// disabled because the data in the log is wrong!
+		// in 1.29 for online players the last target is available
+<span class="nc" id="L661">		createTargetActions(combatantStates, actions);</span>
+
+		// no movement Action of the players to the pos at the beginning,
+		// because the first round forces the correct positions
+<span class="nc" id="L665">		final Round preBattleRound = new Round(1, combatantStates, actions);</span>
+<span class="nc" id="L666">		rounds.add(preBattleRound);</span>
+<span class="nc" id="L667">		return getStateAfterRound(preBattleRound);</span>
+	}
+
+	/**
+	 * create for the targets in the given states actions and add them to the
+	 * given list
+	 * 
+	 * @param combatantStates
+	 * @param actions
+	 */
+	private void createTargetActions(final Map&lt;Combatant, CombatantState&gt; combatantStates,
+	        final List&lt;CombatantTurn&gt; actions) {
+		// only if pre battle positions exist
+<span class="nc bnc" id="L680" title="All 2 branches missed.">		if (combatantStates == preBattleCombatantStates) {</span>
+<span class="nc bnc" id="L681" title="All 2 branches missed.">			for (final Entry&lt;Combatant, CombatantState&gt; combatantState : combatantStates.entrySet()) {</span>
+<span class="nc" id="L682">				final Combatant combatant = combatantState.getKey();</span>
+<span class="nc" id="L683">				final Area currentPos = combatantState.getValue().getPosition();</span>
+<span class="nc" id="L684">				final Area newPos = initialCombatantStates.get(combatant).getPosition();</span>
+<span class="nc bnc" id="L685" title="All 2 branches missed.">				if (!currentPos.equals(newPos)) {</span>
+<span class="nc" id="L686">					final List&lt;Action&gt; list = createTargetTurn(combatantState);</span>
+<span class="nc" id="L687">					addMoveAction(combatant, newPos, list);</span>
+<span class="nc" id="L688">					actions.add(new CombatantTurn(list));</span>
+				}
+<span class="nc" id="L690">			}</span>
+		}
+<span class="nc" id="L692">	}</span>
+
+	/**
+	 * @param combatant
+	 * @param newPos
+	 * @param actions
+	 */
+	private void addMoveAction(final Combatant combatant, final Area newPos, final List&lt;Action&gt; actions) {
+<span class="nc" id="L700">		final Action move = new MoveAction(combatant, newPos);</span>
+<span class="nc" id="L701">		actions.add(move);</span>
+<span class="nc" id="L702">	}</span>
+
+	/**
+	 * @param combatantState
+	 * @return
+	 */
+	private List&lt;Action&gt; createTargetTurn(final Entry&lt;Combatant, CombatantState&gt; combatantState) {
+<span class="nc" id="L709">		final Action action = new TargetAction(combatantState.getKey(), combatantState.getValue().getTarget());</span>
+<span class="nc" id="L710">		final List&lt;Action&gt; list = new ArrayList&lt;Action&gt;(2);</span>
+<span class="nc" id="L711">		list.add(action);</span>
+<span class="nc" id="L712">		return list;</span>
+	}
+
+	private void resetBattlefieldState() {
+<span class="nc bnc" id="L716" title="All 2 branches missed.">		for (final Area area : areas.values()) {</span>
+<span class="nc" id="L717">			area.free();</span>
+<span class="nc" id="L718">		}</span>
+<span class="nc" id="L719">	}</span>
+
+	/**
+	 * sets the initial state
+	 */
+	private void resetCombatantStates() {
+		final Map&lt;Combatant, CombatantState&gt; startStates;
+		// if available (added after 1.29) use pre battle positions for initial
+		// drawing
+<span class="nc bnc" id="L728" title="All 2 branches missed.">		if (preBattleCombatantStates.isEmpty()) {</span>
+<span class="nc" id="L729">			startStates = initialCombatantStates;</span>
+		} else {
+<span class="nc" id="L731">			startStates = preBattleCombatantStates;</span>
+		}
+
+<span class="nc bnc" id="L734" title="All 2 branches missed.">		for (final Entry&lt;Combatant, CombatantState&gt; entry : startStates.entrySet()) {</span>
+<span class="nc" id="L735">			final Combatant combatant = entry.getKey();</span>
+<span class="nc" id="L736">			combatant._setState(entry.getValue());</span>
+<span class="nc" id="L737">		}</span>
+
+<span class="nc" id="L739">	}</span>
+
+	/**
+	 * @return
+	 */
+	private Map&lt;Combatant, CombatantState&gt; getStateAfterRound(final Round round) {
+<span class="nc" id="L745">		round.execute(PlayerConfiguration.NO_DELAY);</span>
+<span class="nc" id="L746">		final Map&lt;Combatant, CombatantState&gt; newStates = new HashMap&lt;Combatant, CombatantState&gt;();</span>
+<span class="nc bnc" id="L747" title="All 2 branches missed.">		for (final Combatant combatant : initialCombatantStates.keySet()) {</span>
+<span class="nc" id="L748">			newStates.put(combatant, combatant._state());</span>
+<span class="nc" id="L749">		}</span>
+<span class="nc" id="L750">		return newStates;</span>
+	}
+
+	private static class MapCoordinates {
+		private final int mapwidth;
+
+		/**
+		 * @param mapwidth
+		 */
+<span class="nc" id="L759">		MapCoordinates(final int mapwidth) {</span>
+<span class="nc" id="L760">			this.mapwidth = mapwidth;</span>
+<span class="nc" id="L761">		}</span>
+
+		// int index(final int x, final int y) {
+		// return x + y * mapwidth;
+		// }
+
+		Point point(final int index) {
+<span class="nc" id="L768">			return new Point(index % mapwidth, index / mapwidth);</span>
+		}
+	}
+
+	/**
+	 * @return the name of the fort at which the battle took place
+	 * @throws JSONException
+	 */
+	protected String getFortname() throws JSONException {
+<span class="nc" id="L777">		return data.optString(&quot;fortname&quot;);</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>DisplayChart.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.servlet</a> &gt; <span class="el_source">DisplayChart.java</span></div><h1>DisplayChart.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * -----------------
+ * DisplayChart.java
+ * -----------------
+ * (C) Copyright 2002-2013, by Richard Atkinson and Contributors.
+ *
+ * Original Author:  Richard Atkinson;
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *
+ * Changes
+ * -------
+ * 19-Aug-2002 : Version 1;
+ * 09-Mar-2005 : Added facility to serve up &quot;one time&quot; charts - see
+ *               ServletUtilities.java (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 02-Feb-2007 : Removed author tags all over JFreeChart sources (DG);
+ * 03-Dec-2011 : Fixed path disclosure vulnerability - see bug 2879650 (DG);
+ * 
+ */
+
+package org.jfree.chart.servlet;
+
+import java.io.File;
+import java.io.IOException;
+
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
+
+/**
+ * Servlet used for streaming charts to the client browser from the temporary
+ * directory.  You need to add this servlet and mapping to your deployment
+ * descriptor (web.xml) in order to get it to work.  The syntax is as follows:
+ * &lt;xmp&gt;
+ * &lt;servlet&gt;
+ *    &lt;servlet-name&gt;DisplayChart&lt;/servlet-name&gt;
+ *    &lt;servlet-class&gt;org.jfree.chart.servlet.DisplayChart&lt;/servlet-class&gt;
+ * &lt;/servlet&gt;
+ * &lt;servlet-mapping&gt;
+ *     &lt;servlet-name&gt;DisplayChart&lt;/servlet-name&gt;
+ *     &lt;url-pattern&gt;/servlet/DisplayChart&lt;/url-pattern&gt;
+ * &lt;/servlet-mapping&gt;
+ * &lt;/xmp&gt;
+ */
+public class DisplayChart extends HttpServlet {
+
+    /**
+     * Default constructor.
+     */
+    public DisplayChart() {
+<span class="nc" id="L78">        super();</span>
+<span class="nc" id="L79">    }</span>
+
+    /**
+     * Init method.
+     *
+     * @throws ServletException never.
+     */
+    @Override
+    public void init() throws ServletException {
+        // nothing to do
+<span class="nc" id="L89">    }</span>
+
+    /**
+     * Service method.
+     *
+     * @param request  the request.
+     * @param response  the response.
+     *
+     * @throws ServletException ??.
+     * @throws IOException ??.
+     */
+    @Override
+    public void service(HttpServletRequest request,
+                        HttpServletResponse response)
+            throws ServletException, IOException {
+
+<span class="nc" id="L105">        HttpSession session = request.getSession();</span>
+<span class="nc" id="L106">        String filename = request.getParameter(&quot;filename&quot;);</span>
+
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        if (filename == null) {</span>
+<span class="nc" id="L109">            throw new ServletException(&quot;Parameter 'filename' must be supplied&quot;);</span>
+        }
+
+        //  Replace &quot;..&quot; with &quot;&quot;
+        //  This is to prevent access to the rest of the file system
+<span class="nc" id="L114">        filename = ServletUtilities.searchReplace(filename, &quot;..&quot;, &quot;&quot;);</span>
+
+        //  Check the file exists
+<span class="nc" id="L117">        File file = new File(System.getProperty(&quot;java.io.tmpdir&quot;), filename);</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        if (!file.exists()) {</span>
+<span class="nc" id="L119">            throw new ServletException(</span>
+                    &quot;Unable to display the chart with the filename '&quot; 
+                    + filename + &quot;'.&quot;);
+        }
+
+        //  Check that the graph being served was created by the current user
+        //  or that it begins with &quot;public&quot;
+<span class="nc" id="L126">        boolean isChartInUserList = false;</span>
+<span class="nc" id="L127">        ChartDeleter chartDeleter = (ChartDeleter) session.getAttribute(</span>
+                &quot;JFreeChart_Deleter&quot;);
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        if (chartDeleter != null) {</span>
+<span class="nc" id="L130">            isChartInUserList = chartDeleter.isChartAvailable(filename);</span>
+        }
+
+<span class="nc" id="L133">        boolean isChartPublic = false;</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        if (filename.length() &gt;= 6) {</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">            if (filename.substring(0, 6).equals(&quot;public&quot;)) {</span>
+<span class="nc" id="L136">                isChartPublic = true;</span>
+            }
+        }
+
+<span class="nc" id="L140">        boolean isOneTimeChart = false;</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (filename.startsWith(ServletUtilities.getTempOneTimeFilePrefix())) {</span>
+<span class="nc" id="L142">            isOneTimeChart = true;</span>
+        }
+
+<span class="nc bnc" id="L145" title="All 6 branches missed.">        if (isChartInUserList || isChartPublic || isOneTimeChart) {</span>
+            //  Serve it up
+<span class="nc" id="L147">            ServletUtilities.sendTempFile(file, response);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">            if (isOneTimeChart) {</span>
+<span class="nc" id="L149">                file.delete();</span>
+            }
+        }
+        else {
+<span class="nc" id="L153">            throw new ServletException(&quot;Chart image not found&quot;);</span>
+        }
+<span class="nc" id="L155">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

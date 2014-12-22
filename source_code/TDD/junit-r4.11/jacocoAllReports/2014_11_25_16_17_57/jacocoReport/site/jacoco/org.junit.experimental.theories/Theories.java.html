@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Theories.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Junit-r4.11</a> &gt; <a href="index.source.html" class="el_package">org.junit.experimental.theories</a> &gt; <span class="el_source">Theories.java</span></div><h1>Theories.java</h1><pre class="source lang-java linenums">package org.junit.experimental.theories;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.junit.Assert;
+import org.junit.experimental.theories.PotentialAssignment.CouldNotGenerateValueException;
+import org.junit.experimental.theories.internal.Assignments;
+import org.junit.experimental.theories.internal.ParameterizedAssertionError;
+import org.junit.internal.AssumptionViolatedException;
+import org.junit.runners.BlockJUnit4ClassRunner;
+import org.junit.runners.model.FrameworkMethod;
+import org.junit.runners.model.InitializationError;
+import org.junit.runners.model.Statement;
+import org.junit.runners.model.TestClass;
+
+public class Theories extends BlockJUnit4ClassRunner {
+    public Theories(Class&lt;?&gt; klass) throws InitializationError {
+<span class="fc" id="L22">        super(klass);</span>
+<span class="fc" id="L23">    }</span>
+
+    @Override
+    protected void collectInitializationErrors(List&lt;Throwable&gt; errors) {
+<span class="fc" id="L27">        super.collectInitializationErrors(errors);</span>
+<span class="fc" id="L28">        validateDataPointFields(errors);</span>
+<span class="fc" id="L29">    }</span>
+
+    private void validateDataPointFields(List&lt;Throwable&gt; errors) {
+<span class="fc" id="L32">        Field[] fields = getTestClass().getJavaClass().getDeclaredFields();</span>
+
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        for (Field field : fields) {</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            if (field.getAnnotation(DataPoint.class) == null) {</span>
+<span class="fc" id="L36">                continue;</span>
+            }
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">            if (!Modifier.isStatic(field.getModifiers())) {</span>
+<span class="nc" id="L39">                errors.add(new Error(&quot;DataPoint field &quot; + field.getName() + &quot; must be static&quot;));</span>
+            }
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">            if (!Modifier.isPublic(field.getModifiers())) {</span>
+<span class="nc" id="L42">                errors.add(new Error(&quot;DataPoint field &quot; + field.getName() + &quot; must be public&quot;));</span>
+            }
+        }
+<span class="fc" id="L45">    }</span>
+
+    @Override
+    protected void validateConstructor(List&lt;Throwable&gt; errors) {
+<span class="fc" id="L49">        validateOnlyOneConstructor(errors);</span>
+<span class="fc" id="L50">    }</span>
+
+    @Override
+    protected void validateTestMethods(List&lt;Throwable&gt; errors) {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        for (FrameworkMethod each : computeTestMethods()) {</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">            if (each.getAnnotation(Theory.class) != null) {</span>
+<span class="fc" id="L56">                each.validatePublicVoid(false, errors);</span>
+            } else {
+<span class="nc" id="L58">                each.validatePublicVoidNoArg(false, errors);</span>
+            }
+<span class="fc" id="L60">        }</span>
+<span class="fc" id="L61">    }</span>
+
+    @Override
+    protected List&lt;FrameworkMethod&gt; computeTestMethods() {
+<span class="fc" id="L65">        List&lt;FrameworkMethod&gt; testMethods = super.computeTestMethods();</span>
+<span class="fc" id="L66">        List&lt;FrameworkMethod&gt; theoryMethods = getTestClass().getAnnotatedMethods(Theory.class);</span>
+<span class="fc" id="L67">        testMethods.removeAll(theoryMethods);</span>
+<span class="fc" id="L68">        testMethods.addAll(theoryMethods);</span>
+<span class="fc" id="L69">        return testMethods;</span>
+    }
+
+    @Override
+    public Statement methodBlock(final FrameworkMethod method) {
+<span class="fc" id="L74">        return new TheoryAnchor(method, getTestClass());</span>
+    }
+
+    public static class TheoryAnchor extends Statement {
+<span class="fc" id="L78">        private int successes = 0;</span>
+
+        private FrameworkMethod fTestMethod;
+        private TestClass fTestClass;
+
+<span class="fc" id="L83">        private List&lt;AssumptionViolatedException&gt; fInvalidParameters = new ArrayList&lt;AssumptionViolatedException&gt;();</span>
+
+<span class="fc" id="L85">        public TheoryAnchor(FrameworkMethod method, TestClass testClass) {</span>
+<span class="fc" id="L86">            fTestMethod = method;</span>
+<span class="fc" id="L87">            fTestClass = testClass;</span>
+<span class="fc" id="L88">        }</span>
+
+        private TestClass getTestClass() {
+<span class="fc" id="L91">            return fTestClass;</span>
+        }
+
+        @Override
+        public void evaluate() throws Throwable {
+<span class="fc" id="L96">            runWithAssignment(Assignments.allUnassigned(</span>
+                    fTestMethod.getMethod(), getTestClass()));
+
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">            if (successes == 0) {</span>
+<span class="nc" id="L100">                Assert</span>
+                        .fail(&quot;Never found parameters that satisfied method assumptions.  Violated assumptions: &quot;
+                                + fInvalidParameters);
+            }
+<span class="fc" id="L104">        }</span>
+
+        protected void runWithAssignment(Assignments parameterAssignment)
+                throws Throwable {
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (!parameterAssignment.isComplete()) {</span>
+<span class="fc" id="L109">                runWithIncompleteAssignment(parameterAssignment);</span>
+            } else {
+<span class="fc" id="L111">                runWithCompleteAssignment(parameterAssignment);</span>
+            }
+<span class="fc" id="L113">        }</span>
+
+        protected void runWithIncompleteAssignment(Assignments incomplete)
+                throws InstantiationException, IllegalAccessException,
+                Throwable {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            for (PotentialAssignment source : incomplete</span>
+                    .potentialsForNextUnassigned()) {
+<span class="fc" id="L120">                runWithAssignment(incomplete.assignNext(source));</span>
+<span class="fc" id="L121">            }</span>
+<span class="fc" id="L122">        }</span>
+
+        protected void runWithCompleteAssignment(final Assignments complete)
+                throws InstantiationException, IllegalAccessException,
+                InvocationTargetException, NoSuchMethodException, Throwable {
+<span class="fc" id="L127">            new BlockJUnit4ClassRunner(getTestClass().getJavaClass()) {</span>
+                @Override
+                protected void collectInitializationErrors(
+                        List&lt;Throwable&gt; errors) {
+                    // do nothing
+<span class="fc" id="L132">                }</span>
+
+                @Override
+                public Statement methodBlock(FrameworkMethod method) {
+<span class="fc" id="L136">                    final Statement statement = super.methodBlock(method);</span>
+<span class="fc" id="L137">                    return new Statement() {</span>
+                        @Override
+                        public void evaluate() throws Throwable {
+                            try {
+<span class="fc" id="L141">                                statement.evaluate();</span>
+<span class="fc" id="L142">                                handleDataPointSuccess();</span>
+<span class="fc" id="L143">                            } catch (AssumptionViolatedException e) {</span>
+<span class="fc" id="L144">                                handleAssumptionViolation(e);</span>
+<span class="nc" id="L145">                            } catch (Throwable e) {</span>
+<span class="nc" id="L146">                                reportParameterizedError(e, complete</span>
+                                        .getArgumentStrings(nullsOk()));
+<span class="fc" id="L148">                            }</span>
+<span class="fc" id="L149">                        }</span>
+
+                    };
+                }
+
+                @Override
+                protected Statement methodInvoker(FrameworkMethod method, Object test) {
+<span class="fc" id="L156">                    return methodCompletesWithParameters(method, complete, test);</span>
+                }
+
+                @Override
+                public Object createTest() throws Exception {
+<span class="fc" id="L161">                    return getTestClass().getOnlyConstructor().newInstance(</span>
+                            complete.getConstructorArguments(nullsOk()));
+                }
+            }.methodBlock(fTestMethod).evaluate();
+<span class="fc" id="L165">        }</span>
+
+        private Statement methodCompletesWithParameters(
+                final FrameworkMethod method, final Assignments complete, final Object freshInstance) {
+<span class="fc" id="L169">            return new Statement() {</span>
+                @Override
+                public void evaluate() throws Throwable {
+                    try {
+<span class="fc" id="L173">                        final Object[] values = complete.getMethodArguments(</span>
+                                nullsOk());
+<span class="fc" id="L175">                        method.invokeExplosively(freshInstance, values);</span>
+<span class="nc" id="L176">                    } catch (CouldNotGenerateValueException e) {</span>
+                        // ignore
+<span class="fc" id="L178">                    }</span>
+<span class="fc" id="L179">                }</span>
+            };
+        }
+
+        protected void handleAssumptionViolation(AssumptionViolatedException e) {
+<span class="fc" id="L184">            fInvalidParameters.add(e);</span>
+<span class="fc" id="L185">        }</span>
+
+        protected void reportParameterizedError(Throwable e, Object... params)
+                throws Throwable {
+<span class="nc bnc" id="L189" title="All 2 branches missed.">            if (params.length == 0) {</span>
+<span class="nc" id="L190">                throw e;</span>
+            }
+<span class="nc" id="L192">            throw new ParameterizedAssertionError(e, fTestMethod.getName(),</span>
+                    params);
+        }
+
+        private boolean nullsOk() {
+<span class="fc" id="L197">            Theory annotation = fTestMethod.getMethod().getAnnotation(</span>
+                    Theory.class);
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">            if (annotation == null) {</span>
+<span class="nc" id="L200">                return false;</span>
+            }
+<span class="fc" id="L202">            return annotation.nullsAccepted();</span>
+        }
+
+        protected void handleDataPointSuccess() {
+<span class="fc" id="L206">            successes++;</span>
+<span class="fc" id="L207">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

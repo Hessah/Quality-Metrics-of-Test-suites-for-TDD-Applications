@@ -1,0 +1,1056 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>PiePlot3D.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.plot</a> &gt; <span class="el_source">PiePlot3D.java</span></div><h1>PiePlot3D.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates.
+ * Other names may be trademarks of their respective owners.]
+ *
+ * --------------
+ * PiePlot3D.java
+ * --------------
+ * (C) Copyright 2000-2013, by Object Refinery and Contributors.
+ *
+ * Original Author:  Tomer Peretz;
+ * Contributor(s):   Richard Atkinson;
+ *                   David Gilbert (for Object Refinery Limited);
+ *                   Xun Kang;
+ *                   Christian W. Zuckschwerdt;
+ *                   Arnaud Lelievre;
+ *                   Dave Crane;
+ *                   Martin Hoeller;
+ *                   DaveLaw (dave ATT davelaw DOTT de);
+ *
+ * Changes
+ * -------
+ * 21-Jun-2002 : Version 1;
+ * 31-Jul-2002 : Modified to use startAngle and direction, drawing modified so
+ *               that charts render with foreground alpha &lt; 1.0 (DG);
+ * 05-Aug-2002 : Small modification to draw method to support URLs for HTML
+ *               image maps (RA);
+ * 26-Sep-2002 : Fixed errors reported by Checkstyle (DG);
+ * 18-Oct-2002 : Added drawing bug fix sent in by Xun Kang, and made a couple
+ *               of other related fixes (DG);
+ * 30-Oct-2002 : Changed the PieDataset interface. Fixed another drawing
+ *               bug (DG);
+ * 12-Nov-2002 : Fixed null pointer exception for zero or negative values (DG);
+ * 07-Mar-2003 : Modified to pass pieIndex on to PieSectionEntity (DG);
+ * 21-Mar-2003 : Added workaround for bug id 620031 (DG);
+ * 26-Mar-2003 : Implemented Serializable (DG);
+ * 30-Jul-2003 : Modified entity constructor (CZ);
+ * 29-Aug-2003 : Small changes for API updates in PiePlot class (DG);
+ * 02-Sep-2003 : Fixed bug where the 'no data' message is not displayed (DG);
+ * 08-Sep-2003 : Added internationalization via use of properties
+ *               resourceBundle (RFE 690236) (AL);
+ * 29-Oct-2003 : Added workaround for font alignment in PDF output (DG);
+ * 20-Nov-2003 : Fixed bug 845289 (sides not showing) (DG);
+ * 25-Nov-2003 : Added patch (845095) to fix outline paint issues (DG);
+ * 10-Mar-2004 : Numerous changes to enhance labelling (DG);
+ * 31-Mar-2004 : Adjusted plot area when label generator is null (DG);
+ * 08-Apr-2004 : Added flag to PiePlot class to control the treatment of null
+ *               values (DG);
+ *               Added pieIndex to PieSectionEntity (DG);
+ * 15-Nov-2004 : Removed creation of default tool tip generator (DG);
+ * 16-Jun-2005 : Added default constructor (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 27-Sep-2006 : Updated draw() method for new lookup methods (DG);
+ * 22-Mar-2007 : Added equals() override (DG);
+ * 18-Jun-2007 : Added handling for simple label option (DG);
+ * 04-Oct-2007 : Added option to darken sides of plot - thanks to Alex Moots
+ *               (see patch 1805262) (DG);
+ * 21-Nov-2007 : Changed default depth factor, fixed labelling bugs and added
+ *               debug code - see debug flags in PiePlot class (DG);
+ * 20-Mar-2008 : Fixed bug 1920854 - multiple redraws of the section
+ *               labels (DG);
+ * 19-May-2009 : Fixed FindBugs warnings, patch by Michal Wozniak (DG);
+ * 10-Jul-2009 : Added drop shaow support (DG);
+ * 10-Oct-2011 : Localization fix: bug #3353913 (MH);
+ * 18-Oct-2011 : Fix tooltip offset with shadow generator (DG);
+ * 11-Jun-2012 : Utilise new PaintAlpha class (patch 3204823 from DaveLaw) (DG);
+ *
+ */
+
+package org.jfree.chart.plot;
+
+import java.awt.AlphaComposite;
+import java.awt.Color;
+import java.awt.Composite;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Polygon;
+import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.geom.Arc2D;
+import java.awt.geom.Area;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
+import java.awt.image.BufferedImage;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+import org.jfree.chart.entity.EntityCollection;
+import org.jfree.chart.entity.PieSectionEntity;
+import org.jfree.chart.event.PlotChangeEvent;
+import org.jfree.chart.labels.PieToolTipGenerator;
+import org.jfree.chart.util.PaintAlpha;
+import org.jfree.data.general.DatasetUtilities;
+import org.jfree.data.general.PieDataset;
+import org.jfree.ui.RectangleInsets;
+
+/**
+ * A plot that displays data in the form of a 3D pie chart, using data from
+ * any class that implements the {@link PieDataset} interface.
+ * &lt;P&gt;
+ * Although this class extends {@link PiePlot}, it does not currently support
+ * exploded sections.
+ */
+public class PiePlot3D extends PiePlot implements Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = 3408984188945161432L;
+
+    /** The factor of the depth of the pie from the plot height */
+<span class="fc" id="L136">    private double depthFactor = 0.12;</span>
+
+    /**
+     * A flag that controls whether or not the sides of the pie chart
+     * are rendered using a darker colour.
+     *
+     *  @since 1.0.7.
+     */
+<span class="fc" id="L144">    private boolean darkerSides = false;  // default preserves previous</span>
+                                          // behaviour
+
+    /**
+     * Creates a new instance with no dataset.
+     */
+    public PiePlot3D() {
+<span class="fc" id="L151">        this(null);</span>
+<span class="fc" id="L152">    }</span>
+
+    /**
+     * Creates a pie chart with a three dimensional effect using the specified
+     * dataset.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; permitted).
+     */
+    public PiePlot3D(PieDataset dataset) {
+<span class="fc" id="L161">        super(dataset);</span>
+<span class="fc" id="L162">        setCircular(false, false);</span>
+<span class="fc" id="L163">    }</span>
+
+    /**
+     * Returns the depth factor for the chart.
+     *
+     * @return The depth factor.
+     *
+     * @see #setDepthFactor(double)
+     */
+    public double getDepthFactor() {
+<span class="nc" id="L173">        return this.depthFactor;</span>
+    }
+
+    /**
+     * Sets the pie depth as a percentage of the height of the plot area, and
+     * sends a {@link PlotChangeEvent} to all registered listeners.
+     *
+     * @param factor  the depth factor (for example, 0.20 is twenty percent).
+     *
+     * @see #getDepthFactor()
+     */
+    public void setDepthFactor(double factor) {
+<span class="fc" id="L185">        this.depthFactor = factor;</span>
+<span class="fc" id="L186">        fireChangeEvent();</span>
+<span class="fc" id="L187">    }</span>
+
+    /**
+     * Returns a flag that controls whether or not the sides of the pie chart
+     * are rendered using a darker colour.
+     *
+     * @return A boolean.
+     *
+     * @see #setDarkerSides(boolean)
+     *
+     * @since 1.0.7
+     */
+    public boolean getDarkerSides() {
+<span class="fc" id="L200">        return this.darkerSides;</span>
+    }
+
+    /**
+     * Sets a flag that controls whether or not the sides of the pie chart
+     * are rendered using a darker colour, and sends a {@link PlotChangeEvent}
+     * to all registered listeners.
+     *
+     * @param darker true to darken the sides, false to use the default
+     *         behaviour.
+     *
+     * @see #getDarkerSides()
+     *
+     * @since 1.0.7.
+     */
+    public void setDarkerSides(boolean darker) {
+<span class="fc" id="L216">        this.darkerSides = darker;</span>
+<span class="fc" id="L217">        fireChangeEvent();</span>
+<span class="fc" id="L218">    }</span>
+
+    /**
+     * Draws the plot on a Java 2D graphics device (such as the screen or a
+     * printer).  This method is called by the
+     * {@link org.jfree.chart.JFreeChart} class, you don't normally need
+     * to call it yourself.
+     *
+     * @param g2  the graphics device.
+     * @param plotArea  the area within which the plot should be drawn.
+     * @param anchor  the anchor point.
+     * @param parentState  the state from the parent plot, if there is one.
+     * @param info  collects info about the drawing
+     *              (&lt;code&gt;null&lt;/code&gt; permitted).
+     */
+    @Override
+    public void draw(Graphics2D g2, Rectangle2D plotArea, Point2D anchor,
+                     PlotState parentState, PlotRenderingInfo info) {
+
+        // adjust for insets...
+<span class="fc" id="L238">        RectangleInsets insets = getInsets();</span>
+<span class="fc" id="L239">        insets.trim(plotArea);</span>
+
+<span class="fc" id="L241">        Rectangle2D originalPlotArea = (Rectangle2D) plotArea.clone();</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">        if (info != null) {</span>
+<span class="nc" id="L243">            info.setPlotArea(plotArea);</span>
+<span class="nc" id="L244">            info.setDataArea(plotArea);</span>
+        }
+
+<span class="fc" id="L247">        drawBackground(g2, plotArea);</span>
+
+<span class="fc" id="L249">        Shape savedClip = g2.getClip();</span>
+<span class="fc" id="L250">        g2.clip(plotArea);</span>
+
+<span class="fc" id="L252">        Graphics2D savedG2 = g2;</span>
+<span class="fc" id="L253">        BufferedImage dataImage = null;</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">        if (getShadowGenerator() != null) {</span>
+<span class="nc" id="L255">            dataImage = new BufferedImage((int) plotArea.getWidth(),</span>
+                (int) plotArea.getHeight(), BufferedImage.TYPE_INT_ARGB);
+<span class="nc" id="L257">            g2 = dataImage.createGraphics();</span>
+<span class="nc" id="L258">            g2.translate(-plotArea.getX(), -plotArea.getY());</span>
+<span class="nc" id="L259">            g2.setRenderingHints(savedG2.getRenderingHints());</span>
+<span class="nc" id="L260">            originalPlotArea = (Rectangle2D) plotArea.clone();</span>
+        }
+        // adjust the plot area by the interior spacing value
+<span class="fc" id="L263">        double gapPercent = getInteriorGap();</span>
+<span class="fc" id="L264">        double labelPercent = 0.0;</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">        if (getLabelGenerator() != null) {</span>
+<span class="fc" id="L266">            labelPercent = getLabelGap() + getMaximumLabelWidth();</span>
+        }
+<span class="fc" id="L268">        double gapHorizontal = plotArea.getWidth() * (gapPercent</span>
+                + labelPercent) * 2.0;
+<span class="fc" id="L270">        double gapVertical = plotArea.getHeight() * gapPercent * 2.0;</span>
+
+        if (DEBUG_DRAW_INTERIOR) {
+            double hGap = plotArea.getWidth() * getInteriorGap();
+            double vGap = plotArea.getHeight() * getInteriorGap();
+            double igx1 = plotArea.getX() + hGap;
+            double igx2 = plotArea.getMaxX() - hGap;
+            double igy1 = plotArea.getY() + vGap;
+            double igy2 = plotArea.getMaxY() - vGap;
+            g2.setPaint(Color.lightGray);
+            g2.draw(new Rectangle2D.Double(igx1, igy1, igx2 - igx1,
+                    igy2 - igy1));
+        }
+
+<span class="fc" id="L284">        double linkX = plotArea.getX() + gapHorizontal / 2;</span>
+<span class="fc" id="L285">        double linkY = plotArea.getY() + gapVertical / 2;</span>
+<span class="fc" id="L286">        double linkW = plotArea.getWidth() - gapHorizontal;</span>
+<span class="fc" id="L287">        double linkH = plotArea.getHeight() - gapVertical;</span>
+
+        // make the link area a square if the pie chart is to be circular...
+<span class="pc bpc" id="L290" title="1 of 2 branches missed.">        if (isCircular()) { // is circular?</span>
+<span class="nc" id="L291">            double min = Math.min(linkW, linkH) / 2;</span>
+<span class="nc" id="L292">            linkX = (linkX + linkX + linkW) / 2 - min;</span>
+<span class="nc" id="L293">            linkY = (linkY + linkY + linkH) / 2 - min;</span>
+<span class="nc" id="L294">            linkW = 2 * min;</span>
+<span class="nc" id="L295">            linkH = 2 * min;</span>
+        }
+
+<span class="fc" id="L298">        PiePlotState state = initialise(g2, plotArea, this, null, info);</span>
+
+        // the link area defines the dog leg points for the linking lines to
+        // the labels
+<span class="fc" id="L302">        Rectangle2D linkAreaXX = new Rectangle2D.Double(linkX, linkY, linkW,</span>
+                linkH * (1 - this.depthFactor));
+<span class="fc" id="L304">        state.setLinkArea(linkAreaXX);</span>
+
+        if (DEBUG_DRAW_LINK_AREA) {
+            g2.setPaint(Color.blue);
+            g2.draw(linkAreaXX);
+            g2.setPaint(Color.yellow);
+            g2.draw(new Ellipse2D.Double(linkAreaXX.getX(), linkAreaXX.getY(),
+                    linkAreaXX.getWidth(), linkAreaXX.getHeight()));
+        }
+
+        // the explode area defines the max circle/ellipse for the exploded pie
+        // sections.
+        // it is defined by shrinking the linkArea by the linkMargin factor.
+<span class="fc" id="L317">        double hh = linkW * getLabelLinkMargin();</span>
+<span class="fc" id="L318">        double vv = linkH * getLabelLinkMargin();</span>
+<span class="fc" id="L319">        Rectangle2D explodeArea = new Rectangle2D.Double(linkX + hh / 2.0,</span>
+                linkY + vv / 2.0, linkW - hh, linkH - vv);
+
+<span class="fc" id="L322">        state.setExplodedPieArea(explodeArea);</span>
+
+        // the pie area defines the circle/ellipse for regular pie sections.
+        // it is defined by shrinking the explodeArea by the explodeMargin
+        // factor.
+<span class="fc" id="L327">        double maximumExplodePercent = getMaximumExplodePercent();</span>
+<span class="fc" id="L328">        double percent = maximumExplodePercent / (1.0 + maximumExplodePercent);</span>
+
+<span class="fc" id="L330">        double h1 = explodeArea.getWidth() * percent;</span>
+<span class="fc" id="L331">        double v1 = explodeArea.getHeight() * percent;</span>
+<span class="fc" id="L332">        Rectangle2D pieArea = new Rectangle2D.Double(explodeArea.getX()</span>
+                + h1 / 2.0, explodeArea.getY() + v1 / 2.0,
+                explodeArea.getWidth() - h1, explodeArea.getHeight() - v1);
+
+        // the link area defines the dog-leg point for the linking lines to
+        // the labels
+<span class="fc" id="L338">        int depth = (int) (pieArea.getHeight() * this.depthFactor);</span>
+<span class="fc" id="L339">        Rectangle2D linkArea = new Rectangle2D.Double(linkX, linkY, linkW,</span>
+                linkH - depth);
+<span class="fc" id="L341">        state.setLinkArea(linkArea);</span>
+
+<span class="fc" id="L343">        state.setPieArea(pieArea);</span>
+<span class="fc" id="L344">        state.setPieCenterX(pieArea.getCenterX());</span>
+<span class="fc" id="L345">        state.setPieCenterY(pieArea.getCenterY() - depth / 2.0);</span>
+<span class="fc" id="L346">        state.setPieWRadius(pieArea.getWidth() / 2.0);</span>
+<span class="fc" id="L347">        state.setPieHRadius((pieArea.getHeight() - depth) / 2.0);</span>
+
+        // get the data source - return if null;
+<span class="fc" id="L350">        PieDataset dataset = getDataset();</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">        if (DatasetUtilities.isEmptyOrNull(getDataset())) {</span>
+<span class="fc" id="L352">            drawNoDataMessage(g2, plotArea);</span>
+<span class="fc" id="L353">            g2.setClip(savedClip);</span>
+<span class="fc" id="L354">            drawOutline(g2, plotArea);</span>
+<span class="fc" id="L355">            return;</span>
+        }
+
+        // if too any elements
+<span class="pc bpc" id="L359" title="1 of 2 branches missed.">        if (dataset.getKeys().size() &gt; plotArea.getWidth()) {</span>
+<span class="nc" id="L360">            String text = localizationResources.getString(&quot;Too_many_elements&quot;);</span>
+<span class="nc" id="L361">            Font sfont = new Font(&quot;dialog&quot;, Font.BOLD, 10);</span>
+<span class="nc" id="L362">            g2.setFont(sfont);</span>
+<span class="nc" id="L363">            FontMetrics fm = g2.getFontMetrics(sfont);</span>
+<span class="nc" id="L364">            int stringWidth = fm.stringWidth(text);</span>
+
+<span class="nc" id="L366">            g2.drawString(text, (int) (plotArea.getX() + (plotArea.getWidth()</span>
+                    - stringWidth) / 2), (int) (plotArea.getY()
+                    + (plotArea.getHeight() / 2)));
+<span class="nc" id="L369">            return;</span>
+        }
+        // if we are drawing a perfect circle, we need to readjust the top left
+        // coordinates of the drawing area for the arcs to arrive at this
+        // effect.
+<span class="pc bpc" id="L374" title="1 of 2 branches missed.">        if (isCircular()) {</span>
+<span class="nc" id="L375">            double min = Math.min(plotArea.getWidth(),</span>
+                    plotArea.getHeight()) / 2;
+<span class="nc" id="L377">            plotArea = new Rectangle2D.Double(plotArea.getCenterX() - min,</span>
+                    plotArea.getCenterY() - min, 2 * min, 2 * min);
+        }
+        // get a list of keys...
+<span class="fc" id="L381">        List sectionKeys = dataset.getKeys();</span>
+
+<span class="pc bpc" id="L383" title="1 of 2 branches missed.">        if (sectionKeys.isEmpty()) {</span>
+<span class="nc" id="L384">            return;</span>
+        }
+
+        // establish the coordinates of the top left corner of the drawing area
+<span class="fc" id="L388">        double arcX = pieArea.getX();</span>
+<span class="fc" id="L389">        double arcY = pieArea.getY();</span>
+
+        //g2.clip(clipArea);
+<span class="fc" id="L392">        Composite originalComposite = g2.getComposite();</span>
+<span class="fc" id="L393">        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,</span>
+                getForegroundAlpha()));
+
+<span class="fc" id="L396">        double totalValue = DatasetUtilities.calculatePieDatasetTotal(dataset);</span>
+<span class="fc" id="L397">        double runningTotal = 0;</span>
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">        if (depth &lt; 0) {</span>
+<span class="nc" id="L399">            return;  // if depth is negative don't draw anything</span>
+        }
+
+<span class="fc" id="L402">        ArrayList arcList = new ArrayList();</span>
+        Arc2D.Double arc;
+        Paint paint;
+        Paint outlinePaint;
+        Stroke outlineStroke;
+
+<span class="fc" id="L408">        Iterator iterator = sectionKeys.iterator();</span>
+<span class="fc bfc" id="L409" title="All 2 branches covered.">        while (iterator.hasNext()) {</span>
+
+<span class="fc" id="L411">            Comparable currentKey = (Comparable) iterator.next();</span>
+<span class="fc" id="L412">            Number dataValue = dataset.getValue(currentKey);</span>
+<span class="fc bfc" id="L413" title="All 2 branches covered.">            if (dataValue == null) {</span>
+<span class="fc" id="L414">                arcList.add(null);</span>
+<span class="fc" id="L415">                continue;</span>
+            }
+<span class="fc" id="L417">            double value = dataValue.doubleValue();</span>
+<span class="pc bpc" id="L418" title="1 of 2 branches missed.">            if (value &lt;= 0) {</span>
+<span class="nc" id="L419">                arcList.add(null);</span>
+<span class="nc" id="L420">                continue;</span>
+            }
+<span class="fc" id="L422">            double startAngle = getStartAngle();</span>
+<span class="fc" id="L423">            double direction = getDirection().getFactor();</span>
+<span class="fc" id="L424">            double angle1 = startAngle + (direction * (runningTotal * 360))</span>
+                    / totalValue;
+<span class="fc" id="L426">            double angle2 = startAngle + (direction * (runningTotal + value)</span>
+                    * 360) / totalValue;
+<span class="pc bpc" id="L428" title="1 of 2 branches missed.">            if (Math.abs(angle2 - angle1) &gt; getMinimumArcAngleToDraw()) {</span>
+<span class="fc" id="L429">                arcList.add(new Arc2D.Double(arcX, arcY + depth,</span>
+                        pieArea.getWidth(), pieArea.getHeight() - depth,
+                        angle1, angle2 - angle1, Arc2D.PIE));
+            }
+            else {
+<span class="nc" id="L434">                arcList.add(null);</span>
+            }
+<span class="fc" id="L436">            runningTotal += value;</span>
+<span class="fc" id="L437">        }</span>
+
+<span class="fc" id="L439">        Shape oldClip = g2.getClip();</span>
+
+<span class="fc" id="L441">        Ellipse2D top = new Ellipse2D.Double(pieArea.getX(), pieArea.getY(),</span>
+                pieArea.getWidth(), pieArea.getHeight() - depth);
+
+<span class="fc" id="L444">        Ellipse2D bottom = new Ellipse2D.Double(pieArea.getX(), pieArea.getY()</span>
+                + depth, pieArea.getWidth(), pieArea.getHeight() - depth);
+
+<span class="fc" id="L447">        Rectangle2D lower = new Rectangle2D.Double(top.getX(),</span>
+                top.getCenterY(), pieArea.getWidth(), bottom.getMaxY()
+                - top.getCenterY());
+
+<span class="fc" id="L451">        Rectangle2D upper = new Rectangle2D.Double(pieArea.getX(), top.getY(),</span>
+                pieArea.getWidth(), bottom.getCenterY() - top.getY());
+
+<span class="fc" id="L454">        Area a = new Area(top);</span>
+<span class="fc" id="L455">        a.add(new Area(lower));</span>
+<span class="fc" id="L456">        Area b = new Area(bottom);</span>
+<span class="fc" id="L457">        b.add(new Area(upper));</span>
+<span class="fc" id="L458">        Area pie = new Area(a);</span>
+<span class="fc" id="L459">        pie.intersect(b);</span>
+
+<span class="fc" id="L461">        Area front = new Area(pie);</span>
+<span class="fc" id="L462">        front.subtract(new Area(top));</span>
+
+<span class="fc" id="L464">        Area back = new Area(pie);</span>
+<span class="fc" id="L465">        back.subtract(new Area(bottom));</span>
+
+        // draw the bottom circle
+        int[] xs;
+        int[] ys;
+
+<span class="fc" id="L471">        int categoryCount = arcList.size();</span>
+<span class="fc bfc" id="L472" title="All 2 branches covered.">        for (int categoryIndex = 0; categoryIndex &lt; categoryCount;</span>
+<span class="fc" id="L473">                 categoryIndex++) {</span>
+<span class="fc" id="L474">            arc = (Arc2D.Double) arcList.get(categoryIndex);</span>
+<span class="fc bfc" id="L475" title="All 2 branches covered.">            if (arc == null) {</span>
+<span class="fc" id="L476">                continue;</span>
+            }
+<span class="fc" id="L478">            Comparable key = getSectionKey(categoryIndex);</span>
+<span class="fc" id="L479">            paint = lookupSectionPaint(key);</span>
+<span class="fc" id="L480">            outlinePaint = lookupSectionOutlinePaint(key);</span>
+<span class="fc" id="L481">            outlineStroke = lookupSectionOutlineStroke(key);</span>
+<span class="fc" id="L482">            g2.setPaint(paint);</span>
+<span class="fc" id="L483">            g2.fill(arc);</span>
+<span class="fc" id="L484">            g2.setPaint(outlinePaint);</span>
+<span class="fc" id="L485">            g2.setStroke(outlineStroke);</span>
+<span class="fc" id="L486">            g2.draw(arc);</span>
+<span class="fc" id="L487">            g2.setPaint(paint);</span>
+
+<span class="fc" id="L489">            Point2D p1 = arc.getStartPoint();</span>
+
+            // draw the height
+<span class="fc" id="L492">            xs = new int[] {(int) arc.getCenterX(), (int) arc.getCenterX(),</span>
+                    (int) p1.getX(), (int) p1.getX()};
+<span class="fc" id="L494">            ys = new int[] {(int) arc.getCenterY(), (int) arc.getCenterY()</span>
+                    - depth, (int) p1.getY() - depth, (int) p1.getY()};
+<span class="fc" id="L496">            Polygon polygon = new Polygon(xs, ys, 4);</span>
+<span class="fc" id="L497">            g2.setPaint(java.awt.Color.lightGray);</span>
+<span class="fc" id="L498">            g2.fill(polygon);</span>
+<span class="fc" id="L499">            g2.setPaint(outlinePaint);</span>
+<span class="fc" id="L500">            g2.setStroke(outlineStroke);</span>
+<span class="fc" id="L501">            g2.draw(polygon);</span>
+<span class="fc" id="L502">            g2.setPaint(paint);</span>
+
+        }
+
+<span class="fc" id="L506">        g2.setPaint(Color.gray);</span>
+<span class="fc" id="L507">        g2.fill(back);</span>
+<span class="fc" id="L508">        g2.fill(front);</span>
+
+        // cycle through once drawing only the sides at the back...
+<span class="fc" id="L511">        int cat = 0;</span>
+<span class="fc" id="L512">        iterator = arcList.iterator();</span>
+<span class="fc bfc" id="L513" title="All 2 branches covered.">        while (iterator.hasNext()) {</span>
+<span class="fc" id="L514">            Arc2D segment = (Arc2D) iterator.next();</span>
+<span class="fc bfc" id="L515" title="All 2 branches covered.">            if (segment != null) {</span>
+<span class="fc" id="L516">                Comparable key = getSectionKey(cat);</span>
+<span class="fc" id="L517">                paint = lookupSectionPaint(key);</span>
+<span class="fc" id="L518">                outlinePaint = lookupSectionOutlinePaint(key);</span>
+<span class="fc" id="L519">                outlineStroke = lookupSectionOutlineStroke(key);</span>
+<span class="fc" id="L520">                drawSide(g2, pieArea, segment, front, back, paint,</span>
+                        outlinePaint, outlineStroke, false, true);
+            }
+<span class="fc" id="L523">            cat++;</span>
+<span class="fc" id="L524">        }</span>
+
+        // cycle through again drawing only the sides at the front...
+<span class="fc" id="L527">        cat = 0;</span>
+<span class="fc" id="L528">        iterator = arcList.iterator();</span>
+<span class="fc bfc" id="L529" title="All 2 branches covered.">        while (iterator.hasNext()) {</span>
+<span class="fc" id="L530">            Arc2D segment = (Arc2D) iterator.next();</span>
+<span class="fc bfc" id="L531" title="All 2 branches covered.">            if (segment != null) {</span>
+<span class="fc" id="L532">                Comparable key = getSectionKey(cat);</span>
+<span class="fc" id="L533">                paint = lookupSectionPaint(key);</span>
+<span class="fc" id="L534">                outlinePaint = lookupSectionOutlinePaint(key);</span>
+<span class="fc" id="L535">                outlineStroke = lookupSectionOutlineStroke(key);</span>
+<span class="fc" id="L536">                drawSide(g2, pieArea, segment, front, back, paint,</span>
+                        outlinePaint, outlineStroke, true, false);
+            }
+<span class="fc" id="L539">            cat++;</span>
+<span class="fc" id="L540">        }</span>
+
+<span class="fc" id="L542">        g2.setClip(oldClip);</span>
+
+        // draw the sections at the top of the pie (and set up tooltips)...
+        Arc2D upperArc;
+<span class="fc bfc" id="L546" title="All 2 branches covered.">        for (int sectionIndex = 0; sectionIndex &lt; categoryCount;</span>
+<span class="fc" id="L547">                 sectionIndex++) {</span>
+<span class="fc" id="L548">            arc = (Arc2D.Double) arcList.get(sectionIndex);</span>
+<span class="fc bfc" id="L549" title="All 2 branches covered.">            if (arc == null) {</span>
+<span class="fc" id="L550">                continue;</span>
+            }
+<span class="fc" id="L552">            upperArc = new Arc2D.Double(arcX, arcY, pieArea.getWidth(),</span>
+                    pieArea.getHeight() - depth, arc.getAngleStart(),
+                    arc.getAngleExtent(), Arc2D.PIE);
+
+<span class="fc" id="L556">            Comparable currentKey = (Comparable) sectionKeys.get(sectionIndex);</span>
+<span class="fc" id="L557">            paint = lookupSectionPaint(currentKey, true);</span>
+<span class="fc" id="L558">            outlinePaint = lookupSectionOutlinePaint(currentKey);</span>
+<span class="fc" id="L559">            outlineStroke = lookupSectionOutlineStroke(currentKey);</span>
+<span class="fc" id="L560">            g2.setPaint(paint);</span>
+<span class="fc" id="L561">            g2.fill(upperArc);</span>
+<span class="fc" id="L562">            g2.setStroke(outlineStroke);</span>
+<span class="fc" id="L563">            g2.setPaint(outlinePaint);</span>
+<span class="fc" id="L564">            g2.draw(upperArc);</span>
+
+           // add a tooltip for the section...
+<span class="pc bpc" id="L567" title="1 of 2 branches missed.">            if (info != null) {</span>
+<span class="nc" id="L568">                EntityCollection entities</span>
+                        = info.getOwner().getEntityCollection();
+<span class="nc bnc" id="L570" title="All 2 branches missed.">                if (entities != null) {</span>
+<span class="nc" id="L571">                    String tip = null;</span>
+<span class="nc" id="L572">                    PieToolTipGenerator tipster = getToolTipGenerator();</span>
+<span class="nc bnc" id="L573" title="All 2 branches missed.">                    if (tipster != null) {</span>
+                        // @mgs: using the method's return value was missing
+<span class="nc" id="L575">                        tip = tipster.generateToolTip(dataset, currentKey);</span>
+                    }
+<span class="nc" id="L577">                    String url = null;</span>
+<span class="nc bnc" id="L578" title="All 2 branches missed.">                    if (getURLGenerator() != null) {</span>
+<span class="nc" id="L579">                        url = getURLGenerator().generateURL(dataset, currentKey,</span>
+                                getPieIndex());
+                    }
+<span class="nc" id="L582">                    PieSectionEntity entity = new PieSectionEntity(</span>
+                            upperArc, dataset, getPieIndex(), sectionIndex,
+                            currentKey, tip, url);
+<span class="nc" id="L585">                    entities.add(entity);</span>
+                }
+            }
+        }
+
+<span class="fc" id="L590">        List keys = dataset.getKeys();</span>
+<span class="fc" id="L591">        Rectangle2D adjustedPlotArea = new Rectangle2D.Double(</span>
+                originalPlotArea.getX(), originalPlotArea.getY(),
+                originalPlotArea.getWidth(), originalPlotArea.getHeight()
+                - depth);
+<span class="pc bpc" id="L595" title="1 of 2 branches missed.">        if (getSimpleLabels()) {</span>
+<span class="nc" id="L596">            drawSimpleLabels(g2, keys, totalValue, adjustedPlotArea,</span>
+                    linkArea, state);
+        }
+        else {
+<span class="fc" id="L600">            drawLabels(g2, keys, totalValue, adjustedPlotArea, linkArea,</span>
+                    state);
+        }
+
+<span class="pc bpc" id="L604" title="1 of 2 branches missed.">        if (getShadowGenerator() != null) {</span>
+<span class="nc" id="L605">            BufferedImage shadowImage</span>
+                    = getShadowGenerator().createDropShadow(dataImage);
+<span class="nc" id="L607">            g2 = savedG2;</span>
+<span class="nc" id="L608">            g2.drawImage(shadowImage, (int) plotArea.getX()</span>
+                    + getShadowGenerator().calculateOffsetX(),
+                    (int) plotArea.getY()
+                    + getShadowGenerator().calculateOffsetY(), null);
+<span class="nc" id="L612">            g2.drawImage(dataImage, (int) plotArea.getX(),</span>
+                    (int) plotArea.getY(), null);
+        }
+
+<span class="fc" id="L616">        g2.setClip(savedClip);</span>
+<span class="fc" id="L617">        g2.setComposite(originalComposite);</span>
+<span class="fc" id="L618">        drawOutline(g2, originalPlotArea);</span>
+
+<span class="fc" id="L620">    }</span>
+
+    /**
+     * Draws the side of a pie section.
+     *
+     * @param g2  the graphics device.
+     * @param plotArea  the plot area.
+     * @param arc  the arc.
+     * @param front  the front of the pie.
+     * @param back  the back of the pie.
+     * @param paint  the color.
+     * @param outlinePaint  the outline paint.
+     * @param outlineStroke  the outline stroke.
+     * @param drawFront  draw the front?
+     * @param drawBack  draw the back?
+     */
+    protected void drawSide(Graphics2D g2,
+                            Rectangle2D plotArea,
+                            Arc2D arc,
+                            Area front,
+                            Area back,
+                            Paint paint,
+                            Paint outlinePaint,
+                            Stroke outlineStroke,
+                            boolean drawFront,
+                            boolean drawBack) {
+
+<span class="pc bpc" id="L647" title="1 of 2 branches missed.">        if (getDarkerSides()) {</span>
+<span class="nc" id="L648">             paint = PaintAlpha.darker(paint);</span>
+        }
+
+<span class="fc" id="L651">        double start = arc.getAngleStart();</span>
+<span class="fc" id="L652">        double extent = arc.getAngleExtent();</span>
+<span class="fc" id="L653">        double end = start + extent;</span>
+
+<span class="fc" id="L655">        g2.setStroke(outlineStroke);</span>
+
+        // for CLOCKWISE charts, the extent will be negative...
+<span class="pc bpc" id="L658" title="1 of 2 branches missed.">        if (extent &lt; 0.0) {</span>
+
+<span class="fc bfc" id="L660" title="All 2 branches covered.">            if (isAngleAtFront(start)) {  // start at front</span>
+
+<span class="pc bpc" id="L662" title="1 of 2 branches missed.">                if (!isAngleAtBack(end)) {</span>
+
+<span class="nc bnc" id="L664" title="All 2 branches missed.">                    if (extent &gt; -180.0) {  // the segment is entirely at the</span>
+                                            // front of the chart
+<span class="nc bnc" id="L666" title="All 2 branches missed.">                        if (drawFront) {</span>
+<span class="nc" id="L667">                            Area side = new Area(new Rectangle2D.Double(</span>
+                                    arc.getEndPoint().getX(), plotArea.getY(),
+                                    arc.getStartPoint().getX()
+                                    - arc.getEndPoint().getX(),
+                                    plotArea.getHeight()));
+<span class="nc" id="L672">                            side.intersect(front);</span>
+<span class="nc" id="L673">                            g2.setPaint(paint);</span>
+<span class="nc" id="L674">                            g2.fill(side);</span>
+<span class="nc" id="L675">                            g2.setPaint(outlinePaint);</span>
+<span class="nc" id="L676">                            g2.draw(side);</span>
+<span class="nc" id="L677">                        }</span>
+                    }
+                    else {  // the segment starts at the front, and wraps all
+                            // the way around
+                            // the back and finishes at the front again
+<span class="nc" id="L682">                        Area side1 = new Area(new Rectangle2D.Double(</span>
+                                plotArea.getX(), plotArea.getY(),
+                                arc.getStartPoint().getX() - plotArea.getX(),
+                                plotArea.getHeight()));
+<span class="nc" id="L686">                        side1.intersect(front);</span>
+
+<span class="nc" id="L688">                        Area side2 = new Area(new Rectangle2D.Double(</span>
+                                arc.getEndPoint().getX(), plotArea.getY(),
+                                plotArea.getMaxX() - arc.getEndPoint().getX(),
+                                plotArea.getHeight()));
+
+<span class="nc" id="L693">                        side2.intersect(front);</span>
+<span class="nc" id="L694">                        g2.setPaint(paint);</span>
+<span class="nc bnc" id="L695" title="All 2 branches missed.">                        if (drawFront) {</span>
+<span class="nc" id="L696">                            g2.fill(side1);</span>
+<span class="nc" id="L697">                            g2.fill(side2);</span>
+                        }
+
+<span class="nc bnc" id="L700" title="All 2 branches missed.">                        if (drawBack) {</span>
+<span class="nc" id="L701">                            g2.fill(back);</span>
+                        }
+
+<span class="nc" id="L704">                        g2.setPaint(outlinePaint);</span>
+<span class="nc bnc" id="L705" title="All 2 branches missed.">                        if (drawFront) {</span>
+<span class="nc" id="L706">                            g2.draw(side1);</span>
+<span class="nc" id="L707">                            g2.draw(side2);</span>
+                        }
+
+<span class="nc bnc" id="L710" title="All 2 branches missed.">                        if (drawBack) {</span>
+<span class="nc" id="L711">                            g2.draw(back);</span>
+                        }
+
+<span class="nc" id="L714">                    }</span>
+                }
+                else {  // starts at the front, finishes at the back (going
+                        // around the left side)
+
+<span class="fc bfc" id="L719" title="All 2 branches covered.">                    if (drawBack) {</span>
+<span class="fc" id="L720">                        Area side2 = new Area(new Rectangle2D.Double(</span>
+                                plotArea.getX(), plotArea.getY(),
+                                arc.getEndPoint().getX() - plotArea.getX(),
+                                plotArea.getHeight()));
+<span class="fc" id="L724">                        side2.intersect(back);</span>
+<span class="fc" id="L725">                        g2.setPaint(paint);</span>
+<span class="fc" id="L726">                        g2.fill(side2);</span>
+<span class="fc" id="L727">                        g2.setPaint(outlinePaint);</span>
+<span class="fc" id="L728">                        g2.draw(side2);</span>
+                    }
+
+<span class="fc bfc" id="L731" title="All 2 branches covered.">                    if (drawFront) {</span>
+<span class="fc" id="L732">                        Area side1 = new Area(new Rectangle2D.Double(</span>
+                                plotArea.getX(), plotArea.getY(),
+                                arc.getStartPoint().getX() - plotArea.getX(),
+                                plotArea.getHeight()));
+<span class="fc" id="L736">                        side1.intersect(front);</span>
+<span class="fc" id="L737">                        g2.setPaint(paint);</span>
+<span class="fc" id="L738">                        g2.fill(side1);</span>
+<span class="fc" id="L739">                        g2.setPaint(outlinePaint);</span>
+<span class="fc" id="L740">                        g2.draw(side1);</span>
+<span class="fc" id="L741">                    }</span>
+                }
+            }
+            else {  // the segment starts at the back (still extending
+                    // CLOCKWISE)
+
+<span class="pc bpc" id="L747" title="1 of 2 branches missed.">                if (!isAngleAtFront(end)) {</span>
+<span class="nc bnc" id="L748" title="All 2 branches missed.">                    if (extent &gt; -180.0) {  // whole segment stays at the back</span>
+<span class="nc bnc" id="L749" title="All 2 branches missed.">                        if (drawBack) {</span>
+<span class="nc" id="L750">                            Area side = new Area(new Rectangle2D.Double(</span>
+                                    arc.getStartPoint().getX(), plotArea.getY(),
+                                    arc.getEndPoint().getX()
+                                    - arc.getStartPoint().getX(),
+                                    plotArea.getHeight()));
+<span class="nc" id="L755">                            side.intersect(back);</span>
+<span class="nc" id="L756">                            g2.setPaint(paint);</span>
+<span class="nc" id="L757">                            g2.fill(side);</span>
+<span class="nc" id="L758">                            g2.setPaint(outlinePaint);</span>
+<span class="nc" id="L759">                            g2.draw(side);</span>
+<span class="nc" id="L760">                        }</span>
+                    }
+                    else {  // starts at the back, wraps around front, and
+                            // finishes at back again
+<span class="nc" id="L764">                        Area side1 = new Area(new Rectangle2D.Double(</span>
+                                arc.getStartPoint().getX(), plotArea.getY(),
+                                plotArea.getMaxX() - arc.getStartPoint().getX(),
+                                plotArea.getHeight()));
+<span class="nc" id="L768">                        side1.intersect(back);</span>
+
+<span class="nc" id="L770">                        Area side2 = new Area(new Rectangle2D.Double(</span>
+                                plotArea.getX(), plotArea.getY(),
+                                arc.getEndPoint().getX() - plotArea.getX(),
+                                plotArea.getHeight()));
+
+<span class="nc" id="L775">                        side2.intersect(back);</span>
+
+<span class="nc" id="L777">                        g2.setPaint(paint);</span>
+<span class="nc bnc" id="L778" title="All 2 branches missed.">                        if (drawBack) {</span>
+<span class="nc" id="L779">                            g2.fill(side1);</span>
+<span class="nc" id="L780">                            g2.fill(side2);</span>
+                        }
+
+<span class="nc bnc" id="L783" title="All 2 branches missed.">                        if (drawFront) {</span>
+<span class="nc" id="L784">                            g2.fill(front);</span>
+                        }
+
+<span class="nc" id="L787">                        g2.setPaint(outlinePaint);</span>
+<span class="nc bnc" id="L788" title="All 2 branches missed.">                        if (drawBack) {</span>
+<span class="nc" id="L789">                            g2.draw(side1);</span>
+<span class="nc" id="L790">                            g2.draw(side2);</span>
+                        }
+
+<span class="nc bnc" id="L793" title="All 2 branches missed.">                        if (drawFront) {</span>
+<span class="nc" id="L794">                            g2.draw(front);</span>
+                        }
+
+<span class="nc" id="L797">                    }</span>
+                }
+                else {  // starts at back, finishes at front (CLOCKWISE)
+
+<span class="fc bfc" id="L801" title="All 2 branches covered.">                    if (drawBack) {</span>
+<span class="fc" id="L802">                        Area side1 = new Area(new Rectangle2D.Double(</span>
+                                arc.getStartPoint().getX(), plotArea.getY(),
+                                plotArea.getMaxX() - arc.getStartPoint().getX(),
+                                plotArea.getHeight()));
+<span class="fc" id="L806">                        side1.intersect(back);</span>
+<span class="fc" id="L807">                        g2.setPaint(paint);</span>
+<span class="fc" id="L808">                        g2.fill(side1);</span>
+<span class="fc" id="L809">                        g2.setPaint(outlinePaint);</span>
+<span class="fc" id="L810">                        g2.draw(side1);</span>
+                    }
+
+<span class="fc bfc" id="L813" title="All 2 branches covered.">                    if (drawFront) {</span>
+<span class="fc" id="L814">                        Area side2 = new Area(new Rectangle2D.Double(</span>
+                                arc.getEndPoint().getX(), plotArea.getY(),
+                                plotArea.getMaxX() - arc.getEndPoint().getX(),
+                                plotArea.getHeight()));
+<span class="fc" id="L818">                        side2.intersect(front);</span>
+<span class="fc" id="L819">                        g2.setPaint(paint);</span>
+<span class="fc" id="L820">                        g2.fill(side2);</span>
+<span class="fc" id="L821">                        g2.setPaint(outlinePaint);</span>
+<span class="fc" id="L822">                        g2.draw(side2);</span>
+<span class="fc" id="L823">                    }</span>
+
+                }
+            }
+        }
+<span class="nc bnc" id="L828" title="All 2 branches missed.">        else if (extent &gt; 0.0) {  // the pie sections are arranged ANTICLOCKWISE</span>
+
+<span class="nc bnc" id="L830" title="All 2 branches missed.">            if (isAngleAtFront(start)) {  // segment starts at the front</span>
+
+<span class="nc bnc" id="L832" title="All 2 branches missed.">                if (!isAngleAtBack(end)) {  // and finishes at the front</span>
+
+<span class="nc bnc" id="L834" title="All 2 branches missed.">                    if (extent &lt; 180.0) {  // segment only occupies the front</span>
+<span class="nc bnc" id="L835" title="All 2 branches missed.">                        if (drawFront) {</span>
+<span class="nc" id="L836">                            Area side = new Area(new Rectangle2D.Double(</span>
+                                    arc.getStartPoint().getX(), plotArea.getY(),
+                                    arc.getEndPoint().getX()
+                                    - arc.getStartPoint().getX(),
+                                    plotArea.getHeight()));
+<span class="nc" id="L841">                            side.intersect(front);</span>
+<span class="nc" id="L842">                            g2.setPaint(paint);</span>
+<span class="nc" id="L843">                            g2.fill(side);</span>
+<span class="nc" id="L844">                            g2.setPaint(outlinePaint);</span>
+<span class="nc" id="L845">                            g2.draw(side);</span>
+<span class="nc" id="L846">                        }</span>
+                    }
+                    else {  // segments wraps right around the back...
+<span class="nc" id="L849">                        Area side1 = new Area(new Rectangle2D.Double(</span>
+                                arc.getStartPoint().getX(), plotArea.getY(),
+                                plotArea.getMaxX() - arc.getStartPoint().getX(),
+                                plotArea.getHeight()));
+<span class="nc" id="L853">                        side1.intersect(front);</span>
+
+<span class="nc" id="L855">                        Area side2 = new Area(new Rectangle2D.Double(</span>
+                                plotArea.getX(), plotArea.getY(),
+                                arc.getEndPoint().getX() - plotArea.getX(),
+                                plotArea.getHeight()));
+<span class="nc" id="L859">                        side2.intersect(front);</span>
+
+<span class="nc" id="L861">                        g2.setPaint(paint);</span>
+<span class="nc bnc" id="L862" title="All 2 branches missed.">                        if (drawFront) {</span>
+<span class="nc" id="L863">                            g2.fill(side1);</span>
+<span class="nc" id="L864">                            g2.fill(side2);</span>
+                        }
+
+<span class="nc bnc" id="L867" title="All 2 branches missed.">                        if (drawBack) {</span>
+<span class="nc" id="L868">                            g2.fill(back);</span>
+                        }
+
+<span class="nc" id="L871">                        g2.setPaint(outlinePaint);</span>
+<span class="nc bnc" id="L872" title="All 2 branches missed.">                        if (drawFront) {</span>
+<span class="nc" id="L873">                            g2.draw(side1);</span>
+<span class="nc" id="L874">                            g2.draw(side2);</span>
+                        }
+
+<span class="nc bnc" id="L877" title="All 2 branches missed.">                        if (drawBack) {</span>
+<span class="nc" id="L878">                            g2.draw(back);</span>
+                        }
+
+<span class="nc" id="L881">                    }</span>
+                }
+                else {  // segments starts at front and finishes at back...
+<span class="nc bnc" id="L884" title="All 2 branches missed.">                    if (drawBack) {</span>
+<span class="nc" id="L885">                        Area side2 = new Area(new Rectangle2D.Double(</span>
+                                arc.getEndPoint().getX(), plotArea.getY(),
+                                plotArea.getMaxX() - arc.getEndPoint().getX(),
+                                plotArea.getHeight()));
+<span class="nc" id="L889">                        side2.intersect(back);</span>
+<span class="nc" id="L890">                        g2.setPaint(paint);</span>
+<span class="nc" id="L891">                        g2.fill(side2);</span>
+<span class="nc" id="L892">                        g2.setPaint(outlinePaint);</span>
+<span class="nc" id="L893">                        g2.draw(side2);</span>
+                    }
+
+<span class="nc bnc" id="L896" title="All 2 branches missed.">                    if (drawFront) {</span>
+<span class="nc" id="L897">                        Area side1 = new Area(new Rectangle2D.Double(</span>
+                                arc.getStartPoint().getX(), plotArea.getY(),
+                                plotArea.getMaxX() - arc.getStartPoint().getX(),
+                                plotArea.getHeight()));
+<span class="nc" id="L901">                        side1.intersect(front);</span>
+<span class="nc" id="L902">                        g2.setPaint(paint);</span>
+<span class="nc" id="L903">                        g2.fill(side1);</span>
+<span class="nc" id="L904">                        g2.setPaint(outlinePaint);</span>
+<span class="nc" id="L905">                        g2.draw(side1);</span>
+<span class="nc" id="L906">                    }</span>
+                }
+            }
+            else {  // segment starts at back
+
+<span class="nc bnc" id="L911" title="All 2 branches missed.">                if (!isAngleAtFront(end)) {</span>
+<span class="nc bnc" id="L912" title="All 2 branches missed.">                    if (extent &lt; 180.0) {  // and finishes at back</span>
+<span class="nc bnc" id="L913" title="All 2 branches missed.">                        if (drawBack) {</span>
+<span class="nc" id="L914">                            Area side = new Area(new Rectangle2D.Double(</span>
+                                    arc.getEndPoint().getX(), plotArea.getY(),
+                                    arc.getStartPoint().getX()
+                                    - arc.getEndPoint().getX(),
+                                    plotArea.getHeight()));
+<span class="nc" id="L919">                            side.intersect(back);</span>
+<span class="nc" id="L920">                            g2.setPaint(paint);</span>
+<span class="nc" id="L921">                            g2.fill(side);</span>
+<span class="nc" id="L922">                            g2.setPaint(outlinePaint);</span>
+<span class="nc" id="L923">                            g2.draw(side);</span>
+<span class="nc" id="L924">                        }</span>
+                    }
+                    else {  // starts at back and wraps right around to the
+                            // back again
+<span class="nc" id="L928">                        Area side1 = new Area(new Rectangle2D.Double(</span>
+                                arc.getStartPoint().getX(), plotArea.getY(),
+                                plotArea.getX() - arc.getStartPoint().getX(),
+                                plotArea.getHeight()));
+<span class="nc" id="L932">                        side1.intersect(back);</span>
+
+<span class="nc" id="L934">                        Area side2 = new Area(new Rectangle2D.Double(</span>
+                                arc.getEndPoint().getX(), plotArea.getY(),
+                                plotArea.getMaxX() - arc.getEndPoint().getX(),
+                                plotArea.getHeight()));
+<span class="nc" id="L938">                        side2.intersect(back);</span>
+
+<span class="nc" id="L940">                        g2.setPaint(paint);</span>
+<span class="nc bnc" id="L941" title="All 2 branches missed.">                        if (drawBack) {</span>
+<span class="nc" id="L942">                            g2.fill(side1);</span>
+<span class="nc" id="L943">                            g2.fill(side2);</span>
+                        }
+
+<span class="nc bnc" id="L946" title="All 2 branches missed.">                        if (drawFront) {</span>
+<span class="nc" id="L947">                            g2.fill(front);</span>
+                        }
+
+<span class="nc" id="L950">                        g2.setPaint(outlinePaint);</span>
+<span class="nc bnc" id="L951" title="All 2 branches missed.">                        if (drawBack) {</span>
+<span class="nc" id="L952">                            g2.draw(side1);</span>
+<span class="nc" id="L953">                            g2.draw(side2);</span>
+                        }
+
+<span class="nc bnc" id="L956" title="All 2 branches missed.">                        if (drawFront) {</span>
+<span class="nc" id="L957">                            g2.draw(front);</span>
+                        }
+
+<span class="nc" id="L960">                    }</span>
+                }
+                else {  // starts at the back and finishes at the front
+                        // (wrapping the left side)
+<span class="nc bnc" id="L964" title="All 2 branches missed.">                    if (drawBack) {</span>
+<span class="nc" id="L965">                        Area side1 = new Area(new Rectangle2D.Double(</span>
+                                plotArea.getX(), plotArea.getY(),
+                                arc.getStartPoint().getX() - plotArea.getX(),
+                                plotArea.getHeight()));
+<span class="nc" id="L969">                        side1.intersect(back);</span>
+<span class="nc" id="L970">                        g2.setPaint(paint);</span>
+<span class="nc" id="L971">                        g2.fill(side1);</span>
+<span class="nc" id="L972">                        g2.setPaint(outlinePaint);</span>
+<span class="nc" id="L973">                        g2.draw(side1);</span>
+                    }
+
+<span class="nc bnc" id="L976" title="All 2 branches missed.">                    if (drawFront) {</span>
+<span class="nc" id="L977">                        Area side2 = new Area(new Rectangle2D.Double(</span>
+                                plotArea.getX(), plotArea.getY(),
+                                arc.getEndPoint().getX() - plotArea.getX(),
+                                plotArea.getHeight()));
+<span class="nc" id="L981">                        side2.intersect(front);</span>
+<span class="nc" id="L982">                        g2.setPaint(paint);</span>
+<span class="nc" id="L983">                        g2.fill(side2);</span>
+<span class="nc" id="L984">                        g2.setPaint(outlinePaint);</span>
+<span class="nc" id="L985">                        g2.draw(side2);</span>
+                    }
+                }
+            }
+
+        }
+
+<span class="fc" id="L992">    }</span>
+
+    /**
+     * Returns a short string describing the type of plot.
+     *
+     * @return &lt;i&gt;Pie 3D Plot&lt;/i&gt;.
+     */
+    @Override
+    public String getPlotType() {
+<span class="nc" id="L1001">        return localizationResources.getString(&quot;Pie_3D_Plot&quot;);</span>
+    }
+
+    /**
+     * A utility method that returns true if the angle represents a point at
+     * the front of the 3D pie chart.  0 - 180 degrees is the back, 180 - 360
+     * is the front.
+     *
+     * @param angle  the angle.
+     *
+     * @return A boolean.
+     */
+    private boolean isAngleAtFront(double angle) {
+<span class="fc bfc" id="L1014" title="All 2 branches covered.">        return (Math.sin(Math.toRadians(angle)) &lt; 0.0);</span>
+    }
+
+    /**
+     * A utility method that returns true if the angle represents a point at
+     * the back of the 3D pie chart.  0 - 180 degrees is the back, 180 - 360
+     * is the front.
+     *
+     * @param angle  the angle.
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; if the angle is at the back of the pie.
+     */
+    private boolean isAngleAtBack(double angle) {
+<span class="pc bpc" id="L1027" title="1 of 2 branches missed.">        return (Math.sin(Math.toRadians(angle)) &gt; 0.0);</span>
+    }
+
+    /**
+     * Tests this plot for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L1039" title="All 2 branches covered.">        if (obj == this) {</span>
+<span class="fc" id="L1040">            return true;</span>
+        }
+<span class="pc bpc" id="L1042" title="1 of 2 branches missed.">        if (!(obj instanceof PiePlot3D)) {</span>
+<span class="nc" id="L1043">            return false;</span>
+        }
+<span class="fc" id="L1045">        PiePlot3D that = (PiePlot3D) obj;</span>
+<span class="fc bfc" id="L1046" title="All 2 branches covered.">        if (this.depthFactor != that.depthFactor) {</span>
+<span class="fc" id="L1047">            return false;</span>
+        }
+<span class="fc bfc" id="L1049" title="All 2 branches covered.">        if (this.darkerSides != that.darkerSides) {</span>
+<span class="fc" id="L1050">            return false;</span>
+        }
+<span class="fc" id="L1052">        return super.equals(obj);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

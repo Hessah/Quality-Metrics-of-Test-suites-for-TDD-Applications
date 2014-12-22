@@ -1,0 +1,780 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>DialValueIndicator.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.plot.dial</a> &gt; <span class="el_source">DialValueIndicator.java</span></div><h1>DialValueIndicator.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * -----------------------
+ * DialValueIndicator.java
+ * -----------------------
+ * (C) Copyright 2006-2013, by Object Refinery Limited.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   -;
+ *
+ * Changes
+ * -------
+ * 03-Nov-2006 : Version 1 (DG);
+ * 17-Oct-2007 : Updated equals() (DG);
+ * 24-Oct-2007 : Added default constructor and missing event notification (DG);
+ * 09-Jun-2009 : Improved indicator resizing, fixes bug 2802014 (DG);
+ * 03-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.chart.plot.dial;
+
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.geom.Arc2D;
+import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
+
+import org.jfree.chart.HashUtilities;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.io.SerialUtilities;
+import org.jfree.text.TextUtilities;
+import org.jfree.ui.RectangleAnchor;
+import org.jfree.ui.RectangleInsets;
+import org.jfree.ui.Size2D;
+import org.jfree.ui.TextAnchor;
+import org.jfree.util.ObjectUtilities;
+import org.jfree.util.PaintUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A value indicator for a {@link DialPlot}.
+ *
+ * @since 1.0.7
+ */
+public class DialValueIndicator extends AbstractDialLayer implements DialLayer,
+        Cloneable, PublicCloneable, Serializable {
+
+    /** For serialization. */
+    static final long serialVersionUID = 803094354130942585L;
+
+    /** The dataset index. */
+    private int datasetIndex;
+
+    /** The angle that defines the anchor point. */
+    private double angle;
+
+    /** The radius that defines the anchor point. */
+    private double radius;
+
+    /** The frame anchor. */
+    private RectangleAnchor frameAnchor;
+
+    /** The template value. */
+    private Number templateValue;
+
+    /**
+     * A data value that will be formatted to determine the maximum size of
+     * the indicator bounds.  If this is null, the indicator bounds can grow
+     * as large as necessary to contain the actual data value.
+     *
+     * @since 1.0.14
+     */
+    private Number maxTemplateValue;
+
+    /** The formatter. */
+    private NumberFormat formatter;
+
+    /** The font. */
+    private Font font;
+
+    /** The paint. */
+    private transient Paint paint;
+
+    /** The background paint. */
+    private transient Paint backgroundPaint;
+
+    /** The outline stroke. */
+    private transient Stroke outlineStroke;
+
+    /** The outline paint. */
+    private transient Paint outlinePaint;
+
+    /** The insets. */
+    private RectangleInsets insets;
+
+    /** The value anchor. */
+    private RectangleAnchor valueAnchor;
+
+    /** The text anchor for displaying the value. */
+    private TextAnchor textAnchor;
+
+    /**
+     * Creates a new instance of &lt;code&gt;DialValueIndicator&lt;/code&gt;.
+     */
+    public DialValueIndicator() {
+<span class="nc" id="L143">        this(0);</span>
+<span class="nc" id="L144">    }</span>
+
+    /**
+     * Creates a new instance of &lt;code&gt;DialValueIndicator&lt;/code&gt;.
+     *
+     * @param datasetIndex  the dataset index.
+     */
+<span class="fc" id="L151">    public DialValueIndicator(int datasetIndex) {</span>
+<span class="fc" id="L152">        this.datasetIndex = datasetIndex;</span>
+<span class="fc" id="L153">        this.angle = -90.0;</span>
+<span class="fc" id="L154">        this.radius = 0.3;</span>
+<span class="fc" id="L155">        this.frameAnchor = RectangleAnchor.CENTER;</span>
+<span class="fc" id="L156">        this.templateValue = new Double(100.0);</span>
+<span class="fc" id="L157">        this.maxTemplateValue = null;</span>
+<span class="fc" id="L158">        this.formatter = new DecimalFormat(&quot;0.0&quot;);</span>
+<span class="fc" id="L159">        this.font = new Font(&quot;Dialog&quot;, Font.BOLD, 14);</span>
+<span class="fc" id="L160">        this.paint = Color.black;</span>
+<span class="fc" id="L161">        this.backgroundPaint = Color.white;</span>
+<span class="fc" id="L162">        this.outlineStroke = new BasicStroke(1.0f);</span>
+<span class="fc" id="L163">        this.outlinePaint = Color.blue;</span>
+<span class="fc" id="L164">        this.insets = new RectangleInsets(4, 4, 4, 4);</span>
+<span class="fc" id="L165">        this.valueAnchor = RectangleAnchor.RIGHT;</span>
+<span class="fc" id="L166">        this.textAnchor = TextAnchor.CENTER_RIGHT;</span>
+<span class="fc" id="L167">    }</span>
+
+    /**
+     * Returns the index of the dataset from which this indicator fetches its
+     * current value.
+     *
+     * @return The dataset index.
+     *
+     * @see #setDatasetIndex(int)
+     */
+    public int getDatasetIndex() {
+<span class="nc" id="L178">        return this.datasetIndex;</span>
+    }
+
+    /**
+     * Sets the dataset index and sends a {@link DialLayerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param index  the index.
+     *
+     * @see #getDatasetIndex()
+     */
+    public void setDatasetIndex(int index) {
+<span class="fc" id="L190">        this.datasetIndex = index;</span>
+<span class="fc" id="L191">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L192">    }</span>
+
+    /**
+     * Returns the angle for the anchor point.  The angle is specified in
+     * degrees using the same orientation as Java's &lt;code&gt;Arc2D&lt;/code&gt; class.
+     *
+     * @return The angle (in degrees).
+     *
+     * @see #setAngle(double)
+     */
+    public double getAngle() {
+<span class="nc" id="L203">        return this.angle;</span>
+    }
+
+    /**
+     * Sets the angle for the anchor point and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param angle  the angle (in degrees).
+     *
+     * @see #getAngle()
+     */
+    public void setAngle(double angle) {
+<span class="fc" id="L215">        this.angle = angle;</span>
+<span class="fc" id="L216">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L217">    }</span>
+
+    /**
+     * Returns the radius.
+     *
+     * @return The radius.
+     *
+     * @see #setRadius(double)
+     */
+    public double getRadius() {
+<span class="nc" id="L227">        return this.radius;</span>
+    }
+
+    /**
+     * Sets the radius and sends a {@link DialLayerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param radius  the radius.
+     *
+     * @see #getRadius()
+     */
+    public void setRadius(double radius) {
+<span class="fc" id="L239">        this.radius = radius;</span>
+<span class="fc" id="L240">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L241">    }</span>
+
+    /**
+     * Returns the frame anchor.
+     *
+     * @return The frame anchor.
+     *
+     * @see #setFrameAnchor(RectangleAnchor)
+     */
+    public RectangleAnchor getFrameAnchor() {
+<span class="nc" id="L251">        return this.frameAnchor;</span>
+    }
+
+    /**
+     * Sets the frame anchor and sends a {@link DialLayerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param anchor  the anchor (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getFrameAnchor()
+     */
+    public void setFrameAnchor(RectangleAnchor anchor) {
+<span class="fc" id="L263">        ParamChecks.nullNotPermitted(anchor, &quot;anchor&quot;);</span>
+<span class="fc" id="L264">        this.frameAnchor = anchor;</span>
+<span class="fc" id="L265">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L266">    }</span>
+
+    /**
+     * Returns the template value.
+     *
+     * @return The template value (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setTemplateValue(Number)
+     */
+    public Number getTemplateValue() {
+<span class="nc" id="L276">        return this.templateValue;</span>
+    }
+
+    /**
+     * Sets the template value and sends a {@link DialLayerChangeEvent} to
+     * all registered listeners.
+     *
+     * @param value  the value (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #setTemplateValue(Number)
+     */
+    public void setTemplateValue(Number value) {
+<span class="fc" id="L288">        ParamChecks.nullNotPermitted(value, &quot;value&quot;);</span>
+<span class="fc" id="L289">        this.templateValue = value;</span>
+<span class="fc" id="L290">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L291">    }</span>
+
+    /**
+     * Returns the template value for the maximum size of the indicator
+     * bounds.
+     *
+     * @return The template value (possibly &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @since 1.0.14
+     *
+     * @see #setMaxTemplateValue(java.lang.Number)
+     */
+    public Number getMaxTemplateValue() {
+<span class="nc" id="L304">        return this.maxTemplateValue;</span>
+    }
+
+    /**
+     * Sets the template value for the maximum size of the indicator bounds
+     * and sends a {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param value  the value (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @since 1.0.14
+     *
+     * @see #getMaxTemplateValue()
+     */
+    public void setMaxTemplateValue(Number value) {
+<span class="nc" id="L318">        this.maxTemplateValue = value;</span>
+<span class="nc" id="L319">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="nc" id="L320">    }</span>
+
+    /**
+     * Returns the formatter used to format the value.
+     *
+     * @return The formatter (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setNumberFormat(NumberFormat)
+     */
+    public NumberFormat getNumberFormat() {
+<span class="nc" id="L330">        return this.formatter;</span>
+    }
+
+    /**
+     * Sets the formatter used to format the value and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param formatter  the formatter (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getNumberFormat()
+     */
+    public void setNumberFormat(NumberFormat formatter) {
+<span class="nc" id="L342">        ParamChecks.nullNotPermitted(formatter, &quot;formatter&quot;);</span>
+<span class="nc" id="L343">        this.formatter = formatter;</span>
+<span class="nc" id="L344">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="nc" id="L345">    }</span>
+
+    /**
+     * Returns the font.
+     *
+     * @return The font (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #getFont()
+     */
+    public Font getFont() {
+<span class="nc" id="L355">        return this.font;</span>
+    }
+
+    /**
+     * Sets the font and sends a {@link DialLayerChangeEvent} to all registered
+     * listeners.
+     *
+     * @param font  the font (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void setFont(Font font) {
+<span class="fc" id="L365">        ParamChecks.nullNotPermitted(font, &quot;font&quot;);</span>
+<span class="fc" id="L366">        this.font = font;</span>
+<span class="fc" id="L367">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L368">    }</span>
+
+    /**
+     * Returns the paint.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setPaint(Paint)
+     */
+    public Paint getPaint() {
+<span class="nc" id="L378">        return this.paint;</span>
+    }
+
+    /**
+     * Sets the paint and sends a {@link DialLayerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getPaint()
+     */
+    public void setPaint(Paint paint) {
+<span class="fc" id="L390">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L391">        this.paint = paint;</span>
+<span class="fc" id="L392">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L393">    }</span>
+
+    /**
+     * Returns the background paint.
+     *
+     * @return The background paint.
+     *
+     * @see #setBackgroundPaint(Paint)
+     */
+    public Paint getBackgroundPaint() {
+<span class="nc" id="L403">        return this.backgroundPaint;</span>
+    }
+
+    /**
+     * Sets the background paint and sends a {@link DialLayerChangeEvent} to
+     * all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getBackgroundPaint()
+     */
+    public void setBackgroundPaint(Paint paint) {
+<span class="fc" id="L415">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L416">        this.backgroundPaint = paint;</span>
+<span class="fc" id="L417">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L418">    }</span>
+
+    /**
+     * Returns the outline stroke.
+     *
+     * @return The outline stroke (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setOutlineStroke(Stroke)
+     */
+    public Stroke getOutlineStroke() {
+<span class="nc" id="L428">        return this.outlineStroke;</span>
+    }
+
+    /**
+     * Sets the outline stroke and sends a {@link DialLayerChangeEvent} to
+     * all registered listeners.
+     *
+     * @param stroke  the stroke (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getOutlineStroke()
+     */
+    public void setOutlineStroke(Stroke stroke) {
+<span class="fc" id="L440">        ParamChecks.nullNotPermitted(stroke, &quot;stroke&quot;);</span>
+<span class="fc" id="L441">        this.outlineStroke = stroke;</span>
+<span class="fc" id="L442">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L443">    }</span>
+
+    /**
+     * Returns the outline paint.
+     *
+     * @return The outline paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setOutlinePaint(Paint)
+     */
+    public Paint getOutlinePaint() {
+<span class="nc" id="L453">        return this.outlinePaint;</span>
+    }
+
+    /**
+     * Sets the outline paint and sends a {@link DialLayerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getOutlinePaint()
+     */
+    public void setOutlinePaint(Paint paint) {
+<span class="fc" id="L465">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L466">        this.outlinePaint = paint;</span>
+<span class="fc" id="L467">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L468">    }</span>
+
+    /**
+     * Returns the insets.
+     *
+     * @return The insets (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setInsets(RectangleInsets)
+     */
+    public RectangleInsets getInsets() {
+<span class="nc" id="L478">        return this.insets;</span>
+    }
+
+    /**
+     * Sets the insets and sends a {@link DialLayerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param insets  the insets (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getInsets()
+     */
+    public void setInsets(RectangleInsets insets) {
+<span class="fc" id="L490">        ParamChecks.nullNotPermitted(insets, &quot;insets&quot;);</span>
+<span class="fc" id="L491">        this.insets = insets;</span>
+<span class="fc" id="L492">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L493">    }</span>
+
+    /**
+     * Returns the value anchor.
+     *
+     * @return The value anchor (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setValueAnchor(RectangleAnchor)
+     */
+    public RectangleAnchor getValueAnchor() {
+<span class="nc" id="L503">        return this.valueAnchor;</span>
+    }
+
+    /**
+     * Sets the value anchor and sends a {@link DialLayerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param anchor  the anchor (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getValueAnchor()
+     */
+    public void setValueAnchor(RectangleAnchor anchor) {
+<span class="fc" id="L515">        ParamChecks.nullNotPermitted(anchor, &quot;anchor&quot;);</span>
+<span class="fc" id="L516">        this.valueAnchor = anchor;</span>
+<span class="fc" id="L517">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L518">    }</span>
+
+    /**
+     * Returns the text anchor.
+     *
+     * @return The text anchor (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setTextAnchor(TextAnchor)
+     */
+    public TextAnchor getTextAnchor() {
+<span class="nc" id="L528">        return this.textAnchor;</span>
+    }
+
+    /**
+     * Sets the text anchor and sends a {@link DialLayerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param anchor  the anchor (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getTextAnchor()
+     */
+    public void setTextAnchor(TextAnchor anchor) {
+<span class="fc" id="L540">        ParamChecks.nullNotPermitted(anchor, &quot;anchor&quot;);</span>
+<span class="fc" id="L541">        this.textAnchor = anchor;</span>
+<span class="fc" id="L542">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L543">    }</span>
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; to indicate that this layer should be
+     * clipped within the dial window.
+     *
+     * @return &lt;code&gt;true&lt;/code&gt;.
+     */
+    @Override
+    public boolean isClippedToWindow() {
+<span class="nc" id="L553">        return true;</span>
+    }
+
+    /**
+     * Draws the background to the specified graphics device.  If the dial
+     * frame specifies a window, the clipping region will already have been
+     * set to this window before this method is called.
+     *
+     * @param g2  the graphics device (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param plot  the plot (ignored here).
+     * @param frame  the dial frame (ignored here).
+     * @param view  the view rectangle (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    @Override
+    public void draw(Graphics2D g2, DialPlot plot, Rectangle2D frame,
+            Rectangle2D view) {
+
+        // work out the anchor point
+<span class="nc" id="L571">        Rectangle2D f = DialPlot.rectangleByRadius(frame, this.radius,</span>
+                this.radius);
+<span class="nc" id="L573">        Arc2D arc = new Arc2D.Double(f, this.angle, 0.0, Arc2D.OPEN);</span>
+<span class="nc" id="L574">        Point2D pt = arc.getStartPoint();</span>
+
+        // the indicator bounds is calculated from the templateValue (which
+        // determines the minimum size), the maxTemplateValue (which, if
+        // specified, provides a maximum size) and the actual value
+<span class="nc" id="L579">        FontMetrics fm = g2.getFontMetrics(this.font);</span>
+<span class="nc" id="L580">        double value = plot.getValue(this.datasetIndex);</span>
+<span class="nc" id="L581">        String valueStr = this.formatter.format(value);</span>
+<span class="nc" id="L582">        Rectangle2D valueBounds = TextUtilities.getTextBounds(valueStr, g2, fm);</span>
+
+        // calculate the bounds of the template value
+<span class="nc" id="L585">        String s = this.formatter.format(this.templateValue);</span>
+<span class="nc" id="L586">        Rectangle2D tb = TextUtilities.getTextBounds(s, g2, fm);</span>
+<span class="nc" id="L587">        double minW = tb.getWidth();</span>
+<span class="nc" id="L588">        double minH = tb.getHeight();</span>
+
+<span class="nc" id="L590">        double maxW = Double.MAX_VALUE;</span>
+<span class="nc" id="L591">        double maxH = Double.MAX_VALUE;</span>
+<span class="nc bnc" id="L592" title="All 2 branches missed.">        if (this.maxTemplateValue != null) {</span>
+<span class="nc" id="L593">            s = this.formatter.format(this.maxTemplateValue);</span>
+<span class="nc" id="L594">            tb = TextUtilities.getTextBounds(s, g2, fm);</span>
+<span class="nc" id="L595">            maxW = Math.max(tb.getWidth(), minW);</span>
+<span class="nc" id="L596">            maxH = Math.max(tb.getHeight(), minH);</span>
+        }
+<span class="nc" id="L598">        double w = fixToRange(valueBounds.getWidth(), minW, maxW);</span>
+<span class="nc" id="L599">        double h = fixToRange(valueBounds.getHeight(), minH, maxH);</span>
+
+        // align this rectangle to the frameAnchor
+<span class="nc" id="L602">        Rectangle2D bounds = RectangleAnchor.createRectangle(new Size2D(w, h),</span>
+                pt.getX(), pt.getY(), this.frameAnchor);
+
+        // add the insets
+<span class="nc" id="L606">        Rectangle2D fb = this.insets.createOutsetRectangle(bounds);</span>
+
+        // draw the background
+<span class="nc" id="L609">        g2.setPaint(this.backgroundPaint);</span>
+<span class="nc" id="L610">        g2.fill(fb);</span>
+
+        // draw the border
+<span class="nc" id="L613">        g2.setStroke(this.outlineStroke);</span>
+<span class="nc" id="L614">        g2.setPaint(this.outlinePaint);</span>
+<span class="nc" id="L615">        g2.draw(fb);</span>
+
+        // now find the text anchor point
+<span class="nc" id="L618">        Shape savedClip = g2.getClip();</span>
+<span class="nc" id="L619">        g2.clip(fb);</span>
+
+<span class="nc" id="L621">        Point2D pt2 = RectangleAnchor.coordinates(bounds, this.valueAnchor);</span>
+<span class="nc" id="L622">        g2.setPaint(this.paint);</span>
+<span class="nc" id="L623">        g2.setFont(this.font);</span>
+<span class="nc" id="L624">        TextUtilities.drawAlignedString(valueStr, g2, (float) pt2.getX(),</span>
+                (float) pt2.getY(), this.textAnchor);
+<span class="nc" id="L626">        g2.setClip(savedClip);</span>
+
+<span class="nc" id="L628">    }</span>
+
+    /**
+     * A utility method that adjusts a value, if necessary, to be within a 
+     * specified range.
+     * 
+     * @param x  the value.
+     * @param minX  the minimum value in the range.
+     * @param maxX  the maximum value in the range.
+     * 
+     * @return The adjusted value.
+     */
+    private double fixToRange(double x, double minX, double maxX) {
+<span class="nc bnc" id="L641" title="All 2 branches missed.">        if (minX &gt; maxX) {</span>
+<span class="nc" id="L642">            throw new IllegalArgumentException(&quot;Requires 'minX' &lt;= 'maxX'.&quot;);</span>
+        }
+<span class="nc bnc" id="L644" title="All 2 branches missed.">        if (x &lt; minX) {</span>
+<span class="nc" id="L645">            return minX;</span>
+        }
+<span class="nc bnc" id="L647" title="All 2 branches missed.">        else if (x &gt; maxX) {</span>
+<span class="nc" id="L648">            return maxX;</span>
+        }
+        else {
+<span class="nc" id="L651">            return x;</span>
+        }
+    }
+
+    /**
+     * Tests this instance for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L664" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L665">            return true;</span>
+        }
+<span class="pc bpc" id="L667" title="1 of 2 branches missed.">        if (!(obj instanceof DialValueIndicator)) {</span>
+<span class="nc" id="L668">            return false;</span>
+        }
+<span class="fc" id="L670">        DialValueIndicator that = (DialValueIndicator) obj;</span>
+<span class="fc bfc" id="L671" title="All 2 branches covered.">        if (this.datasetIndex != that.datasetIndex) {</span>
+<span class="fc" id="L672">            return false;</span>
+        }
+<span class="fc bfc" id="L674" title="All 2 branches covered.">        if (this.angle != that.angle) {</span>
+<span class="fc" id="L675">            return false;</span>
+        }
+<span class="fc bfc" id="L677" title="All 2 branches covered.">        if (this.radius != that.radius) {</span>
+<span class="fc" id="L678">            return false;</span>
+        }
+<span class="fc bfc" id="L680" title="All 2 branches covered.">        if (!this.frameAnchor.equals(that.frameAnchor)) {</span>
+<span class="fc" id="L681">            return false;</span>
+        }
+<span class="fc bfc" id="L683" title="All 2 branches covered.">        if (!this.templateValue.equals(that.templateValue)) {</span>
+<span class="fc" id="L684">            return false;</span>
+        }
+<span class="pc bpc" id="L686" title="1 of 2 branches missed.">        if (!ObjectUtilities.equal(this.maxTemplateValue,</span>
+                that.maxTemplateValue)) {
+<span class="nc" id="L688">            return false;</span>
+        }
+<span class="fc bfc" id="L690" title="All 2 branches covered.">        if (!this.font.equals(that.font)) {</span>
+<span class="fc" id="L691">            return false;</span>
+        }
+<span class="fc bfc" id="L693" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.paint, that.paint)) {</span>
+<span class="fc" id="L694">            return false;</span>
+        }
+<span class="fc bfc" id="L696" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.backgroundPaint, that.backgroundPaint)) {</span>
+<span class="fc" id="L697">            return false;</span>
+        }
+<span class="fc bfc" id="L699" title="All 2 branches covered.">        if (!this.outlineStroke.equals(that.outlineStroke)) {</span>
+<span class="fc" id="L700">            return false;</span>
+        }
+<span class="fc bfc" id="L702" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.outlinePaint, that.outlinePaint)) {</span>
+<span class="fc" id="L703">            return false;</span>
+        }
+<span class="fc bfc" id="L705" title="All 2 branches covered.">        if (!this.insets.equals(that.insets)) {</span>
+<span class="fc" id="L706">            return false;</span>
+        }
+<span class="fc bfc" id="L708" title="All 2 branches covered.">        if (!this.valueAnchor.equals(that.valueAnchor)) {</span>
+<span class="fc" id="L709">            return false;</span>
+        }
+<span class="fc bfc" id="L711" title="All 2 branches covered.">        if (!this.textAnchor.equals(that.textAnchor)) {</span>
+<span class="fc" id="L712">            return false;</span>
+        }
+<span class="fc" id="L714">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Returns a hash code for this instance.
+     *
+     * @return The hash code.
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L724">        int result = 193;</span>
+<span class="fc" id="L725">        result = 37 * result + HashUtilities.hashCodeForPaint(this.paint);</span>
+<span class="fc" id="L726">        result = 37 * result + HashUtilities.hashCodeForPaint(</span>
+                this.backgroundPaint);
+<span class="fc" id="L728">        result = 37 * result + HashUtilities.hashCodeForPaint(</span>
+                this.outlinePaint);
+<span class="fc" id="L730">        result = 37 * result + this.outlineStroke.hashCode();</span>
+<span class="fc" id="L731">        return result;</span>
+    }
+
+    /**
+     * Returns a clone of this instance.
+     *
+     * @return The clone.
+     *
+     * @throws CloneNotSupportedException if some attribute of this instance
+     *     cannot be cloned.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L744">        return super.clone();</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L755">        stream.defaultWriteObject();</span>
+<span class="fc" id="L756">        SerialUtilities.writePaint(this.paint, stream);</span>
+<span class="fc" id="L757">        SerialUtilities.writePaint(this.backgroundPaint, stream);</span>
+<span class="fc" id="L758">        SerialUtilities.writePaint(this.outlinePaint, stream);</span>
+<span class="fc" id="L759">        SerialUtilities.writeStroke(this.outlineStroke, stream);</span>
+<span class="fc" id="L760">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+            throws IOException, ClassNotFoundException {
+<span class="fc" id="L772">        stream.defaultReadObject();</span>
+<span class="fc" id="L773">        this.paint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L774">        this.backgroundPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L775">        this.outlinePaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L776">        this.outlineStroke = SerialUtilities.readStroke(stream);</span>
+<span class="fc" id="L777">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

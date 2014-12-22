@@ -1,0 +1,342 @@
+ -----
+ Introduction to Wheel
+ -----
+ Henri Frilund
+ -----
+ December 2007
+
+Introduction
+
+  Wheel is a web application development tool for the Java 5 platform. Its defining characterstics are:
+  
+  * Testability - pages and components are unit-testable with no additional frameworks and with a few lines of code.
+
+  * No templates - no more error-prone template-programming.
+
+  * No XML-configuration.
+  
+  * Lightweight and concrete - abstracts things away from you only when absolutely necessary.
+
+  * Simple but powerful component model - creating custom components is easy and encouraged.
+
+  * Reusability - creating and using reusable components is like using any other jar-packaged java library. No configuration needed.
+
+  * Agility - Traditional outsourcing of html-coding is discouraged in Wheel, and its design philosophy is to support small and agile
+  teams with no separate html-programmer profile.
+
+  * Outputs clean XHTML-code - an often overlooked feature, but which is important to creators of applications with accessibility requirements.
+ 
+
+
+* Background
+
+
+ When releasing a new tool for web development in the year 2008, some explanation is in place. This project got started in July 2007
+ as a concept prototype with the idea of creating a web development library with no templates. The original idea was to see if its possible
+ to create a Java API so terse and easy to use that HTML-code could be produced within java syntax. From the beginning there's been a few preconditions
+ that have to be met in order to take advantage of this approach:
+
+ * Strict XHTML.
+
+ * Either no existing XHTML-code or an existing XHTML-code that uses stylesheets to provide most of the look&feel.
+
+ * Java 5.
+
+ * A good modern IDE (like IDEA, Eclipse or Netbeans) with code completion and javadoc-attachment.
+
+ []
+
+ There are already some web frameworks that don't use templates. But where most of them abstract you away from xhtml and servlet api,
+ Wheel embraces them. This difference leads to the most important design philosophy in Wheel, which you might have already noticed from some word choices: The
+ main metaphor is <tool> instead of the usual <framework>. This means that - as a <tool> - Wheel has a very clearly defined purpose and scope. It doesn't try to
+ be something to everyone, but everything to those who need it. Like any good tool it doesn't abstract you too far from the thing you're creating, but
+ still gives you a powerful extension to your will.
+
+ Other design principles of Wheel are:
+
+ * External dependencies are kept at minimum while still avoiding NIH-syndrome.
+
+ * No magic without proper justification - annotations, bytecode manipulations and such are used, but conservatively.
+
+ * Concreteness over generification - simple solutions for known problems, not complex solutions for potential problems.
+
+ * Freedom with gentle guidance - API's of Wheel don't force you in any direction, but will guide your design gently (like what Spring did to overall enterprise architecture).
+
+
+* Why should I try Wheel?
+
+ Do you feel frustrated when writing complex UI rendering-logic over some HTML-code that someone else somewhere wrote? How about finally being able to write unit tests for your pages and components?
+ Are you tired of repeating yourself in endless XML-configurations where one typo will break the whole application? Would you like web application programming to be more like
+ "real" java-programming with proper object orientation? Would you like to use modern refactoring tools with 100% coverage over your web app codebase? Would you like to be able to
+ create custom ui-components as easily as any other java class?
+
+ If you answered "yes" to any of those questions, lets move on to some basic concepts.
+
+
+* Basic concepts
+
+** URLs are meaningful
+
+ The syntax specification for URLs in Wheel is like this
+
+---
+<component classname>[$<component id>][.<action method name>][?<parameters>]
+---
+
+ What this means is that in their basic form, Wheel URLs are readable and short. For example <http://localhost:8080/context/app/MyPage> will load a page from a class named MyPage.
+ No serialized state objects or other garbage, just the name of the page you want to see.
+
+ On the other hand, URLs in Wheel are powerful. As there is no separate action mapping in Wheel, you can make method calls to any complex component directly from URL (though only methods marked with @Action
+ annotation are callable). A few examples to illustrate this:
+
+ * MyPage.myMethod - would call myMethod() in class MyPage.
+
+ * MyPage.anotherMethod?1=parameterValue - would call anotherMethod(String) in class MyPage.
+
+ * MyPage.thirdMethod?1=12345 - would call thirdMethod(int | Integer) in class MyPage.
+
+ * MyPage.fourthMethod?1=false - would call fourthMethod(boolean | Boolean) in class MyPage.
+
+ * MyPage$componentX.start - would first find a complex component with id 'componentX' from page MyPage and then call start() on the complex component class.
+
+ []
+
+ For AJAX-applications its easy to request Wheel to render a single component. Its done like this: MYPage$myComponent. Any component that you know the componentId to is available with this syntax.
+
+ Note that URL parameters are supported also. If you have declared a field as exposed and you want to give it a value using an URL its quite simple: MyPage?myField=Hello World!
+ You can set values to any number of fields like this and as with method parameters, typical type coercions work (numbers, simple dates, time, boolean).
+
+
+** Component model
+
+ Without templates, how is XHTML-code produced in Wheel? Every component in Wheel extends from wheel.Component class which contains the core API for creating XHTML-elements.
+ The component model for creating XHTML elements consist of these components (complete list in {{{apidocs/index.html}javadocs}}):
+
+ * Block - represents any element that contains other XHTML-elements.
+
+ * Label - represents any element that contains only text.
+
+ * Any - represents an empty element that contains only attributes.
+
+ * Text - represents any element that contains only text that can include entity references.
+
+ * Form - extends Block.
+
+ * FormElement - represents any form element.
+
+ []
+
+ The Component class contains shortcut methods for adding any XHTML-element to the component tree.
+
+---
+ol().
+  li("List item 1").up().
+  li("List item 2").up().
+  li("List item 3");
+---
+
+ After rendering it would look like this:
+
+---
+<ol>
+  <li>List item 1</li>
+  <li>List item 2</li>
+  <li>List item 3</li>
+</ol>
+---
+
+ The only slightly awkward thing about this syntax is the up() method that is needed to return the execution point upwards. In the example, after the h3() method, without
+ calling the up() method, the next li() component would be added inside the h3-element. Also, one level up isn't enough - one level upwards would bring us only to the end of li() and we need to
+ get to the end of ol() to get the next li() in the correct place. But you don't have to use this syntax and in many cases you can't. The example could also be written like this:
+
+---
+Component olBlock = create().ol();
+olBlock.li("List item 1");
+olBlock.li("List item 2");
+olBlock.li("List item 3");
+add(olBlock);
+---
+
+ The Component API has many createXXX methods that will create a component for you, but will not add it to the component tree. When using the create-methods, its important to call the add()
+ method afterwards. To see them all, have a look at the {{{apidocs/wheel/components/Component.html}javadocs}}.
+
+** Forms and value binding
+
+ Creating forms looks very much the same as creating the ordered list in the previous example.
+
+---
+public class FormPage extends StandaloneComponent {
+  private String name;
+
+  public void buildPage() {
+    Form form = create().form("myFormId");
+
+    form.tetxtInput("nameInputField").fieldBinding("name");
+
+    form.submit("submitId").value("Send");
+    add(form);
+  }
+}
+---
+
+ This example creates a page with a very simple form that has one text input element. In Wheel there are no separate state objects. Initial values for bound fields can be given along with the declaration or in a constructor.
+
+
+** State
+
+ How does Wheel hold state for pages and components? Internally it uses ASM to weave some code in classes that need it. For the application developer, there is one annotation: @Persist().
+ Example:
+
+---
+@Persist
+private String name;
+---
+
+ The above field declaration would mark the field as persistent with default scope (component). Other scopes are: page (state is lost when the page changes), session (application wide userdata), global (available for all users).
+
+---
+@Persist(Scope.page)
+private List<String> names;
+---
+
+ Would make the names-list stateful while remaining on the page.
+
+ Collections and primitive types are supported. Array types aren't. If you need arrays, consider using Lists. The @Persist annotation can be used in any complex component.
+
+** Custom components
+
+ Custom components can be really small or really complex (containing multiple forms). A typical need for custom component is some piece of ui-code that keeps repeating.
+ Components that need the buildComponent() methtod, should extend from StandaloneComponent-class:
+
+---
+public class Navigation extends StandaloneComponent {
+  public Navigation(String id) {
+    super(id);
+  }
+
+  public void buildComponent() {
+    ul().
+      li().a("Frontpage").actionBinding("Frontpage").up(2).
+      li().a("Add new release").actionBinding("AddRelease").up(2).
+      li().a("List releases").actionBinding("List");
+  }
+}
+---
+
+ Note the used constructor that forces you to provide an identifier for the component.
+ Using this component in a page would be trivial:
+
+---
+buildPage() {
+  add(new Navigation("mainNavi"));
+}
+---
+
+** Assets
+
+ Apart from java classes, a Wheel application will usually consist of javascript source files (.js), css stylesheets, images and .properties files for localized messages.
+ For non-reusable components like pages, adding assets is simple: add a <pagename>.css or <pagename>.js files to /css or /js directories of the application.  These will automatically
+ get added to your page header. Css and js-files are also inheritable. If you have a superclass that uses a css-file, all subclasses will automatically load that css also. This makes it
+ really easy to avoid repeating same css definitions all over the application. You can override a css-definition in the subclasses.
+
+ Images can be added to a page with the img() method:
+
+---
+img("images/myPic1.gif", "My picture");
+
+or
+
+img("http://maven.apache.org/images/maven-small.gif", "Maven2 logo");
+---
+
+ Note the url for the upper image is relative to the web application root. The example assumes that you have a directory "images" at the root of your application.
+
+ Localized messages work anywhere in Wheel. Just use the message() method and it will load the message from a .properties file. The properties files have to be
+ in the same package as the page/component that uses it and must have the same name as the class file. Localized messages are also inheritable so all messages from superclasses
+ are available to subclasses automatically. Example:
+
+ Code snippet from MyPage.class:
+
+---
+a(message(frontpage")).actionBinding("FrontPage");
+---
+
+ MyPage.properties
+
+---
+frontpage=Take me to the frontpage
+---
+
+*** Assets for reusable components
+
+ If you want to have all the way reusable components, things normally tend to get quite tricky. That is not the case with Wheel, though! Lets assume you have a com.foo.bar.components.ReusableNavigation component that needs its own stylehseet, javascript, images
+ and localized messages. First thing you need to do is to declare the component reusable by calling config().setReusable(true) from anywhere in the component. Then you need to package the stylesheet, javascript, images and
+ properties file as resources to the same package as the component. When you've done that, you can package the component(s) to a jar-file and drop the component to any page and all assets will work
+ without any configuration.
+
+ Typically a reusable components look&feel needs to be customized. This can be done by simply placing a ReusableNavigation.css file in the /css/com/foo/bar/components directory. This css file will override
+ the one packaged in the jar.
+
+ Images and localized messages will work normally. No change in the component code is required.
+
+
+** Testing
+
+ Wheel provides you with a simple and easy to use, yet incredibly powerful way to make unit tests for your pages and components. You don't need HttpUnit or Selenium, just the basic junit-framework.
+ What can you test:
+
+ * Anything you could with normal Junit - component state transitions, business methods (assuming you have a mock backend for those, which is out of scope for Wheel).
+
+ * All of the XHTML-code produced by the component (output depending on state, of course).
+ 
+ * Form submits and form validations.
+
+ []
+
+ Let the code speak for itself (the snippet is from the number guessing example in the samples application):
+
+---
+public class NumberGuessingTest extends WheelTestCase {
+  public void testCorrectGuess() {
+        NumberGuessing ng = new NumberGuessing();
+        ng.setCorrectNumber(55);
+        setComponent(ng);
+        createForm("numberGuessForm");
+        addFormField("guess", "55");
+        submitForm();
+        render();
+        assertXpath("Yes, the answer was 55.", "//p[1]");
+        assertXpath("You guessed it in 1 tries.", "//p[2]");
+        assertXpath("start again", "//a[1]");
+    }
+}
+---
+
+ Not that much code, but there's a lot happening.
+
+ [[1]] Create the component or page you want to test.
+
+ [[2]] If needed, set the state.
+
+ [[3]] call setComponent() method. This will activate the Wheel-testing environment.
+
+ [[4]] Create a virtual form that will match the form id in the page.
+
+ [[5]] Add fields to the form.
+
+ [[6]] Submit the form to the component.
+
+ [[7]] Tell the component to render itself.
+
+ [[8]] Make assertions on the resulting XHTML using assertXpath() or assertPreset() methods.
+
+ []
+ 
+ For those who have used Selenium, the idea of using Xpath-to make assertions on the rendered output is not new.
+
+** MVEL usage
+
+ Now let's be honest here...Wheel builds heavily on top of MVEL. MVEL is used to execute actions on the component tree, MVEL is used to express validation logic for form elements, MVEL is used for binding
+ URL parameters and form elements to the component tree. But most of this is internal. Easily 90% of Wheel code is pure Java, but for the tight spots where Java just doesn't cut it, MVEL expressions are used.
+ Luckily the MVEL syntax is very much like java and very intuitive. To learn more about MVEL, please read the {{{http://mvel.codehaus.org/Language+Guide}language guide}}.
+   

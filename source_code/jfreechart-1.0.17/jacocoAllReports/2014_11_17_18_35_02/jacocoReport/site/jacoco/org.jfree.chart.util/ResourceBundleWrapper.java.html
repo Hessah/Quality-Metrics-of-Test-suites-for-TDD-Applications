@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ResourceBundleWrapper.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.util</a> &gt; <span class="el_source">ResourceBundleWrapper.java</span></div><h1>ResourceBundleWrapper.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates.
+ * Other names may be trademarks of their respective owners.]
+ *
+ * --------------------------
+ * ResourceBundleWrapper.java
+ * --------------------------
+ * (C)opyright 2008, 2009, by Jess Thrysoee and Contributors.
+ *
+ * Original Author:  Jess Thrysoee;
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *
+ * Changes
+ * -------
+ * 18-Dec-2008 : Version 1 (JT);
+ *
+ */
+
+package org.jfree.chart.util;
+
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.ResourceBundle;
+
+/**
+ * Wrapper of ResourceBundle.getBundle() methods. This wrapper is introduced to
+ * avoid a dramatic performance penalty by superfluous resource (and classes
+ * loaded by Class.forName) lookups on web server in applets.
+ *
+ * &lt;pre&gt;
+ * public class AppletC extends javax.swing.JApplet {
+ *    public void init() {
+ *       ResourceBundleWrapper.removeCodeBase(getCodeBase(),
+ *               (URLClassLoader) getClass().getClassLoader());
+ *    ...
+ * &lt;/pre&gt;
+ *
+ * @see &lt;a href=&quot;http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=4243379&quot;&gt;
+ *               Bug ID: 4243379&lt;/a&gt;
+ * @see &lt;a href=&quot;http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=4668479&quot;&gt;
+ *               Bug ID: 4668479&lt;/a&gt;
+ *
+ * @since 1.0.12
+ */
+public class ResourceBundleWrapper {
+
+    /**
+     * A special class loader with no code base lookup.  This field may be
+     * &lt;code&gt;null&lt;/code&gt; (the field is only initialised if removeCodeBase() is
+     * called from an applet).
+     */
+    private static URLClassLoader noCodeBaseClassLoader;
+
+    /**
+     * Private constructor.
+     */
+<span class="nc" id="L82">    private ResourceBundleWrapper() {</span>
+        // all methods are static, no need to instantiate
+<span class="nc" id="L84">    }</span>
+
+    /**
+     * Instantiate a {@link URLClassLoader} for resource lookups where the
+     * codeBase URL is removed.  This method is typically called from an
+     * applet's init() method.  If this method is never called, the
+     * &lt;code&gt;getBundle()&lt;/code&gt; methods map to the standard
+     * {@link ResourceBundle} lookup methods.
+     *
+     * @param codeBase  the codeBase URL.
+     * @param urlClassLoader  the class loader.
+     */
+    public static void removeCodeBase(URL codeBase,
+            URLClassLoader urlClassLoader) {
+<span class="nc" id="L98">        List urlsNoBase = new ArrayList();</span>
+
+<span class="nc" id="L100">        URL[] urls = urlClassLoader.getURLs();</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">        for (int i = 0; i &lt; urls.length; i++) {</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">            if (!urls[i].sameFile(codeBase)) {</span>
+<span class="nc" id="L103">                urlsNoBase.add(urls[i]);</span>
+            }
+        }
+        // substitute the filtered URL list
+<span class="nc" id="L107">        URL[] urlsNoBaseArray = (URL[]) urlsNoBase.toArray(new URL[0]);</span>
+<span class="nc" id="L108">        noCodeBaseClassLoader = URLClassLoader.newInstance(urlsNoBaseArray);</span>
+<span class="nc" id="L109">    }</span>
+
+    /**
+     * Finds and returns the specified resource bundle.
+     *
+     * @param baseName  the base name.
+     *
+     * @return The resource bundle.
+     */
+    public static ResourceBundle getBundle(String baseName) {
+        // the noCodeBaseClassLoader is configured by a call to the
+        // removeCodeBase() method, typically in the init() method of an
+        // applet...
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">        if (noCodeBaseClassLoader != null) {</span>
+<span class="nc" id="L123">            return ResourceBundle.getBundle(baseName, Locale.getDefault(),</span>
+                    noCodeBaseClassLoader);
+        }
+        else {
+            // standard ResourceBundle behaviour
+<span class="fc" id="L128">            return ResourceBundle.getBundle(baseName);</span>
+        }
+    }
+
+    /**
+     * Finds and returns the specified resource bundle.
+     *
+     * @param baseName  the base name.
+     * @param locale  the locale.
+     *
+     * @return The resource bundle.
+     */
+    public static ResourceBundle getBundle(String baseName, Locale locale) {
+
+        // the noCodeBaseClassLoader is configured by a call to the
+        // removeCodeBase() method, typically in the init() method of an
+        // applet...
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        if (noCodeBaseClassLoader != null) {</span>
+<span class="nc" id="L146">            return ResourceBundle.getBundle(baseName, locale,</span>
+                    noCodeBaseClassLoader);
+        }
+        else {
+            // standard ResourceBundle behaviour
+<span class="nc" id="L151">            return ResourceBundle.getBundle(baseName, locale);</span>
+        }
+    }
+
+    /**
+     * Maps directly to &lt;code&gt;ResourceBundle.getBundle(baseName, locale,
+     * loader)&lt;/code&gt;.
+     *
+     * @param baseName  the base name.
+     * @param locale  the locale.
+     * @param loader  the class loader.
+     *
+     * @return The resource bundle.
+     */
+    public static ResourceBundle getBundle(String baseName, Locale locale,
+            ClassLoader loader) {
+<span class="nc" id="L167">        return ResourceBundle.getBundle(baseName, locale, loader);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

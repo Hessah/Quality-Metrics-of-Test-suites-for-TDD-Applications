@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>LoadFromRelativeFile.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.io</a> &gt; <span class="el_source">LoadFromRelativeFile.java</span></div><h1>LoadFromRelativeFile.java</h1><pre class="source lang-java linenums">package org.jbehave.core.io;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Loads story resources from relative file paths that are
+ * traversal to a given location.
+ * 
+ * StoryLoader loader = new
+ * LoadFromRelativeFile(codeLocationFromClass(YourStory.class));
+ * 
+ * By default, it uses traversal directory
+ * 'target/test-classes' with source dir in 'src/test/java'.
+ * 
+ * Other traversal locations can be specified via the varargs constructor:
+ * 
+ * StoryLoader loader = new
+ * LoadFromRelativeFile(codeLocationFromClass(YourStory.class),
+ * mavenModuleTestStoryFilePath(&quot;src/test/java&quot;),
+ * intellijProjectTestStoryFilePath(&quot;src/test/java&quot;));
+ * 
+ * Convenience methods : {@link LoadFromRelativeFile#mavenModuleStoryFilePath},
+ * {@link LoadFromRelativeFile#mavenModuleTestStoryFilePath}
+ * {@link LoadFromRelativeFile#intellijProjectStoryFilePath}
+ * {@link LoadFromRelativeFile#intellijProjectTestStoryFilePath}
+ * 
+ * @see {@link CodeLocations#codeLocationFromClass(Class)}
+ * 
+ */
+public class LoadFromRelativeFile implements ResourceLoader, StoryLoader {
+
+    private final StoryFilePath[] traversals;
+    private final URL location;
+
+    public LoadFromRelativeFile(URL location) {
+<span class="fc" id="L40">        this(location, mavenModuleStoryFilePath(&quot;src/test/java&quot;));</span>
+<span class="fc" id="L41">    }</span>
+
+<span class="fc" id="L43">    public LoadFromRelativeFile(URL location, StoryFilePath... traversals) {</span>
+<span class="fc" id="L44">        this.traversals = traversals;</span>
+<span class="fc" id="L45">        this.location = location;</span>
+<span class="fc" id="L46">    }</span>
+    
+    public String loadResourceAsText(String resourcePath) {
+<span class="nc" id="L49">        List&lt;String&gt; traversalPaths = new ArrayList&lt;String&gt;();</span>
+<span class="nc" id="L50">        String locationPath = normalise(new File(CodeLocations.getPathFromURL(location)).getAbsolutePath());</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">        for (StoryFilePath traversal : traversals) {</span>
+<span class="nc" id="L52">            String filePath = locationPath.replace(traversal.toRemove, traversal.relativePath) + &quot;/&quot; + resourcePath;</span>
+<span class="nc" id="L53">            File file = new File(filePath);</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">            if (file.exists()) {</span>
+<span class="nc" id="L55">                return loadContent(filePath);</span>
+            } else {
+<span class="nc" id="L57">                traversalPaths.add(filePath);</span>
+            }
+        }
+<span class="nc" id="L60">        throw new StoryResourceNotFound(resourcePath, traversalPaths);</span>
+    }
+
+    public String loadStoryAsText(String storyPath) {
+<span class="fc" id="L64">        List&lt;String&gt; traversalPaths = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L65">        String locationPath = new File(CodeLocations.getPathFromURL(location)).getAbsolutePath();</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        for (StoryFilePath traversal : traversals) {</span>
+<span class="fc" id="L67">            String filePath = locationPath.replace(traversal.toRemove, traversal.relativePath) + &quot;/&quot; + storyPath;</span>
+<span class="fc" id="L68">            File file = new File(filePath);</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            if (file.exists()) {</span>
+<span class="fc" id="L70">                return loadContent(filePath);</span>
+            } else {
+<span class="fc" id="L72">                traversalPaths.add(filePath);</span>
+            }
+        }
+<span class="fc" id="L75">        throw new StoryResourceNotFound(storyPath, traversalPaths);</span>
+    }
+
+    protected String loadContent(String path) {
+        try {
+<span class="fc" id="L80">            return IOUtils.toString(new FileInputStream(new File(path)), true);</span>
+<span class="fc" id="L81">        } catch (Exception e) {</span>
+<span class="fc" id="L82">            throw new InvalidStoryResource(path, e);</span>
+        }
+    }
+
+    private static String normalise(String path) {
+<span class="fc" id="L87">        return path.replace('\\', '/');</span>
+    }
+
+    /**
+     * For use the the varargs constructor of {@link LoadFromRelativeFile}, to
+     * allow a range of possibilities for locating Story file paths
+     */
+    public static class StoryFilePath {
+        private final String toRemove;
+        private final String relativePath;
+
+<span class="fc" id="L98">        public StoryFilePath(String toRemove, String relativePath) {</span>
+<span class="fc" id="L99">            this.toRemove = normalise(toRemove);</span>
+<span class="fc" id="L100">            this.relativePath = normalise(relativePath);</span>
+<span class="fc" id="L101">        }</span>
+
+    }
+
+    /**
+     * Maven by default, has its PRODUCTION classes in target/classes. This
+     * story file path is relative to that.
+     * 
+     * @param relativePath
+     *            the path to the stories' base-dir inside the module
+     * @return the resulting StoryFilePath
+     */
+    public static StoryFilePath mavenModuleStoryFilePath(String relativePath) {
+<span class="fc" id="L114">        return new StoryFilePath(&quot;target/classes&quot;, relativePath);</span>
+    }
+
+    /**
+     * Maven by default, has its TEST classes in target/test-classes. This story
+     * file path is relative to that.
+     * 
+     * @param relativePath
+     *            the path to the stories' base-dir inside the module
+     * @return the resulting StoryFilePath
+     */
+    public static StoryFilePath mavenModuleTestStoryFilePath(String relativePath) {
+<span class="fc" id="L126">        return new StoryFilePath(&quot;target/test-classes&quot;, relativePath);</span>
+    }
+
+    /**
+     * Intellij by default, has its PRODUCTION classes in classes/production.
+     * This story file path is relative to that.
+     * 
+     * @param relativePath
+     *            the path to the stories' base-dir inside the module
+     * @return the resulting StoryFilePath
+     */
+    public static StoryFilePath intellijProjectStoryFilePath(String relativePath) {
+<span class="fc" id="L138">        return new StoryFilePath(&quot;classes/production&quot;, relativePath);</span>
+    }
+
+    /**
+     * Intellij by default, has its TEST classes in classes/test. This story
+     * file path is relative to that.
+     * 
+     * @param relativePath
+     *            the path to the stories' base-dir inside the module
+     * @return the resulting StoryFilePath
+     */
+    public static StoryFilePath intellijProjectTestStoryFilePath(String relativePath) {
+<span class="fc" id="L150">        return new StoryFilePath(&quot;classes/test&quot;, relativePath);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

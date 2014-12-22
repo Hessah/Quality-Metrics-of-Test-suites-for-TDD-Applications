@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Assignments.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Junit-r4.11</a> &gt; <a href="index.source.html" class="el_package">org.junit.experimental.theories.internal</a> &gt; <span class="el_source">Assignments.java</span></div><h1>Assignments.java</h1><pre class="source lang-java linenums">package org.junit.experimental.theories.internal;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.junit.experimental.theories.ParameterSignature;
+import org.junit.experimental.theories.ParameterSupplier;
+import org.junit.experimental.theories.ParametersSuppliedBy;
+import org.junit.experimental.theories.PotentialAssignment;
+import org.junit.experimental.theories.PotentialAssignment.CouldNotGenerateValueException;
+import org.junit.runners.model.TestClass;
+
+/**
+ * A potentially incomplete list of value assignments for a method's formal
+ * parameters
+ */
+public class Assignments {
+    private List&lt;PotentialAssignment&gt; fAssigned;
+
+    private final List&lt;ParameterSignature&gt; fUnassigned;
+
+    private final TestClass fClass;
+
+    private Assignments(List&lt;PotentialAssignment&gt; assigned,
+<span class="fc" id="L26">            List&lt;ParameterSignature&gt; unassigned, TestClass testClass) {</span>
+<span class="fc" id="L27">        fUnassigned = unassigned;</span>
+<span class="fc" id="L28">        fAssigned = assigned;</span>
+<span class="fc" id="L29">        fClass = testClass;</span>
+<span class="fc" id="L30">    }</span>
+
+    /**
+     * Returns a new assignment list for {@code testMethod}, with no params
+     * assigned.
+     */
+    public static Assignments allUnassigned(Method testMethod,
+            TestClass testClass) throws Exception {
+        List&lt;ParameterSignature&gt; signatures;
+<span class="fc" id="L39">        signatures = ParameterSignature.signatures(testClass</span>
+                .getOnlyConstructor());
+<span class="fc" id="L41">        signatures.addAll(ParameterSignature.signatures(testMethod));</span>
+<span class="fc" id="L42">        return new Assignments(new ArrayList&lt;PotentialAssignment&gt;(),</span>
+                signatures, testClass);
+    }
+
+    public boolean isComplete() {
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        return fUnassigned.size() == 0;</span>
+    }
+
+    public ParameterSignature nextUnassigned() {
+<span class="fc" id="L51">        return fUnassigned.get(0);</span>
+    }
+
+    public Assignments assignNext(PotentialAssignment source) {
+<span class="fc" id="L55">        List&lt;PotentialAssignment&gt; assigned = new ArrayList&lt;PotentialAssignment&gt;(</span>
+                fAssigned);
+<span class="fc" id="L57">        assigned.add(source);</span>
+
+<span class="fc" id="L59">        return new Assignments(assigned, fUnassigned.subList(1, fUnassigned</span>
+                .size()), fClass);
+    }
+
+    public Object[] getActualValues(int start, int stop, boolean nullsOk)
+            throws CouldNotGenerateValueException {
+<span class="fc" id="L65">        Object[] values = new Object[stop - start];</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        for (int i = start; i &lt; stop; i++) {</span>
+<span class="fc" id="L67">            Object value = fAssigned.get(i).getValue();</span>
+<span class="pc bpc" id="L68" title="1 of 4 branches missed.">            if (value == null &amp;&amp; !nullsOk) {</span>
+<span class="nc" id="L69">                throw new CouldNotGenerateValueException();</span>
+            }
+<span class="fc" id="L71">            values[i - start] = value;</span>
+        }
+<span class="fc" id="L73">        return values;</span>
+    }
+
+    public List&lt;PotentialAssignment&gt; potentialsForNextUnassigned()
+            throws InstantiationException, IllegalAccessException {
+<span class="fc" id="L78">        ParameterSignature unassigned = nextUnassigned();</span>
+<span class="fc" id="L79">        return getSupplier(unassigned).getValueSources(unassigned);</span>
+    }
+
+    public ParameterSupplier getSupplier(ParameterSignature unassigned)
+            throws InstantiationException, IllegalAccessException {
+<span class="fc" id="L84">        ParameterSupplier supplier = getAnnotatedSupplier(unassigned);</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (supplier != null) {</span>
+<span class="nc" id="L86">            return supplier;</span>
+        }
+
+<span class="fc" id="L89">        return new AllMembersSupplier(fClass);</span>
+    }
+
+    public ParameterSupplier getAnnotatedSupplier(ParameterSignature unassigned)
+            throws InstantiationException, IllegalAccessException {
+<span class="fc" id="L94">        ParametersSuppliedBy annotation = unassigned</span>
+                .findDeepAnnotation(ParametersSuppliedBy.class);
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        if (annotation == null) {</span>
+<span class="fc" id="L97">            return null;</span>
+        }
+<span class="nc" id="L99">        return annotation.value().newInstance();</span>
+    }
+
+    public Object[] getConstructorArguments(boolean nullsOk)
+            throws CouldNotGenerateValueException {
+<span class="fc" id="L104">        return getActualValues(0, getConstructorParameterCount(), nullsOk);</span>
+    }
+
+    public Object[] getMethodArguments(boolean nullsOk)
+            throws CouldNotGenerateValueException {
+<span class="fc" id="L109">        return getActualValues(getConstructorParameterCount(),</span>
+                fAssigned.size(), nullsOk);
+    }
+
+    public Object[] getAllArguments(boolean nullsOk)
+            throws CouldNotGenerateValueException {
+<span class="nc" id="L115">        return getActualValues(0, fAssigned.size(), nullsOk);</span>
+    }
+
+    private int getConstructorParameterCount() {
+<span class="fc" id="L119">        List&lt;ParameterSignature&gt; signatures = ParameterSignature</span>
+                .signatures(fClass.getOnlyConstructor());
+<span class="fc" id="L121">        int constructorParameterCount = signatures.size();</span>
+<span class="fc" id="L122">        return constructorParameterCount;</span>
+    }
+
+    public Object[] getArgumentStrings(boolean nullsOk)
+            throws CouldNotGenerateValueException {
+<span class="nc" id="L127">        Object[] values = new Object[fAssigned.size()];</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        for (int i = 0; i &lt; values.length; i++) {</span>
+<span class="nc" id="L129">            values[i] = fAssigned.get(i).getDescription();</span>
+        }
+<span class="nc" id="L131">        return values;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

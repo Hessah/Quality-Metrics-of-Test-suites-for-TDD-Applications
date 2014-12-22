@@ -1,0 +1,692 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>ReflectionToStringBuilder.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-lang3</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.builder</a> &gt; <span class="el_source">ReflectionToStringBuilder.java</span></div><h1>ReflectionToStringBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.commons.lang3.builder;
+
+import java.lang.reflect.AccessibleObject;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.ClassUtils;
+
+/**
+ * &lt;p&gt;
+ * Assists in implementing {@link Object#toString()} methods using reflection.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * This class uses reflection to determine the fields to append. Because these fields are usually private, the class
+ * uses {@link java.lang.reflect.AccessibleObject#setAccessible(java.lang.reflect.AccessibleObject[], boolean)} to
+ * change the visibility of the fields. This will fail under a security manager, unless the appropriate permissions are
+ * set up correctly.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * Using reflection to access (private) fields circumvents any synchronization protection guarding access to these
+ * fields. If a toString method cannot safely read a field, you should exclude it from the toString method, or use
+ * synchronization consistent with the class' lock management around the invocation of the method. Take special care to
+ * exclude non-thread-safe collection classes, because these classes may throw ConcurrentModificationException if
+ * modified while the toString method is executing.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * A typical invocation for this method would look like:
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ * public String toString() {
+ *     return ReflectionToStringBuilder.toString(this);
+ * }
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * You can also use the builder to debug 3rd party objects:
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ * System.out.println(&amp;quot;An object: &amp;quot; + ReflectionToStringBuilder.toString(anObject));
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * A subclass can control field output by overriding the methods:
+ * &lt;ul&gt;
+ * &lt;li&gt;{@link #accept(java.lang.reflect.Field)}&lt;/li&gt;
+ * &lt;li&gt;{@link #getValue(java.lang.reflect.Field)}&lt;/li&gt;
+ * &lt;/ul&gt;
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * For example, this method does &lt;i&gt;not&lt;/i&gt; include the &lt;code&gt;password&lt;/code&gt; field in the returned &lt;code&gt;String&lt;/code&gt;:
+ * &lt;/p&gt;
+ * &lt;pre&gt;
+ * public String toString() {
+ *     return (new ReflectionToStringBuilder(this) {
+ *         protected boolean accept(Field f) {
+ *             return super.accept(f) &amp;amp;&amp;amp; !f.getName().equals(&amp;quot;password&amp;quot;);
+ *         }
+ *     }).toString();
+ * }
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * The exact format of the &lt;code&gt;toString&lt;/code&gt; is determined by the {@link ToStringStyle} passed into the constructor.
+ * &lt;/p&gt;
+ * 
+ * @since 2.0
+ * @version $Id: ReflectionToStringBuilder.java 1448370 2013-02-20 19:54:19Z tn $
+ */
+public class ReflectionToStringBuilder extends ToStringBuilder {
+
+    /**
+     * &lt;p&gt;
+     * Builds a &lt;code&gt;toString&lt;/code&gt; value using the default &lt;code&gt;ToStringStyle&lt;/code&gt; through reflection.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * It uses &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt; to gain access to private fields. This means that it will
+     * throw a security exception if run under a security manager, if the permissions are not set up correctly. It is
+     * also not as efficient as testing explicitly.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * Transient members will be not be included, as they are likely derived. Static fields will not be included.
+     * Superclass fields will be appended.
+     * &lt;/p&gt;
+     *
+     * @param object
+     *            the Object to be output
+     * @return the String result
+     * @throws IllegalArgumentException
+     *             if the Object is &lt;code&gt;null&lt;/code&gt;
+     */
+    public static String toString(final Object object) {
+<span class="fc" id="L113">        return toString(object, null, false, false, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Builds a &lt;code&gt;toString&lt;/code&gt; value through reflection.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * It uses &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt; to gain access to private fields. This means that it will
+     * throw a security exception if run under a security manager, if the permissions are not set up correctly. It is
+     * also not as efficient as testing explicitly.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * Transient members will be not be included, as they are likely derived. Static fields will not be included.
+     * Superclass fields will be appended.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * If the style is &lt;code&gt;null&lt;/code&gt;, the default &lt;code&gt;ToStringStyle&lt;/code&gt; is used.
+     * &lt;/p&gt;
+     *
+     * @param object
+     *            the Object to be output
+     * @param style
+     *            the style of the &lt;code&gt;toString&lt;/code&gt; to create, may be &lt;code&gt;null&lt;/code&gt;
+     * @return the String result
+     * @throws IllegalArgumentException
+     *             if the Object or &lt;code&gt;ToStringStyle&lt;/code&gt; is &lt;code&gt;null&lt;/code&gt;
+     */
+    public static String toString(final Object object, final ToStringStyle style) {
+<span class="fc" id="L145">        return toString(object, style, false, false, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Builds a &lt;code&gt;toString&lt;/code&gt; value through reflection.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * It uses &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt; to gain access to private fields. This means that it will
+     * throw a security exception if run under a security manager, if the permissions are not set up correctly. It is
+     * also not as efficient as testing explicitly.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * If the &lt;code&gt;outputTransients&lt;/code&gt; is &lt;code&gt;true&lt;/code&gt;, transient members will be output, otherwise they
+     * are ignored, as they are likely derived fields, and not part of the value of the Object.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * Static fields will not be included. Superclass fields will be appended.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * If the style is &lt;code&gt;null&lt;/code&gt;, the default &lt;code&gt;ToStringStyle&lt;/code&gt; is used.
+     * &lt;/p&gt;
+     *
+     * @param object
+     *            the Object to be output
+     * @param style
+     *            the style of the &lt;code&gt;toString&lt;/code&gt; to create, may be &lt;code&gt;null&lt;/code&gt;
+     * @param outputTransients
+     *            whether to include transient fields
+     * @return the String result
+     * @throws IllegalArgumentException
+     *             if the Object is &lt;code&gt;null&lt;/code&gt;
+     */
+    public static String toString(final Object object, final ToStringStyle style, final boolean outputTransients) {
+<span class="nc" id="L183">        return toString(object, style, outputTransients, false, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Builds a &lt;code&gt;toString&lt;/code&gt; value through reflection.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * It uses &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt; to gain access to private fields. This means that it will
+     * throw a security exception if run under a security manager, if the permissions are not set up correctly. It is
+     * also not as efficient as testing explicitly.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * If the &lt;code&gt;outputTransients&lt;/code&gt; is &lt;code&gt;true&lt;/code&gt;, transient fields will be output, otherwise they
+     * are ignored, as they are likely derived fields, and not part of the value of the Object.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * If the &lt;code&gt;outputStatics&lt;/code&gt; is &lt;code&gt;true&lt;/code&gt;, static fields will be output, otherwise they are
+     * ignored.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * Static fields will not be included. Superclass fields will be appended.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * If the style is &lt;code&gt;null&lt;/code&gt;, the default &lt;code&gt;ToStringStyle&lt;/code&gt; is used.
+     * &lt;/p&gt;
+     *
+     * @param object
+     *            the Object to be output
+     * @param style
+     *            the style of the &lt;code&gt;toString&lt;/code&gt; to create, may be &lt;code&gt;null&lt;/code&gt;
+     * @param outputTransients
+     *            whether to include transient fields
+     * @param outputStatics
+     *            whether to include transient fields
+     * @return the String result
+     * @throws IllegalArgumentException
+     *             if the Object is &lt;code&gt;null&lt;/code&gt;
+     * @since 2.1
+     */
+    public static String toString(final Object object, final ToStringStyle style, final boolean outputTransients, final boolean outputStatics) {
+<span class="nc" id="L229">        return toString(object, style, outputTransients, outputStatics, null);</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Builds a &lt;code&gt;toString&lt;/code&gt; value through reflection.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * It uses &lt;code&gt;AccessibleObject.setAccessible&lt;/code&gt; to gain access to private fields. This means that it will
+     * throw a security exception if run under a security manager, if the permissions are not set up correctly. It is
+     * also not as efficient as testing explicitly.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * If the &lt;code&gt;outputTransients&lt;/code&gt; is &lt;code&gt;true&lt;/code&gt;, transient fields will be output, otherwise they
+     * are ignored, as they are likely derived fields, and not part of the value of the Object.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * If the &lt;code&gt;outputStatics&lt;/code&gt; is &lt;code&gt;true&lt;/code&gt;, static fields will be output, otherwise they are
+     * ignored.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * Superclass fields will be appended up to and including the specified superclass. A null superclass is treated as
+     * &lt;code&gt;java.lang.Object&lt;/code&gt;.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * If the style is &lt;code&gt;null&lt;/code&gt;, the default &lt;code&gt;ToStringStyle&lt;/code&gt; is used.
+     * &lt;/p&gt;
+     *
+     * @param &lt;T&gt;
+     *            the type of the object
+     * @param object
+     *            the Object to be output
+     * @param style
+     *            the style of the &lt;code&gt;toString&lt;/code&gt; to create, may be &lt;code&gt;null&lt;/code&gt;
+     * @param outputTransients
+     *            whether to include transient fields
+     * @param outputStatics
+     *            whether to include static fields
+     * @param reflectUpToClass
+     *            the superclass to reflect up to (inclusive), may be &lt;code&gt;null&lt;/code&gt;
+     * @return the String result
+     * @throws IllegalArgumentException
+     *             if the Object is &lt;code&gt;null&lt;/code&gt;
+     * @since 2.1
+     */
+    public static &lt;T&gt; String toString(
+            final T object, final ToStringStyle style, final boolean outputTransients,
+            final boolean outputStatics, final Class&lt;? super T&gt; reflectUpToClass) {
+<span class="fc" id="L282">        return new ReflectionToStringBuilder(object, style, null, reflectUpToClass, outputTransients, outputStatics)</span>
+                .toString();
+    }
+
+    /**
+     * Builds a String for a toString method excluding the given field names.
+     *
+     * @param object
+     *            The object to &quot;toString&quot;.
+     * @param excludeFieldNames
+     *            The field names to exclude. Null excludes nothing.
+     * @return The toString value.
+     */
+    public static String toStringExclude(final Object object, final Collection&lt;String&gt; excludeFieldNames) {
+<span class="fc" id="L296">        return toStringExclude(object, toNoNullStringArray(excludeFieldNames));</span>
+    }
+
+    /**
+     * Converts the given Collection into an array of Strings. The returned array does not contain &lt;code&gt;null&lt;/code&gt;
+     * entries. Note that {@link Arrays#sort(Object[])} will throw an {@link NullPointerException} if an array element
+     * is &lt;code&gt;null&lt;/code&gt;.
+     *
+     * @param collection
+     *            The collection to convert
+     * @return A new array of Strings.
+     */
+    static String[] toNoNullStringArray(final Collection&lt;String&gt; collection) {
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        if (collection == null) {</span>
+<span class="fc" id="L310">            return ArrayUtils.EMPTY_STRING_ARRAY;</span>
+        }
+<span class="fc" id="L312">        return toNoNullStringArray(collection.toArray());</span>
+    }
+
+    /**
+     * Returns a new array of Strings without null elements. Internal method used to normalize exclude lists
+     * (arrays and collections). Note that {@link Arrays#sort(Object[])} will throw an {@link NullPointerException}
+     * if an array element is &lt;code&gt;null&lt;/code&gt;.
+     *
+     * @param array
+     *            The array to check
+     * @return The given array or a new array without null.
+     */
+    static String[] toNoNullStringArray(final Object[] array) {
+<span class="fc" id="L325">        final List&lt;String&gt; list = new ArrayList&lt;String&gt;(array.length);</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        for (final Object e : array) {</span>
+<span class="fc bfc" id="L327" title="All 2 branches covered.">            if (e != null) {</span>
+<span class="fc" id="L328">                list.add(e.toString());</span>
+            }
+        }
+<span class="fc" id="L331">        return list.toArray(ArrayUtils.EMPTY_STRING_ARRAY);</span>
+    }
+
+
+    /**
+     * Builds a String for a toString method excluding the given field names.
+     *
+     * @param object
+     *            The object to &quot;toString&quot;.
+     * @param excludeFieldNames
+     *            The field names to exclude
+     * @return The toString value.
+     */
+    public static String toStringExclude(final Object object, final String... excludeFieldNames) {
+<span class="fc" id="L345">        return new ReflectionToStringBuilder(object).setExcludeFieldNames(excludeFieldNames).toString();</span>
+    }
+
+    /**
+     * Whether or not to append static fields.
+     */
+<span class="pc" id="L351">    private boolean appendStatics = false;</span>
+
+    /**
+     * Whether or not to append transient fields.
+     */
+<span class="pc" id="L356">    private boolean appendTransients = false;</span>
+
+    /**
+     * Which field names to exclude from output. Intended for fields like &lt;code&gt;&quot;password&quot;&lt;/code&gt;.
+     *
+     * @since 3.0 this is protected instead of private
+     */
+    protected String[] excludeFieldNames;
+
+    /**
+     * The last super class to stop appending fields for.
+     */
+<span class="pc" id="L368">    private Class&lt;?&gt; upToClass = null;</span>
+
+    /**
+     * &lt;p&gt;
+     * Constructor.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * This constructor outputs using the default style set with &lt;code&gt;setDefaultStyle&lt;/code&gt;.
+     * &lt;/p&gt;
+     *
+     * @param object
+     *            the Object to build a &lt;code&gt;toString&lt;/code&gt; for, must not be &lt;code&gt;null&lt;/code&gt;
+     * @throws IllegalArgumentException
+     *             if the Object passed in is &lt;code&gt;null&lt;/code&gt;
+     */
+    public ReflectionToStringBuilder(final Object object) {
+<span class="fc" id="L385">        super(object);</span>
+<span class="fc" id="L386">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Constructor.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * If the style is &lt;code&gt;null&lt;/code&gt;, the default style is used.
+     * &lt;/p&gt;
+     *
+     * @param object
+     *            the Object to build a &lt;code&gt;toString&lt;/code&gt; for, must not be &lt;code&gt;null&lt;/code&gt;
+     * @param style
+     *            the style of the &lt;code&gt;toString&lt;/code&gt; to create, may be &lt;code&gt;null&lt;/code&gt;
+     * @throws IllegalArgumentException
+     *             if the Object passed in is &lt;code&gt;null&lt;/code&gt;
+     */
+    public ReflectionToStringBuilder(final Object object, final ToStringStyle style) {
+<span class="nc" id="L405">        super(object, style);</span>
+<span class="nc" id="L406">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Constructor.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * If the style is &lt;code&gt;null&lt;/code&gt;, the default style is used.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * If the buffer is &lt;code&gt;null&lt;/code&gt;, a new one is created.
+     * &lt;/p&gt;
+     *
+     * @param object
+     *            the Object to build a &lt;code&gt;toString&lt;/code&gt; for
+     * @param style
+     *            the style of the &lt;code&gt;toString&lt;/code&gt; to create, may be &lt;code&gt;null&lt;/code&gt;
+     * @param buffer
+     *            the &lt;code&gt;StringBuffer&lt;/code&gt; to populate, may be &lt;code&gt;null&lt;/code&gt;
+     * @throws IllegalArgumentException
+     *             if the Object passed in is &lt;code&gt;null&lt;/code&gt;
+     */
+    public ReflectionToStringBuilder(final Object object, final ToStringStyle style, final StringBuffer buffer) {
+<span class="nc" id="L431">        super(object, style, buffer);</span>
+<span class="nc" id="L432">    }</span>
+
+    /**
+     * Constructor.
+     *
+     * @param &lt;T&gt;
+     *            the type of the object
+     * @param object
+     *            the Object to build a &lt;code&gt;toString&lt;/code&gt; for
+     * @param style
+     *            the style of the &lt;code&gt;toString&lt;/code&gt; to create, may be &lt;code&gt;null&lt;/code&gt;
+     * @param buffer
+     *            the &lt;code&gt;StringBuffer&lt;/code&gt; to populate, may be &lt;code&gt;null&lt;/code&gt;
+     * @param reflectUpToClass
+     *            the superclass to reflect up to (inclusive), may be &lt;code&gt;null&lt;/code&gt;
+     * @param outputTransients
+     *            whether to include transient fields
+     * @param outputStatics
+     *            whether to include static fields
+     * @since 2.1
+     */
+    public &lt;T&gt; ReflectionToStringBuilder(
+            final T object, final ToStringStyle style, final StringBuffer buffer,
+            final Class&lt;? super T&gt; reflectUpToClass, final boolean outputTransients, final boolean outputStatics) {
+<span class="fc" id="L456">        super(object, style, buffer);</span>
+<span class="fc" id="L457">        this.setUpToClass(reflectUpToClass);</span>
+<span class="fc" id="L458">        this.setAppendTransients(outputTransients);</span>
+<span class="fc" id="L459">        this.setAppendStatics(outputStatics);</span>
+<span class="fc" id="L460">    }</span>
+
+    /**
+     * Returns whether or not to append the given &lt;code&gt;Field&lt;/code&gt;.
+     * &lt;ul&gt;
+     * &lt;li&gt;Transient fields are appended only if {@link #isAppendTransients()} returns &lt;code&gt;true&lt;/code&gt;.
+     * &lt;li&gt;Static fields are appended only if {@link #isAppendStatics()} returns &lt;code&gt;true&lt;/code&gt;.
+     * &lt;li&gt;Inner class fields are not appended.&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param field
+     *            The Field to test.
+     * @return Whether or not to append the given &lt;code&gt;Field&lt;/code&gt;.
+     */
+    protected boolean accept(final Field field) {
+<span class="fc bfc" id="L475" title="All 2 branches covered.">        if (field.getName().indexOf(ClassUtils.INNER_CLASS_SEPARATOR_CHAR) != -1) {</span>
+            // Reject field from inner class.
+<span class="fc" id="L477">            return false;</span>
+        }
+<span class="fc bfc" id="L479" title="All 4 branches covered.">        if (Modifier.isTransient(field.getModifiers()) &amp;&amp; !this.isAppendTransients()) {</span>
+            // Reject transient fields.
+<span class="fc" id="L481">            return false;</span>
+        }
+<span class="fc bfc" id="L483" title="All 4 branches covered.">        if (Modifier.isStatic(field.getModifiers()) &amp;&amp; !this.isAppendStatics()) {</span>
+            // Reject static fields.
+<span class="fc" id="L485">            return false;</span>
+        }
+<span class="fc bfc" id="L487" title="All 4 branches covered.">        if (this.excludeFieldNames != null</span>
+            &amp;&amp; Arrays.binarySearch(this.excludeFieldNames, field.getName()) &gt;= 0) {
+            // Reject fields from the getExcludeFieldNames list.
+<span class="fc" id="L490">            return false;</span>
+        }
+<span class="fc" id="L492">        return true;</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Appends the fields and values defined by the given object of the given Class.
+     * &lt;/p&gt;
+     *
+     * &lt;p&gt;
+     * If a cycle is detected as an object is &amp;quot;toString()'ed&amp;quot;, such an object is rendered as if
+     * &lt;code&gt;Object.toString()&lt;/code&gt; had been called and not implemented by the object.
+     * &lt;/p&gt;
+     *
+     * @param clazz
+     *            The class of object parameter
+     */
+    protected void appendFieldsIn(final Class&lt;?&gt; clazz) {
+<span class="fc bfc" id="L509" title="All 2 branches covered.">        if (clazz.isArray()) {</span>
+<span class="fc" id="L510">            this.reflectionAppendArray(this.getObject());</span>
+<span class="fc" id="L511">            return;</span>
+        }
+<span class="fc" id="L513">        final Field[] fields = clazz.getDeclaredFields();</span>
+<span class="fc" id="L514">        AccessibleObject.setAccessible(fields, true);</span>
+<span class="fc bfc" id="L515" title="All 2 branches covered.">        for (final Field field : fields) {</span>
+<span class="fc" id="L516">            final String fieldName = field.getName();</span>
+<span class="fc bfc" id="L517" title="All 2 branches covered.">            if (this.accept(field)) {</span>
+                try {
+                    // Warning: Field.get(Object) creates wrappers objects
+                    // for primitive types.
+<span class="fc" id="L521">                    final Object fieldValue = this.getValue(field);</span>
+<span class="fc" id="L522">                    this.append(fieldName, fieldValue);</span>
+<span class="nc" id="L523">                } catch (final IllegalAccessException ex) {</span>
+                    //this can't happen. Would get a Security exception
+                    // instead
+                    //throw a runtime exception in case the impossible
+                    // happens.
+<span class="nc" id="L528">                    throw new InternalError(&quot;Unexpected IllegalAccessException: &quot; + ex.getMessage());</span>
+<span class="fc" id="L529">                }</span>
+            }
+        }
+<span class="fc" id="L532">    }</span>
+
+    /**
+     * @return Returns the excludeFieldNames.
+     */
+    public String[] getExcludeFieldNames() {
+<span class="nc" id="L538">        return this.excludeFieldNames.clone();</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Gets the last super class to stop appending fields for.
+     * &lt;/p&gt;
+     *
+     * @return The last super class to stop appending fields for.
+     */
+    public Class&lt;?&gt; getUpToClass() {
+<span class="fc" id="L549">        return this.upToClass;</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Calls &lt;code&gt;java.lang.reflect.Field.get(Object)&lt;/code&gt;.
+     * &lt;/p&gt;
+     *
+     * @param field
+     *            The Field to query.
+     * @return The Object from the given Field.
+     *
+     * @throws IllegalArgumentException
+     *             see {@link java.lang.reflect.Field#get(Object)}
+     * @throws IllegalAccessException
+     *             see {@link java.lang.reflect.Field#get(Object)}
+     *
+     * @see java.lang.reflect.Field#get(Object)
+     */
+    protected Object getValue(final Field field) throws IllegalArgumentException, IllegalAccessException {
+<span class="fc" id="L569">        return field.get(this.getObject());</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Gets whether or not to append static fields.
+     * &lt;/p&gt;
+     *
+     * @return Whether or not to append static fields.
+     * @since 2.1
+     */
+    public boolean isAppendStatics() {
+<span class="fc" id="L581">        return this.appendStatics;</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Gets whether or not to append transient fields.
+     * &lt;/p&gt;
+     *
+     * @return Whether or not to append transient fields.
+     */
+    public boolean isAppendTransients() {
+<span class="fc" id="L592">        return this.appendTransients;</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Append to the &lt;code&gt;toString&lt;/code&gt; an &lt;code&gt;Object&lt;/code&gt; array.
+     * &lt;/p&gt;
+     *
+     * @param array
+     *            the array to add to the &lt;code&gt;toString&lt;/code&gt;
+     * @return this
+     */
+    public ReflectionToStringBuilder reflectionAppendArray(final Object array) {
+<span class="fc" id="L605">        this.getStyle().reflectionAppendArrayDetail(this.getStringBuffer(), null, array);</span>
+<span class="fc" id="L606">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Sets whether or not to append static fields.
+     * &lt;/p&gt;
+     *
+     * @param appendStatics
+     *            Whether or not to append static fields.
+     * @since 2.1
+     */
+    public void setAppendStatics(final boolean appendStatics) {
+<span class="fc" id="L619">        this.appendStatics = appendStatics;</span>
+<span class="fc" id="L620">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Sets whether or not to append transient fields.
+     * &lt;/p&gt;
+     *
+     * @param appendTransients
+     *            Whether or not to append transient fields.
+     */
+    public void setAppendTransients(final boolean appendTransients) {
+<span class="fc" id="L631">        this.appendTransients = appendTransients;</span>
+<span class="fc" id="L632">    }</span>
+
+    /**
+     * Sets the field names to exclude.
+     *
+     * @param excludeFieldNamesParam
+     *            The excludeFieldNames to excluding from toString or &lt;code&gt;null&lt;/code&gt;.
+     * @return &lt;code&gt;this&lt;/code&gt;
+     */
+    public ReflectionToStringBuilder setExcludeFieldNames(final String... excludeFieldNamesParam) {
+<span class="fc bfc" id="L642" title="All 2 branches covered.">        if (excludeFieldNamesParam == null) {</span>
+<span class="fc" id="L643">            this.excludeFieldNames = null;</span>
+        } else {
+            //clone and remove nulls
+<span class="fc" id="L646">            this.excludeFieldNames = toNoNullStringArray(excludeFieldNamesParam);</span>
+<span class="fc" id="L647">            Arrays.sort(this.excludeFieldNames);</span>
+        }
+<span class="fc" id="L649">        return this;</span>
+    }
+
+    /**
+     * &lt;p&gt;
+     * Sets the last super class to stop appending fields for.
+     * &lt;/p&gt;
+     *
+     * @param clazz
+     *            The last super class to stop appending fields for.
+     */
+    public void setUpToClass(final Class&lt;?&gt; clazz) {
+<span class="fc bfc" id="L661" title="All 2 branches covered.">        if (clazz != null) {</span>
+<span class="fc" id="L662">            final Object object = getObject();</span>
+<span class="pc bpc" id="L663" title="1 of 4 branches missed.">            if (object != null &amp;&amp; clazz.isInstance(object) == false) {</span>
+<span class="fc" id="L664">                throw new IllegalArgumentException(&quot;Specified class is not a superclass of the object&quot;);</span>
+            }
+        }
+<span class="fc" id="L667">        this.upToClass = clazz;</span>
+<span class="fc" id="L668">    }</span>
+
+    /**
+     * &lt;p&gt;
+     * Gets the String built by this builder.
+     * &lt;/p&gt;
+     *
+     * @return the built string
+     */
+    @Override
+    public String toString() {
+<span class="fc bfc" id="L679" title="All 2 branches covered.">        if (this.getObject() == null) {</span>
+<span class="fc" id="L680">            return this.getStyle().getNullText();</span>
+        }
+<span class="fc" id="L682">        Class&lt;?&gt; clazz = this.getObject().getClass();</span>
+<span class="fc" id="L683">        this.appendFieldsIn(clazz);</span>
+<span class="fc bfc" id="L684" title="All 4 branches covered.">        while (clazz.getSuperclass() != null &amp;&amp; clazz != this.getUpToClass()) {</span>
+<span class="fc" id="L685">            clazz = clazz.getSuperclass();</span>
+<span class="fc" id="L686">            this.appendFieldsIn(clazz);</span>
+        }
+<span class="fc" id="L688">        return super.toString();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

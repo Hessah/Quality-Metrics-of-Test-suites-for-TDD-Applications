@@ -1,0 +1,367 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>XYBubbleRenderer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.renderer.xy</a> &gt; <span class="el_source">XYBubbleRenderer.java</span></div><h1>XYBubbleRenderer.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ---------------------
+ * XYBubbleRenderer.java
+ * ---------------------
+ * (C) Copyright 2003-2008, by Object Refinery Limited.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   Christian W. Zuckschwerdt;
+ *
+ * Changes
+ * -------
+ * 28-Jan-2003 : Version 1 (DG);
+ * 25-Mar-2003 : Implemented Serializable (DG);
+ * 01-May-2003 : Modified drawItem() method signature (DG);
+ * 30-Jul-2003 : Modified entity constructor (CZ);
+ * 20-Aug-2003 : Implemented Cloneable and PublicCloneable (DG);
+ * 16-Sep-2003 : Changed ChartRenderingInfo --&gt; PlotRenderingInfo (DG);
+ * 10-Feb-2004 : Small change to drawItem() method to make cut-and-paste
+ *               overriding easier (DG);
+ * 15-Jul-2004 : Switched getZ() and getZValue() methods (DG);
+ * 19-Jan-2005 : Now accesses only primitives from dataset (DG);
+ * 28-Feb-2005 : Modify renderer to use circles in legend (DG);
+ * 17-Mar-2005 : Fixed bug in bubble bounds calculation (DG);
+ * 20-Apr-2005 : Use generators for legend tooltips and URLs (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 13-Dec-2005 : Added support for item labels (bug 1373371) (DG);
+ * 20-Jan-2006 : Check flag for drawing item labels (DG);
+ * 21-Sep-2006 : Respect the outline paint and stroke settings (DG);
+ * 24-Jan-2007 : Added new equals() override (DG);
+ * 06-Feb-2007 : Fixed bug 1086307, crosshairs with multiple axes (DG);
+ * 20-Apr-2007 : Updated getLegendItem() for renderer change (DG);
+ * 17-May-2007 : Set datasetIndex and seriesIndex in getLegendItem() (DG);
+ * 18-May-2007 : Set dataset and seriesKey for LegendItem (DG);
+ * 13-Jun-2007 : Fixed seriesVisibility bug (DG);
+ * 17-Jun-2008 : Apply legend shape, font and paint attributes (DG);
+ *
+ */
+
+package org.jfree.chart.renderer.xy;
+
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Rectangle2D;
+
+import org.jfree.chart.LegendItem;
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.entity.EntityCollection;
+import org.jfree.chart.plot.CrosshairState;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.plot.PlotRenderingInfo;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.data.xy.XYDataset;
+import org.jfree.data.xy.XYZDataset;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A renderer that draws a circle at each data point with a diameter that is
+ * determined by the z-value in the dataset (the renderer requires the dataset
+ * to be an instance of {@link XYZDataset}.  The example shown here
+ * is generated by the &lt;code&gt;XYBubbleChartDemo1.java&lt;/code&gt; program
+ * included in the JFreeChart demo collection:
+ * &lt;br&gt;&lt;br&gt;
+ * &lt;img src=&quot;../../../../../images/XYBubbleRendererSample.png&quot;
+ * alt=&quot;XYBubbleRendererSample.png&quot; /&gt;
+ */
+public class XYBubbleRenderer extends AbstractXYItemRenderer
+        implements XYItemRenderer, PublicCloneable {
+
+    /** For serialization. */
+    public static final long serialVersionUID = -5221991598674249125L;
+
+    /**
+     * A constant to specify that the bubbles drawn by this renderer should be
+     * scaled on both axes (see {@link #XYBubbleRenderer(int)}).
+     */
+    public static final int SCALE_ON_BOTH_AXES = 0;
+
+    /**
+     * A constant to specify that the bubbles drawn by this renderer should be
+     * scaled on the domain axis (see {@link #XYBubbleRenderer(int)}).
+     */
+    public static final int SCALE_ON_DOMAIN_AXIS = 1;
+
+    /**
+     * A constant to specify that the bubbles drawn by this renderer should be
+     * scaled on the range axis (see {@link #XYBubbleRenderer(int)}).
+     */
+    public static final int SCALE_ON_RANGE_AXIS = 2;
+
+    /** Controls how the width and height of the bubble are scaled. */
+    private int scaleType;
+
+    /**
+     * Constructs a new renderer.
+     */
+    public XYBubbleRenderer() {
+<span class="fc" id="L126">        this(SCALE_ON_BOTH_AXES);</span>
+<span class="fc" id="L127">    }</span>
+
+    /**
+     * Constructs a new renderer with the specified type of scaling.
+     *
+     * @param scaleType  the type of scaling (must be one of:
+     *        {@link #SCALE_ON_BOTH_AXES}, {@link #SCALE_ON_DOMAIN_AXIS},
+     *        {@link #SCALE_ON_RANGE_AXIS}).
+     */
+    public XYBubbleRenderer(int scaleType) {
+<span class="fc" id="L137">        super();</span>
+<span class="pc bpc" id="L138" title="2 of 4 branches missed.">        if (scaleType &lt; 0 || scaleType &gt; 2) {</span>
+<span class="nc" id="L139">            throw new IllegalArgumentException(&quot;Invalid 'scaleType'.&quot;);</span>
+        }
+<span class="fc" id="L141">        this.scaleType = scaleType;</span>
+<span class="fc" id="L142">        setBaseLegendShape(new Ellipse2D.Double(-4.0, -4.0, 8.0, 8.0));</span>
+<span class="fc" id="L143">    }</span>
+
+    /**
+     * Returns the scale type that was set when the renderer was constructed.
+     *
+     * @return The scale type (one of: {@link #SCALE_ON_BOTH_AXES},
+     *         {@link #SCALE_ON_DOMAIN_AXIS}, {@link #SCALE_ON_RANGE_AXIS}).
+     */
+    public int getScaleType() {
+<span class="nc" id="L152">        return this.scaleType;</span>
+    }
+
+    /**
+     * Draws the visual representation of a single data item.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the area within which the data is being drawn.
+     * @param info  collects information about the drawing.
+     * @param plot  the plot (can be used to obtain standard color
+     *              information etc).
+     * @param domainAxis  the domain (horizontal) axis.
+     * @param rangeAxis  the range (vertical) axis.
+     * @param dataset  the dataset (an {@link XYZDataset} is expected).
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     * @param crosshairState  crosshair information for the plot
+     *                        (&lt;code&gt;null&lt;/code&gt; permitted).
+     * @param pass  the pass index.
+     */
+    @Override
+    public void drawItem(Graphics2D g2, XYItemRendererState state,
+            Rectangle2D dataArea, PlotRenderingInfo info, XYPlot plot,
+            ValueAxis domainAxis, ValueAxis rangeAxis, XYDataset dataset,
+            int series, int item, CrosshairState crosshairState, int pass) {
+
+        // return straight away if the item is not visible
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (!getItemVisible(series, item)) {</span>
+<span class="nc" id="L181">            return;</span>
+        }
+
+<span class="nc" id="L184">        PlotOrientation orientation = plot.getOrientation();</span>
+
+        // get the data point...
+<span class="nc" id="L187">        double x = dataset.getXValue(series, item);</span>
+<span class="nc" id="L188">        double y = dataset.getYValue(series, item);</span>
+<span class="nc" id="L189">        double z = Double.NaN;</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (dataset instanceof XYZDataset) {</span>
+<span class="nc" id="L191">            XYZDataset xyzData = (XYZDataset) dataset;</span>
+<span class="nc" id="L192">            z = xyzData.getZValue(series, item);</span>
+        }
+<span class="nc bnc" id="L194" title="All 2 branches missed.">        if (!Double.isNaN(z)) {</span>
+<span class="nc" id="L195">            RectangleEdge domainAxisLocation = plot.getDomainAxisEdge();</span>
+<span class="nc" id="L196">            RectangleEdge rangeAxisLocation = plot.getRangeAxisEdge();</span>
+<span class="nc" id="L197">            double transX = domainAxis.valueToJava2D(x, dataArea,</span>
+                    domainAxisLocation);
+<span class="nc" id="L199">            double transY = rangeAxis.valueToJava2D(y, dataArea,</span>
+                    rangeAxisLocation);
+
+            double transDomain;
+            double transRange;
+            double zero;
+
+<span class="nc bnc" id="L206" title="All 3 branches missed.">            switch(getScaleType()) {</span>
+                case SCALE_ON_DOMAIN_AXIS:
+<span class="nc" id="L208">                    zero = domainAxis.valueToJava2D(0.0, dataArea,</span>
+                            domainAxisLocation);
+<span class="nc" id="L210">                    transDomain = domainAxis.valueToJava2D(z, dataArea,</span>
+                            domainAxisLocation) - zero;
+<span class="nc" id="L212">                    transRange = transDomain;</span>
+<span class="nc" id="L213">                    break;</span>
+                case SCALE_ON_RANGE_AXIS:
+<span class="nc" id="L215">                    zero = rangeAxis.valueToJava2D(0.0, dataArea,</span>
+                            rangeAxisLocation);
+<span class="nc" id="L217">                    transRange = zero - rangeAxis.valueToJava2D(z, dataArea,</span>
+                            rangeAxisLocation);
+<span class="nc" id="L219">                    transDomain = transRange;</span>
+<span class="nc" id="L220">                    break;</span>
+                default:
+<span class="nc" id="L222">                    double zero1 = domainAxis.valueToJava2D(0.0, dataArea,</span>
+                            domainAxisLocation);
+<span class="nc" id="L224">                    double zero2 = rangeAxis.valueToJava2D(0.0, dataArea,</span>
+                            rangeAxisLocation);
+<span class="nc" id="L226">                    transDomain = domainAxis.valueToJava2D(z, dataArea,</span>
+                            domainAxisLocation) - zero1;
+<span class="nc" id="L228">                    transRange = zero2 - rangeAxis.valueToJava2D(z, dataArea,</span>
+                            rangeAxisLocation);
+            }
+<span class="nc" id="L231">            transDomain = Math.abs(transDomain);</span>
+<span class="nc" id="L232">            transRange = Math.abs(transRange);</span>
+<span class="nc" id="L233">            Ellipse2D circle = null;</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">            if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="nc" id="L235">                circle = new Ellipse2D.Double(transX - transDomain / 2.0,</span>
+                        transY - transRange / 2.0, transDomain, transRange);
+            }
+<span class="nc bnc" id="L238" title="All 2 branches missed.">            else if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L239">                circle = new Ellipse2D.Double(transY - transRange / 2.0,</span>
+                        transX - transDomain / 2.0, transRange, transDomain);
+            } else {
+<span class="nc" id="L242">                throw new IllegalStateException();</span>
+            }
+<span class="nc" id="L244">            g2.setPaint(getItemPaint(series, item));</span>
+<span class="nc" id="L245">            g2.fill(circle);</span>
+<span class="nc" id="L246">            g2.setStroke(getItemOutlineStroke(series, item));</span>
+<span class="nc" id="L247">            g2.setPaint(getItemOutlinePaint(series, item));</span>
+<span class="nc" id="L248">            g2.draw(circle);</span>
+
+<span class="nc bnc" id="L250" title="All 2 branches missed.">            if (isItemLabelVisible(series, item)) {</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">                if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="nc" id="L252">                    drawItemLabel(g2, orientation, dataset, series, item,</span>
+                            transX, transY, false);
+                }
+<span class="nc bnc" id="L255" title="All 2 branches missed.">                else if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L256">                    drawItemLabel(g2, orientation, dataset, series, item,</span>
+                            transY, transX, false);
+                }
+            }
+
+            // add an entity if this info is being collected
+<span class="nc bnc" id="L262" title="All 2 branches missed.">            if (info != null) {</span>
+<span class="nc" id="L263">                EntityCollection entities </span>
+                        = info.getOwner().getEntityCollection();
+<span class="nc bnc" id="L265" title="All 4 branches missed.">                if (entities != null &amp;&amp; circle.intersects(dataArea)) {</span>
+<span class="nc" id="L266">                    addEntity(entities, circle, dataset, series, item,</span>
+                            circle.getCenterX(), circle.getCenterY());
+                }
+            }
+
+<span class="nc" id="L271">            int domainAxisIndex = plot.getDomainAxisIndex(domainAxis);</span>
+<span class="nc" id="L272">            int rangeAxisIndex = plot.getRangeAxisIndex(rangeAxis);</span>
+<span class="nc" id="L273">            updateCrosshairValues(crosshairState, x, y, domainAxisIndex,</span>
+                    rangeAxisIndex, transX, transY, orientation);
+        }
+
+<span class="nc" id="L277">    }</span>
+
+    /**
+     * Returns a legend item for the specified series.  The default method
+     * is overridden so that the legend displays circles for all series.
+     *
+     * @param datasetIndex  the dataset index (zero-based).
+     * @param series  the series index (zero-based).
+     *
+     * @return A legend item for the series.
+     */
+    @Override
+    public LegendItem getLegendItem(int datasetIndex, int series) {
+<span class="fc" id="L290">        LegendItem result = null;</span>
+<span class="fc" id="L291">        XYPlot plot = getPlot();</span>
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">        if (plot == null) {</span>
+<span class="nc" id="L293">            return null;</span>
+        }
+
+<span class="fc" id="L296">        XYDataset dataset = plot.getDataset(datasetIndex);</span>
+<span class="pc bpc" id="L297" title="1 of 2 branches missed.">        if (dataset != null) {</span>
+<span class="pc bpc" id="L298" title="1 of 2 branches missed.">            if (getItemVisible(series, 0)) {</span>
+<span class="fc" id="L299">                String label = getLegendItemLabelGenerator().generateLabel(</span>
+                        dataset, series);
+<span class="fc" id="L301">                String description = label;</span>
+<span class="fc" id="L302">                String toolTipText = null;</span>
+<span class="pc bpc" id="L303" title="1 of 2 branches missed.">                if (getLegendItemToolTipGenerator() != null) {</span>
+<span class="nc" id="L304">                    toolTipText = getLegendItemToolTipGenerator().generateLabel(</span>
+                            dataset, series);
+                }
+<span class="fc" id="L307">                String urlText = null;</span>
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">                if (getLegendItemURLGenerator() != null) {</span>
+<span class="nc" id="L309">                    urlText = getLegendItemURLGenerator().generateLabel(</span>
+                            dataset, series);
+                }
+<span class="fc" id="L312">                Shape shape = lookupLegendShape(series);</span>
+<span class="fc" id="L313">                Paint paint = lookupSeriesPaint(series);</span>
+<span class="fc" id="L314">                Paint outlinePaint = lookupSeriesOutlinePaint(series);</span>
+<span class="fc" id="L315">                Stroke outlineStroke = lookupSeriesOutlineStroke(series);</span>
+<span class="fc" id="L316">                result = new LegendItem(label, description, toolTipText,</span>
+                        urlText, shape, paint, outlineStroke, outlinePaint);
+<span class="fc" id="L318">                result.setLabelFont(lookupLegendTextFont(series));</span>
+<span class="fc" id="L319">                Paint labelPaint = lookupLegendTextPaint(series);</span>
+<span class="pc bpc" id="L320" title="1 of 2 branches missed.">                if (labelPaint != null) {</span>
+<span class="nc" id="L321">                    result.setLabelPaint(labelPaint);</span>
+                }
+<span class="fc" id="L323">                result.setDataset(dataset);</span>
+<span class="fc" id="L324">                result.setDatasetIndex(datasetIndex);</span>
+<span class="fc" id="L325">                result.setSeriesKey(dataset.getSeriesKey(series));</span>
+<span class="fc" id="L326">                result.setSeriesIndex(series);</span>
+            }
+        }
+<span class="fc" id="L329">        return result;</span>
+    }
+
+    /**
+     * Tests this renderer for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L342">            return true;</span>
+        }
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">        if (!(obj instanceof XYBubbleRenderer)) {</span>
+<span class="nc" id="L345">            return false;</span>
+        }
+<span class="fc" id="L347">        XYBubbleRenderer that = (XYBubbleRenderer) obj;</span>
+<span class="fc bfc" id="L348" title="All 2 branches covered.">        if (this.scaleType != that.scaleType) {</span>
+<span class="fc" id="L349">            return false;</span>
+        }
+<span class="fc" id="L351">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Returns a clone of the renderer.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException  if the renderer cannot be cloned.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L363">        return super.clone();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

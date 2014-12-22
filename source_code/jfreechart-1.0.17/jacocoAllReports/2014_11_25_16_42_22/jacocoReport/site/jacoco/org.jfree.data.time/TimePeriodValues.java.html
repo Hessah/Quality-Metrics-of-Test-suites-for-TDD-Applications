@@ -1,0 +1,575 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>TimePeriodValues.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.data.time</a> &gt; <span class="el_source">TimePeriodValues.java</span></div><h1>TimePeriodValues.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it 
+ * under the terms of the GNU Lesser General Public License as published by 
+ * the Free Software Foundation; either version 2.1 of the License, or 
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but 
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY 
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public 
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, 
+ * USA.  
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ---------------------
+ * TimePeriodValues.java
+ * ---------------------
+ * (C) Copyright 2003-2013, by Object Refinery Limited.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   -;
+ *
+ * Changes
+ * -------
+ * 22-Apr-2003 : Version 1 (DG);
+ * 30-Jul-2003 : Added clone and equals methods while testing (DG);
+ * 11-Mar-2005 : Fixed bug in bounds recalculation - see bug report 
+ *               1161329 (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 03-Oct-2006 : Fixed NullPointerException in equals(), fire change event in 
+ *               add() method, updated API docs (DG);
+ * 07-Apr-2008 : Fixed bug with maxMiddleIndex in updateBounds() (DG);
+ * 03-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.data.time;
+
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
+import org.jfree.chart.util.ParamChecks;
+
+import org.jfree.data.general.Series;
+import org.jfree.data.general.SeriesChangeEvent;
+import org.jfree.data.general.SeriesException;
+import org.jfree.util.ObjectUtilities;
+
+/**
+ * A structure containing zero, one or many {@link TimePeriodValue} instances.  
+ * The time periods can overlap, and are maintained in the order that they are 
+ * added to the collection.
+ * &lt;p&gt;
+ * This is similar to the {@link TimeSeries} class, except that the time 
+ * periods can have irregular lengths.
+ */
+public class TimePeriodValues extends Series implements Serializable {
+
+    /** For serialization. */
+    static final long serialVersionUID = -2210593619794989709L;
+    
+    /** Default value for the domain description. */
+    protected static final String DEFAULT_DOMAIN_DESCRIPTION = &quot;Time&quot;;
+
+    /** Default value for the range description. */
+    protected static final String DEFAULT_RANGE_DESCRIPTION = &quot;Value&quot;;
+
+    /** A description of the domain. */
+    private String domain;
+
+    /** A description of the range. */
+    private String range;
+
+    /** The list of data pairs in the series. */
+    private List data;
+
+    /** Index of the time period with the minimum start milliseconds. */
+<span class="fc" id="L90">    private int minStartIndex = -1;</span>
+    
+    /** Index of the time period with the maximum start milliseconds. */
+<span class="fc" id="L93">    private int maxStartIndex = -1;</span>
+    
+    /** Index of the time period with the minimum middle milliseconds. */
+<span class="fc" id="L96">    private int minMiddleIndex = -1;</span>
+    
+    /** Index of the time period with the maximum middle milliseconds. */
+<span class="fc" id="L99">    private int maxMiddleIndex = -1;</span>
+    
+    /** Index of the time period with the minimum end milliseconds. */
+<span class="fc" id="L102">    private int minEndIndex = -1;</span>
+    
+    /** Index of the time period with the maximum end milliseconds. */
+<span class="fc" id="L105">    private int maxEndIndex = -1;</span>
+
+    /**
+     * Creates a new (empty) collection of time period values.
+     *
+     * @param name  the name of the series (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public TimePeriodValues(String name) {
+<span class="fc" id="L113">        this(name, DEFAULT_DOMAIN_DESCRIPTION, DEFAULT_RANGE_DESCRIPTION);</span>
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * Creates a new time series that contains no data.
+     * &lt;P&gt;
+     * Descriptions can be specified for the domain and range.  One situation
+     * where this is helpful is when generating a chart for the time series -
+     * axis labels can be taken from the domain and range description.
+     *
+     * @param name  the name of the series (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param domain  the domain description.
+     * @param range  the range description.
+     */
+    public TimePeriodValues(String name, String domain, String range) {
+<span class="fc" id="L128">        super(name);</span>
+<span class="fc" id="L129">        this.domain = domain;</span>
+<span class="fc" id="L130">        this.range = range;</span>
+<span class="fc" id="L131">        this.data = new ArrayList();</span>
+<span class="fc" id="L132">    }</span>
+
+    /**
+     * Returns the domain description.
+     *
+     * @return The domain description (possibly &lt;code&gt;null&lt;/code&gt;).
+     * 
+     * @see #getRangeDescription()
+     * @see #setDomainDescription(String)
+     */
+    public String getDomainDescription() {
+<span class="fc" id="L143">        return this.domain;</span>
+    }
+
+    /**
+     * Sets the domain description and fires a property change event (with the
+     * property name &lt;code&gt;Domain&lt;/code&gt; if the description changes).
+     *
+     * @param description  the new description (&lt;code&gt;null&lt;/code&gt; permitted).
+     * 
+     * @see #getDomainDescription()
+     */
+    public void setDomainDescription(String description) {
+<span class="fc" id="L155">        String old = this.domain;</span>
+<span class="fc" id="L156">        this.domain = description;</span>
+<span class="fc" id="L157">        firePropertyChange(&quot;Domain&quot;, old, description);</span>
+<span class="fc" id="L158">    }</span>
+
+    /**
+     * Returns the range description.
+     *
+     * @return The range description (possibly &lt;code&gt;null&lt;/code&gt;).
+     * 
+     * @see #getDomainDescription()
+     * @see #setRangeDescription(String)
+     */
+    public String getRangeDescription() {
+<span class="fc" id="L169">        return this.range;</span>
+    }
+
+    /**
+     * Sets the range description and fires a property change event with the
+     * name &lt;code&gt;Range&lt;/code&gt;.
+     *
+     * @param description  the new description (&lt;code&gt;null&lt;/code&gt; permitted).
+     * 
+     * @see #getRangeDescription()
+     */
+    public void setRangeDescription(String description) {
+<span class="fc" id="L181">        String old = this.range;</span>
+<span class="fc" id="L182">        this.range = description;</span>
+<span class="fc" id="L183">        firePropertyChange(&quot;Range&quot;, old, description);</span>
+<span class="fc" id="L184">    }</span>
+
+    /**
+     * Returns the number of items in the series.
+     *
+     * @return The item count.
+     */
+    @Override
+    public int getItemCount() {
+<span class="fc" id="L193">        return this.data.size();</span>
+    }
+
+    /**
+     * Returns one data item for the series.
+     *
+     * @param index  the item index (in the range &lt;code&gt;0&lt;/code&gt; to 
+     *     &lt;code&gt;getItemCount() - 1&lt;/code&gt;).
+     *
+     * @return One data item for the series.
+     */
+    public TimePeriodValue getDataItem(int index) {
+<span class="fc" id="L205">        return (TimePeriodValue) this.data.get(index);</span>
+    }
+
+    /**
+     * Returns the time period at the specified index.
+     *
+     * @param index  the item index (in the range &lt;code&gt;0&lt;/code&gt; to 
+     *     &lt;code&gt;getItemCount() - 1&lt;/code&gt;).
+     *
+     * @return The time period at the specified index.
+     * 
+     * @see #getDataItem(int)
+     */
+    public TimePeriod getTimePeriod(int index) {
+<span class="fc" id="L219">        return getDataItem(index).getPeriod();</span>
+    }
+
+    /**
+     * Returns the value at the specified index.
+     *
+     * @param index  the item index (in the range &lt;code&gt;0&lt;/code&gt; to 
+     *     &lt;code&gt;getItemCount() - 1&lt;/code&gt;).
+     *
+     * @return The value at the specified index (possibly &lt;code&gt;null&lt;/code&gt;).
+     * 
+     * @see #getDataItem(int)
+     */
+    public Number getValue(int index) {
+<span class="fc" id="L233">        return getDataItem(index).getValue();</span>
+    }
+
+    /**
+     * Adds a data item to the series and sends a {@link SeriesChangeEvent} to
+     * all registered listeners.
+     *
+     * @param item  the item (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void add(TimePeriodValue item) {
+<span class="fc" id="L243">        ParamChecks.nullNotPermitted(item, &quot;item&quot;);</span>
+<span class="fc" id="L244">        this.data.add(item);</span>
+<span class="fc" id="L245">        updateBounds(item.getPeriod(), this.data.size() - 1);</span>
+<span class="fc" id="L246">        fireSeriesChanged();</span>
+<span class="fc" id="L247">    }</span>
+    
+    /**
+     * Update the index values for the maximum and minimum bounds.
+     * 
+     * @param period  the time period.
+     * @param index  the index of the time period.
+     */
+    private void updateBounds(TimePeriod period, int index) {
+        
+<span class="fc" id="L257">        long start = period.getStart().getTime();</span>
+<span class="fc" id="L258">        long end = period.getEnd().getTime();</span>
+<span class="fc" id="L259">        long middle = start + ((end - start) / 2);</span>
+
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        if (this.minStartIndex &gt;= 0) {</span>
+<span class="fc" id="L262">            long minStart = getDataItem(this.minStartIndex).getPeriod()</span>
+                .getStart().getTime();
+<span class="fc bfc" id="L264" title="All 2 branches covered.">            if (start &lt; minStart) {</span>
+<span class="fc" id="L265">                this.minStartIndex = index;           </span>
+            }
+<span class="fc" id="L267">        }</span>
+        else {
+<span class="fc" id="L269">            this.minStartIndex = index;</span>
+        }
+        
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        if (this.maxStartIndex &gt;= 0) {</span>
+<span class="fc" id="L273">            long maxStart = getDataItem(this.maxStartIndex).getPeriod()</span>
+                .getStart().getTime();
+<span class="fc bfc" id="L275" title="All 2 branches covered.">            if (start &gt; maxStart) {</span>
+<span class="fc" id="L276">                this.maxStartIndex = index;           </span>
+            }
+<span class="fc" id="L278">        }</span>
+        else {
+<span class="fc" id="L280">            this.maxStartIndex = index;</span>
+        }
+        
+<span class="fc bfc" id="L283" title="All 2 branches covered.">        if (this.minMiddleIndex &gt;= 0) {</span>
+<span class="fc" id="L284">            long s = getDataItem(this.minMiddleIndex).getPeriod().getStart()</span>
+                .getTime();
+<span class="fc" id="L286">            long e = getDataItem(this.minMiddleIndex).getPeriod().getEnd()</span>
+                .getTime();
+<span class="fc" id="L288">            long minMiddle = s + (e - s) / 2;</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">            if (middle &lt; minMiddle) {</span>
+<span class="fc" id="L290">                this.minMiddleIndex = index;           </span>
+            }
+<span class="fc" id="L292">        }</span>
+        else {
+<span class="fc" id="L294">            this.minMiddleIndex = index;</span>
+        }
+        
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        if (this.maxMiddleIndex &gt;= 0) {</span>
+<span class="fc" id="L298">            long s = getDataItem(this.maxMiddleIndex).getPeriod().getStart()</span>
+                .getTime();
+<span class="fc" id="L300">            long e = getDataItem(this.maxMiddleIndex).getPeriod().getEnd()</span>
+                .getTime();
+<span class="fc" id="L302">            long maxMiddle = s + (e - s) / 2;</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">            if (middle &gt; maxMiddle) {</span>
+<span class="fc" id="L304">                this.maxMiddleIndex = index;           </span>
+            }
+<span class="fc" id="L306">        }</span>
+        else {
+<span class="fc" id="L308">            this.maxMiddleIndex = index;</span>
+        }
+        
+<span class="fc bfc" id="L311" title="All 2 branches covered.">        if (this.minEndIndex &gt;= 0) {</span>
+<span class="fc" id="L312">            long minEnd = getDataItem(this.minEndIndex).getPeriod().getEnd()</span>
+                .getTime();
+<span class="fc bfc" id="L314" title="All 2 branches covered.">            if (end &lt; minEnd) {</span>
+<span class="fc" id="L315">                this.minEndIndex = index;           </span>
+            }
+<span class="fc" id="L317">        }</span>
+        else {
+<span class="fc" id="L319">            this.minEndIndex = index;</span>
+        }
+       
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        if (this.maxEndIndex &gt;= 0) {</span>
+<span class="fc" id="L323">            long maxEnd = getDataItem(this.maxEndIndex).getPeriod().getEnd()</span>
+                .getTime();
+<span class="fc bfc" id="L325" title="All 2 branches covered.">            if (end &gt; maxEnd) {</span>
+<span class="fc" id="L326">                this.maxEndIndex = index;           </span>
+            }
+<span class="fc" id="L328">        }</span>
+        else {
+<span class="fc" id="L330">            this.maxEndIndex = index;</span>
+        }
+        
+<span class="fc" id="L333">    }</span>
+    
+    /**
+     * Recalculates the bounds for the collection of items.
+     */
+    private void recalculateBounds() {
+<span class="fc" id="L339">        this.minStartIndex = -1;</span>
+<span class="fc" id="L340">        this.minMiddleIndex = -1;</span>
+<span class="fc" id="L341">        this.minEndIndex = -1;</span>
+<span class="fc" id="L342">        this.maxStartIndex = -1;</span>
+<span class="fc" id="L343">        this.maxMiddleIndex = -1;</span>
+<span class="fc" id="L344">        this.maxEndIndex = -1;</span>
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">        for (int i = 0; i &lt; this.data.size(); i++) {</span>
+<span class="nc" id="L346">            TimePeriodValue tpv = (TimePeriodValue) this.data.get(i);</span>
+<span class="nc" id="L347">            updateBounds(tpv.getPeriod(), i);</span>
+        }
+<span class="fc" id="L349">    }</span>
+
+    /**
+     * Adds a new data item to the series and sends a {@link SeriesChangeEvent}
+     * to all registered listeners.
+     *
+     * @param period  the time period (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param value  the value.
+     * 
+     * @see #add(TimePeriod, Number)
+     */
+    public void add(TimePeriod period, double value) {
+<span class="fc" id="L361">        TimePeriodValue item = new TimePeriodValue(period, value);</span>
+<span class="fc" id="L362">        add(item);</span>
+<span class="fc" id="L363">    }</span>
+
+    /**
+     * Adds a new data item to the series and sends a {@link SeriesChangeEvent}
+     * to all registered listeners.
+     *
+     * @param period  the time period (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param value  the value (&lt;code&gt;null&lt;/code&gt; permitted).
+     */
+    public void add(TimePeriod period, Number value) {
+<span class="fc" id="L373">        TimePeriodValue item = new TimePeriodValue(period, value);</span>
+<span class="fc" id="L374">        add(item);</span>
+<span class="fc" id="L375">    }</span>
+
+    /**
+     * Updates (changes) the value of a data item and sends a 
+     * {@link SeriesChangeEvent} to all registered listeners.
+     *
+     * @param index  the index of the data item to update.
+     * @param value  the new value (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void update(int index, Number value) {
+<span class="fc" id="L385">        TimePeriodValue item = getDataItem(index);</span>
+<span class="fc" id="L386">        item.setValue(value);</span>
+<span class="fc" id="L387">        fireSeriesChanged();</span>
+<span class="fc" id="L388">    }</span>
+
+    /**
+     * Deletes data from start until end index (end inclusive) and sends a
+     * {@link SeriesChangeEvent} to all registered listeners.
+     *
+     * @param start  the index of the first period to delete.
+     * @param end  the index of the last period to delete.
+     */
+    public void delete(int start, int end) {
+<span class="fc bfc" id="L398" title="All 2 branches covered.">        for (int i = 0; i &lt;= (end - start); i++) {</span>
+<span class="fc" id="L399">            this.data.remove(start);</span>
+        }
+<span class="fc" id="L401">        recalculateBounds();</span>
+<span class="fc" id="L402">        fireSeriesChanged();</span>
+<span class="fc" id="L403">    }</span>
+    
+    /**
+     * Tests the series for equality with another object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L414" title="All 2 branches covered.">        if (obj == this) {</span>
+<span class="fc" id="L415">            return true;</span>
+        }
+<span class="pc bpc" id="L417" title="1 of 2 branches missed.">        if (!(obj instanceof TimePeriodValues)) {</span>
+<span class="nc" id="L418">            return false;</span>
+        }
+<span class="fc bfc" id="L420" title="All 2 branches covered.">        if (!super.equals(obj)) {</span>
+<span class="fc" id="L421">            return false;</span>
+        }
+<span class="fc" id="L423">        TimePeriodValues that = (TimePeriodValues) obj;</span>
+<span class="fc bfc" id="L424" title="All 2 branches covered.">        if (!ObjectUtilities.equal(this.getDomainDescription(), </span>
+                that.getDomainDescription())) {
+<span class="fc" id="L426">            return false;</span>
+        }
+<span class="fc bfc" id="L428" title="All 2 branches covered.">        if (!ObjectUtilities.equal(this.getRangeDescription(), </span>
+                that.getRangeDescription())) {
+<span class="fc" id="L430">            return false;</span>
+        }
+<span class="fc" id="L432">        int count = getItemCount();</span>
+<span class="fc bfc" id="L433" title="All 2 branches covered.">        if (count != that.getItemCount()) {</span>
+<span class="fc" id="L434">            return false;</span>
+        }
+<span class="fc bfc" id="L436" title="All 2 branches covered.">        for (int i = 0; i &lt; count; i++) {</span>
+<span class="pc bpc" id="L437" title="1 of 2 branches missed.">            if (!getDataItem(i).equals(that.getDataItem(i))) {</span>
+<span class="nc" id="L438">                return false;</span>
+            }
+        }
+<span class="fc" id="L441">        return true;</span>
+    }
+
+    /**
+     * Returns a hash code value for the object.
+     *
+     * @return The hashcode
+     */
+    @Override
+    public int hashCode() {
+        int result;
+<span class="nc bnc" id="L452" title="All 2 branches missed.">        result = (this.domain != null ? this.domain.hashCode() : 0);</span>
+<span class="nc bnc" id="L453" title="All 2 branches missed.">        result = 29 * result + (this.range != null ? this.range.hashCode() : 0);</span>
+<span class="nc" id="L454">        result = 29 * result + this.data.hashCode();</span>
+<span class="nc" id="L455">        result = 29 * result + this.minStartIndex;</span>
+<span class="nc" id="L456">        result = 29 * result + this.maxStartIndex;</span>
+<span class="nc" id="L457">        result = 29 * result + this.minMiddleIndex;</span>
+<span class="nc" id="L458">        result = 29 * result + this.maxMiddleIndex;</span>
+<span class="nc" id="L459">        result = 29 * result + this.minEndIndex;</span>
+<span class="nc" id="L460">        result = 29 * result + this.maxEndIndex;</span>
+<span class="nc" id="L461">        return result;</span>
+    }
+
+    /**
+     * Returns a clone of the collection.
+     * &lt;P&gt;
+     * Notes:
+     * &lt;ul&gt;
+     *   &lt;li&gt;no need to clone the domain and range descriptions, since String 
+     *       object is immutable;&lt;/li&gt;
+     *   &lt;li&gt;we pass over to the more general method createCopy(start, end).
+     *   &lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @return A clone of the time series.
+     * 
+     * @throws CloneNotSupportedException if there is a cloning problem.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L481">        Object clone = createCopy(0, getItemCount() - 1);</span>
+<span class="fc" id="L482">        return clone;</span>
+    }
+
+    /**
+     * Creates a new instance by copying a subset of the data in this 
+     * collection.
+     *
+     * @param start  the index of the first item to copy.
+     * @param end  the index of the last item to copy.
+     *
+     * @return A copy of a subset of the items.
+     * 
+     * @throws CloneNotSupportedException if there is a cloning problem.
+     */
+    public TimePeriodValues createCopy(int start, int end) 
+        throws CloneNotSupportedException {
+
+<span class="fc" id="L499">        TimePeriodValues copy = (TimePeriodValues) super.clone();</span>
+
+<span class="fc" id="L501">        copy.data = new ArrayList();</span>
+<span class="pc bpc" id="L502" title="1 of 2 branches missed.">        if (this.data.size() &gt; 0) {</span>
+<span class="fc bfc" id="L503" title="All 2 branches covered.">            for (int index = start; index &lt;= end; index++) {</span>
+<span class="fc" id="L504">                TimePeriodValue item = (TimePeriodValue) this.data.get(index);</span>
+<span class="fc" id="L505">                TimePeriodValue clone = (TimePeriodValue) item.clone();</span>
+                try {
+<span class="fc" id="L507">                    copy.add(clone);</span>
+                }
+<span class="nc" id="L509">                catch (SeriesException e) {</span>
+<span class="nc" id="L510">                    System.err.println(&quot;Failed to add cloned item.&quot;);</span>
+<span class="fc" id="L511">                }</span>
+            }
+        }
+<span class="fc" id="L514">        return copy;</span>
+
+    }
+    
+    /**
+     * Returns the index of the time period with the minimum start milliseconds.
+     * 
+     * @return The index.
+     */
+    public int getMinStartIndex() {
+<span class="fc" id="L524">        return this.minStartIndex;</span>
+    }
+    
+    /**
+     * Returns the index of the time period with the maximum start milliseconds.
+     * 
+     * @return The index.
+     */
+    public int getMaxStartIndex() {
+<span class="fc" id="L533">        return this.maxStartIndex;</span>
+    }
+
+    /**
+     * Returns the index of the time period with the minimum middle 
+     * milliseconds.
+     * 
+     * @return The index.
+     */
+    public int getMinMiddleIndex() {
+<span class="fc" id="L543">        return this.minMiddleIndex;</span>
+    }
+    
+    /**
+     * Returns the index of the time period with the maximum middle 
+     * milliseconds.
+     * 
+     * @return The index.
+     */
+    public int getMaxMiddleIndex() {
+<span class="fc" id="L553">        return this.maxMiddleIndex;</span>
+    }
+
+    /**
+     * Returns the index of the time period with the minimum end milliseconds.
+     * 
+     * @return The index.
+     */
+    public int getMinEndIndex() {
+<span class="fc" id="L562">        return this.minEndIndex;</span>
+    }
+    
+    /**
+     * Returns the index of the time period with the maximum end milliseconds.
+     * 
+     * @return The index.
+     */
+    public int getMaxEndIndex() {
+<span class="fc" id="L571">        return this.maxEndIndex;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

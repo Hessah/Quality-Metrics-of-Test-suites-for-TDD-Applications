@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>LogPanel.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">twfbplayer</a> &gt; <a href="index.source.html" class="el_package">de.outstare.fortbattleplayer.gui</a> &gt; <span class="el_source">LogPanel.java</span></div><h1>LogPanel.java</h1><pre class="source lang-java linenums">package de.outstare.fortbattleplayer.gui;
+
+/*
+ Copyright (c) 2010 Daniel Raap
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the &quot;Software&quot;), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ */
+
+import java.awt.BorderLayout;
+import java.awt.Point;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
+
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.JViewport;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
+
+import de.outstare.fortbattleplayer.player.BattleLog;
+import de.outstare.fortbattleplayer.player.Battleplayer;
+import de.outstare.fortbattleplayer.player.CombatantEventDispatcher;
+
+/**
+ * shows text messages
+ * 
+ * @author daniel
+ */
+class LogPanel extends JPanel {
+	/**
+	 * 
+	 * @author daniel
+	 */
+	private static class LogviewDisplayer implements ActionListener {
+		/**
+	     * 
+	     */
+		private final JButton _hideButton;
+		/**
+	     * 
+	     */
+		private final JScrollPane _centerComponent;
+
+		/**
+		 * @param hideButton
+		 * @param centerComponent
+		 */
+<span class="nc" id="L71">		LogviewDisplayer(final JButton hideButton, final JScrollPane centerComponent) {</span>
+<span class="nc" id="L72">			_hideButton = hideButton;</span>
+<span class="nc" id="L73">			_centerComponent = centerComponent;</span>
+<span class="nc" id="L74">		}</span>
+
+		public void actionPerformed(final ActionEvent e) {
+<span class="nc bnc" id="L77" title="All 2 branches missed.">			if (_centerComponent.isVisible()) {</span>
+<span class="nc" id="L78">				_centerComponent.setVisible(false);</span>
+<span class="nc" id="L79">				_hideButton.setText(Messages.getString(&quot;LogPanel.show&quot;)); //$NON-NLS-1$</span>
+			} else {
+<span class="nc" id="L81">				_centerComponent.setVisible(true);</span>
+<span class="nc" id="L82">				_hideButton.setText(Messages.getString(&quot;LogPanel.hide&quot;)); //$NON-NLS-1$</span>
+			}
+
+<span class="nc" id="L85">		}</span>
+	}
+
+	/**
+	 * 
+	 * @author daniel
+	 */
+	private static class LogviewScroller implements ChangeListener {
+		/**
+	     * 
+	     */
+		private final int _rowHeight;
+<span class="nc" id="L97">		private volatile int lastHeight = 0;</span>
+
+		/**
+		 * @param rowHeight
+		 */
+<span class="nc" id="L102">		LogviewScroller(final int rowHeight) {</span>
+<span class="nc" id="L103">			_rowHeight = rowHeight;</span>
+<span class="nc" id="L104">		}</span>
+
+		public void stateChanged(final ChangeEvent e) {
+<span class="nc" id="L107">			final JViewport vp = (JViewport) e.getSource();</span>
+<span class="nc" id="L108">			final int newHeight = vp.getViewSize().height;</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">			if (newHeight != lastHeight) {</span>
+<span class="nc" id="L110">				lastHeight = newHeight;</span>
+<span class="nc" id="L111">				final int viewHeight = vp.getExtentSize().height;</span>
+				// don't show last line, which is always empty
+<span class="nc" id="L113">				vp.setViewPosition(new Point(0, newHeight - viewHeight - _rowHeight));</span>
+			}
+<span class="nc" id="L115">		}</span>
+	}
+
+	/**
+	 * copies the data in the {@link OutputStream} to the log window
+	 * 
+	 * @author daniel
+	 */
+	private static class LogAppender extends ByteArrayOutputStream {
+		private final JTextArea _log;
+
+		/**
+		 * @param log
+		 */
+<span class="nc" id="L129">		LogAppender(final JTextArea log) {</span>
+<span class="nc" id="L130">			_log = log;</span>
+<span class="nc" id="L131">		}</span>
+
+		/**
+		 * move content from stream to JTextArea
+		 * 
+		 * @see java.io.OutputStream#flush()
+		 */
+		@Override
+		public void flush() throws IOException {
+<span class="nc" id="L140">			super.flush();</span>
+<span class="nc" id="L141">			_log.append(new String(toByteArray()));</span>
+<span class="nc" id="L142">			reset();</span>
+<span class="nc" id="L143">		}</span>
+	}
+
+	private static final long serialVersionUID = -85232864719836763L;
+
+	/**
+	 * @param controller
+	 * @param combatants
+	 */
+	LogPanel(final Battleplayer controller, final CombatantEventDispatcher combatants) {
+<span class="nc" id="L153">		super(new BorderLayout());</span>
+
+<span class="nc" id="L155">		final JTextArea log = new JTextArea(5, 20);</span>
+<span class="nc" id="L156">		log.setEditable(false);</span>
+<span class="nc" id="L157">		final int rowHeight = log.getFontMetrics(log.getFont()).getHeight();</span>
+<span class="nc" id="L158">		final OutputStream logBuffer = new LogAppender(log);</span>
+<span class="nc" id="L159">		new BattleLog(new PrintStream(logBuffer), controller, combatants);</span>
+
+<span class="nc" id="L161">		final JPanel topPanel = new JPanel();</span>
+<span class="nc" id="L162">		topPanel.add(new JLabel(Messages.getString(&quot;LogPanel.label&quot;))); //$NON-NLS-1$</span>
+<span class="nc" id="L163">		final JButton hideButton = new JButton(Messages.getString(&quot;LogPanel.show&quot;)); //$NON-NLS-1$</span>
+<span class="nc" id="L164">		topPanel.add(hideButton);</span>
+<span class="nc" id="L165">		add(topPanel, BorderLayout.NORTH);</span>
+<span class="nc" id="L166">		final JScrollPane centerComponent = new JScrollPane(log);</span>
+<span class="nc" id="L167">		centerComponent.setVisible(false);</span>
+<span class="nc" id="L168">		centerComponent.getViewport().addChangeListener(new LogviewScroller(rowHeight));</span>
+<span class="nc" id="L169">		add(centerComponent, BorderLayout.CENTER);</span>
+<span class="nc" id="L170">		hideButton.addActionListener(new LogviewDisplayer(hideButton, centerComponent));</span>
+<span class="nc" id="L171">	}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

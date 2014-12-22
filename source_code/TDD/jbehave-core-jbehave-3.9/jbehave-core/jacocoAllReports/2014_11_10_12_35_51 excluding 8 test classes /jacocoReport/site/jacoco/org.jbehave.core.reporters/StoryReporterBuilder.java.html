@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StoryReporterBuilder.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.reporters</a> &gt; <span class="el_source">StoryReporterBuilder.java</span></div><h1>StoryReporterBuilder.java</h1><pre class="source lang-java linenums">package org.jbehave.core.reporters;
+
+import java.io.File;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+
+import org.jbehave.core.configuration.Keywords;
+import org.jbehave.core.i18n.LocalizedKeywords;
+import org.jbehave.core.io.CodeLocations;
+import org.jbehave.core.io.StoryLocation;
+import org.jbehave.core.reporters.FilePrintStreamFactory.FileConfiguration;
+import org.jbehave.core.reporters.FilePrintStreamFactory.FilePathResolver;
+
+import static java.util.Arrays.asList;
+
+/**
+ * &lt;p&gt;
+ * A &lt;a href=&quot;http://en.wikipedia.org/wiki/Builder_pattern&quot;&gt;Builder&lt;/a&gt; for
+ * {@link StoryReporter}s. It builds a {@link DelegatingStoryReporter} with
+ * delegates for a number of formats - mostly file-based ones except
+ * {@Format.CONSOLE}. It requires a
+ * {@link FilePrintStreamFactory} and provides default delegate instances for
+ * each format.
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * To build a reporter for a single story path with default and given formats:
+ * 
+ * &lt;pre&gt;
+ * Class&amp;lt;MyStory&amp;gt; storyClass = MyStory.class;
+ * StoryPathResolver resolver = new UnderscoredCamelCaseResolver();
+ * String storyPath = resolver.resolve(storyClass);
+ * StoryReporter reporter = new StoryReporterBuilder().withCodeLocation(CodeLocations.codeLocationFromClass(storyClass))
+ *         .withDefaultFormats().withFormats(TXT, HTML, XML).build(storyPath);
+ * &lt;/pre&gt;
+ * 
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The builder is configured to build with the {@link Format#STATS} as default
+ * format. To change the default formats the user can override the method:
+ * 
+ * &lt;pre&gt;
+ * new StoryReporterBuilder() {
+ *     protected StoryReporterBuilder withDefaultFormats() {
+ *         return withFormats(STATS);
+ *     }
+ * }
+ * &lt;/pre&gt;
+ * 
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * The builder configures the file-based reporters to output to the default file
+ * directory {@link FileConfiguration#DIRECTORY} as relative to the code
+ * location. In some case, e.g. with Ant class loader, the code source location
+ * from class may not be properly set. In this case, we may specify it from a
+ * file:
+ * 
+ * &lt;pre&gt;
+ * new StoryReporterBuilder().withCodeLocation(CodeLocations.codeLocationFromFile(new File(&amp;quot;target/classes&amp;quot;)))
+ *         .withDefaultFormats().withFormats(TXT, HTML, XML).build(storyPath);
+ * &lt;/pre&gt;
+ * 
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * By default, the reporters will output minimal failure information, the single
+ * line describing the failure cause and the outcomes if failures occur. To
+ * configure the failure trace to be reported as well:
+ * 
+ * &lt;pre&gt;
+ * new StoryReporterBuilder().withFailureTrace(true)
+ * &lt;/pre&gt;
+ * 
+ * &lt;/p&gt;
+ * &lt;p&gt;
+ * If failure trace is reported, it is with the full stack trace. In some cases,
+ * it's useful to have it compressed, eliminating unnecessary lines that are not
+ * very informative:
+ * 
+ * &lt;pre&gt;
+ * new StoryReporterBuilder().withFailureTraceCompression(true)
+ * &lt;/pre&gt;
+ * 
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * To specify the use of keywords for a given locale:
+ * 
+ * &lt;pre&gt;
+ * new StoryReporterBuilder().withKeywords(new LocalisedKeywords(Locale.IT)
+ * &lt;/pre&gt;
+ * 
+ * &lt;/p&gt;
+ * 
+ * &lt;p&gt;
+ * The builder provides default instances for all reporters, using the default
+ * output patterns. To change the reporter for a specific instance, e.g. to
+ * report format &lt;b&gt;TXT&lt;/b&gt; to &lt;b&gt;.text&lt;/b&gt; files and to inject other
+ * non-default parameters, such as the custom output patterns:
+ * 
+ * &lt;pre&gt;
+ * new StoryReporterBuilder(){
+ *   public StoryReporter reporterFor(String storyPath, Format format){
+ *       FilePrintStreamFactory factory = new FilePrintStreamFactory(new StoryLocation(storyPath, codeLocation));
+ *       switch (format) {
+ *           case TXT:
+ *               factory.useConfiguration(new FileConfiguration(&quot;text&quot;));
+ *               Properties customPatterns = new Properties();
+ *               customPatterns.setProperty(&quot;successful&quot;, &quot;{0}(YEAH!!!)\n&quot;);
+ *               return new TxtOutput(factory.createPrintStream(), customPatterns, keywords);
+ *            default:
+ *               return super.reporterFor(format);
+ *   }
+ * }
+ * &lt;/pre&gt;
+ * 
+ * &lt;/p&gt;
+ */
+public class StoryReporterBuilder {
+
+<span class="pc" id="L124">    public enum Format {</span>
+<span class="fc" id="L125">        CONSOLE(org.jbehave.core.reporters.Format.CONSOLE),</span>
+<span class="fc" id="L126">        IDE_CONSOLE(org.jbehave.core.reporters.Format.IDE_CONSOLE),</span>
+<span class="fc" id="L127">        TXT(org.jbehave.core.reporters.Format.TXT),</span>
+<span class="fc" id="L128">        HTML(org.jbehave.core.reporters.Format.HTML),</span>
+<span class="fc" id="L129">        XML(org.jbehave.core.reporters.Format.XML),</span>
+<span class="fc" id="L130">        STATS(org.jbehave.core.reporters.Format.STATS);</span>
+
+        private org.jbehave.core.reporters.Format realFormat;
+
+<span class="fc" id="L134">        Format(org.jbehave.core.reporters.Format realFormat) {</span>
+<span class="fc" id="L135">            this.realFormat = realFormat;</span>
+<span class="fc" id="L136">        }</span>
+
+    }
+
+<span class="fc" id="L140">    private List&lt;org.jbehave.core.reporters.Format&gt; formats = new ArrayList&lt;org.jbehave.core.reporters.Format&gt;();</span>
+    private String relativeDirectory;
+    private FilePathResolver pathResolver;
+    private URL codeLocation;
+    private Properties viewResources;
+<span class="fc" id="L145">    private boolean reportFailureTrace = false;</span>
+<span class="fc" id="L146">    private boolean compressFailureTrace = false;</span>
+    private Keywords keywords;
+    private CrossReference crossReference;
+    private boolean multiThreading;
+    
+<span class="fc" id="L151">    public StoryReporterBuilder() {</span>
+<span class="fc" id="L152">    	relativeDirectory = new FileConfiguration().getRelativeDirectory();</span>
+<span class="fc" id="L153">    	pathResolver = new FileConfiguration().getPathResolver();</span>
+<span class="fc" id="L154">    	codeLocation = CodeLocations.codeLocationFromPath(&quot;target/classes&quot;);</span>
+<span class="fc" id="L155">    	viewResources = new FreemarkerViewGenerator().defaultViewProperties();</span>
+<span class="fc" id="L156">    	keywords = new LocalizedKeywords();</span>
+<span class="fc" id="L157">    }</span>
+
+    public File outputDirectory() {
+<span class="fc" id="L160">        return filePrintStreamFactory(&quot;&quot;).outputDirectory();</span>
+    }
+
+    public String relativeDirectory() {
+<span class="nc" id="L164">        return relativeDirectory;</span>
+    }
+
+    public FilePathResolver pathResolver() {
+<span class="nc" id="L168">        return pathResolver;</span>
+    }
+
+    public URL codeLocation() {
+<span class="nc" id="L172">        return codeLocation;</span>
+    }
+
+    public List&lt;org.jbehave.core.reporters.Format&gt; formats() {
+<span class="nc" id="L176">        return formats;</span>
+    }
+
+    public List&lt;String&gt; formatNames(boolean toLowerCase) {
+<span class="fc" id="L180">        Locale locale = Locale.getDefault();</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        if (keywords instanceof LocalizedKeywords) {</span>
+<span class="fc" id="L182">            locale = ((LocalizedKeywords) keywords).getLocale();</span>
+        }
+<span class="fc" id="L184">        List&lt;String&gt; names = new ArrayList&lt;String&gt;();</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        for (org.jbehave.core.reporters.Format format : formats) {</span>
+<span class="nc" id="L186">            String name = format.name();</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">            if (toLowerCase) {</span>
+<span class="nc" id="L188">                name = name.toLowerCase(locale);</span>
+            }
+<span class="nc" id="L190">            names.add(name);</span>
+<span class="nc" id="L191">        }</span>
+<span class="fc" id="L192">        return names;</span>
+    }
+
+    public Keywords keywords() {
+<span class="fc" id="L196">        return keywords;</span>
+    }
+
+    public boolean multiThreading(){
+<span class="nc" id="L200">        return multiThreading;</span>
+    }
+    
+    public boolean reportFailureTrace() {
+<span class="fc" id="L204">        return reportFailureTrace;</span>
+    }
+
+    public boolean compressFailureTrace() {
+<span class="fc" id="L208">        return compressFailureTrace;</span>
+    }
+
+    public Properties viewResources() {
+<span class="fc" id="L212">        return viewResources;</span>
+    }
+
+    public StoryReporterBuilder withRelativeDirectory(String relativeDirectory) {
+<span class="fc" id="L216">        this.relativeDirectory = relativeDirectory;</span>
+<span class="fc" id="L217">        return this;</span>
+    }
+
+    public StoryReporterBuilder withPathResolver(FilePathResolver pathResolver) {
+<span class="nc" id="L221">        this.pathResolver = pathResolver;</span>
+<span class="nc" id="L222">        return this;</span>
+    }
+
+    public StoryReporterBuilder withCodeLocation(URL codeLocation) {
+<span class="nc" id="L226">        this.codeLocation = codeLocation;</span>
+<span class="nc" id="L227">        return this;</span>
+    }
+
+    public CrossReference crossReference() {
+<span class="fc" id="L231">        return crossReference;</span>
+    }
+
+    public boolean hasCrossReference() {
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        return crossReference != null;</span>
+    }
+
+    public StoryReporterBuilder withCrossReference(CrossReference crossReference) {
+<span class="fc" id="L239">        this.crossReference = crossReference;</span>
+<span class="fc" id="L240">        return this;</span>
+    }
+
+    public StoryReporterBuilder withDefaultFormats() {
+<span class="fc" id="L244">        return withFormats(Format.STATS);</span>
+    }
+
+    /**
+     * @deprecated Use {@link withFormats(org.jbehave.core.reporters.Format... formats)}
+     */
+    @Deprecated
+    public StoryReporterBuilder withFormats(Format... formats) {
+<span class="fc" id="L252">        List&lt;org.jbehave.core.reporters.Format&gt; formatz = new ArrayList&lt;org.jbehave.core.reporters.Format&gt;();</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        for (Format format : formats) {</span>
+<span class="fc" id="L254">            formatz.add(format.realFormat);</span>
+        }
+<span class="fc" id="L256">        this.formats.addAll(formatz);</span>
+<span class="fc" id="L257">        return this;</span>
+    }
+
+    public StoryReporterBuilder withFormats(org.jbehave.core.reporters.Format... formats) {
+<span class="fc" id="L261">        this.formats.addAll(asList(formats));</span>
+<span class="fc" id="L262">        return this;</span>
+    }
+
+    public StoryReporterBuilder withReporters(StoryReporter... reporters) {
+<span class="nc bnc" id="L266" title="All 2 branches missed.">        for (StoryReporter reporter : reporters) {</span>
+<span class="nc" id="L267">            this.formats.add(new ProvidedFormat(reporter));</span>
+        }
+<span class="nc" id="L269">        return this;</span>
+    }
+
+    public StoryReporterBuilder withFailureTrace(boolean reportFailureTrace) {
+<span class="nc" id="L273">        this.reportFailureTrace = reportFailureTrace;</span>
+<span class="nc" id="L274">        return this;</span>
+    }
+
+    public StoryReporterBuilder withFailureTraceCompression(boolean compressFailureTrace) {
+<span class="nc" id="L278">        this.compressFailureTrace = compressFailureTrace;</span>
+<span class="nc" id="L279">        return this;</span>
+    }
+
+    public StoryReporterBuilder withKeywords(Keywords keywords) {
+<span class="nc" id="L283">        this.keywords = keywords;</span>
+<span class="nc" id="L284">        return this;</span>
+    }
+
+    public StoryReporterBuilder withMultiThreading(boolean multiThreading) {
+<span class="fc" id="L288">        this.multiThreading = multiThreading;</span>
+<span class="fc" id="L289">        return this;</span>
+    }
+
+    public StoryReporterBuilder withViewResources(Properties resources) {
+<span class="nc" id="L293">        this.viewResources = resources;</span>
+<span class="nc" id="L294">        return this;</span>
+    }
+
+    public StoryReporter build(String storyPath) {
+<span class="fc" id="L298">        Map&lt;org.jbehave.core.reporters.Format, StoryReporter&gt; delegates = new HashMap&lt;org.jbehave.core.reporters.Format, StoryReporter&gt;();</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">        for (org.jbehave.core.reporters.Format format : formats) {</span>
+<span class="fc" id="L300">            delegates.put(format, reporterFor(storyPath, format));</span>
+<span class="fc" id="L301">        }</span>
+
+<span class="fc" id="L303">        DelegatingStoryReporter delegate = new DelegatingStoryReporter(delegates.values());</span>
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">        StoryReporter crossReferencing = (crossReference == null ? new NullStoryReporter() : reporterFor(storyPath,</span>
+                crossReference));
+<span class="fc" id="L306">        return new ConcurrentStoryReporter(crossReferencing, delegate, multiThreading);</span>
+    }
+
+    public Map&lt;String, StoryReporter&gt; build(List&lt;String&gt; storyPaths) {
+<span class="nc" id="L310">        Map&lt;String, StoryReporter&gt; reporters = new HashMap&lt;String, StoryReporter&gt;();</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">        for (String storyPath : storyPaths) {</span>
+<span class="nc" id="L312">            reporters.put(storyPath, build(storyPath));</span>
+<span class="nc" id="L313">        }</span>
+<span class="nc" id="L314">        reporters.put(&quot;*&quot;, build(&quot;*&quot;));</span>
+<span class="nc" id="L315">        return reporters;</span>
+    }
+
+    public StoryReporter reporterFor(String storyPath, Format format) {
+<span class="nc" id="L319">        return reporterFor(storyPath, format.realFormat);</span>
+    }
+
+    public StoryReporter reporterFor(String storyPath, org.jbehave.core.reporters.Format format) {
+<span class="fc" id="L323">        FilePrintStreamFactory factory = filePrintStreamFactory(storyPath);</span>
+<span class="fc" id="L324">        return format.createStoryReporter(factory, this);</span>
+    }
+
+    protected FilePrintStreamFactory filePrintStreamFactory(String storyPath) {
+<span class="fc" id="L328">        return new FilePrintStreamFactory(new StoryLocation(codeLocation, storyPath), fileConfiguration(&quot;&quot;));</span>
+    }
+
+    public FileConfiguration fileConfiguration(String extension) {
+<span class="fc" id="L332">        return new FileConfiguration(relativeDirectory, extension, pathResolver);</span>
+    }
+
+    /**
+     * A Format that wraps a StoryReporter instance provided.
+     */
+    public static class ProvidedFormat extends org.jbehave.core.reporters.Format {
+
+        private final StoryReporter reporter;
+
+        public ProvidedFormat(StoryReporter reporter) {
+<span class="nc" id="L343">            super(reporter.getClass().getSimpleName());</span>
+<span class="nc" id="L344">            this.reporter = reporter;</span>
+<span class="nc" id="L345">        }</span>
+
+        @Override
+        public StoryReporter createStoryReporter(FilePrintStreamFactory factory,
+                StoryReporterBuilder storyReporterBuilder) {
+<span class="nc" id="L350">            return reporter;</span>
+        }
+        
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

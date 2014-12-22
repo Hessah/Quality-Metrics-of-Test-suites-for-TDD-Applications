@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>JDBCCategoryDataset.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.data.jdbc</a> &gt; <span class="el_source">JDBCCategoryDataset.java</span></div><h1>JDBCCategoryDataset.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ------------------------
+ * JDBCCategoryDataset.java
+ * ------------------------
+ * (C) Copyright 2002-2008, by Bryan Scott and Contributors.
+ *
+ * Original Author:  Bryan Scott; Andy;
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *                   Thomas Morgner;
+ *
+ * Changes
+ * -------
+ * 26-Apr-2002 : Creation based on JdbcXYDataSet, using code contributed from
+ *               Andy;
+ * 13-Aug-2002 : Updated Javadocs, import statements and formatting (DG);
+ * 03-Sep-2002 : Added fix for bug 591385 (DG);
+ * 18-Sep-2002 : Updated to support BIGINT (BS);
+ * 16-Oct-2002 : Added fix for bug 586667 (DG);
+ * 03-Feb-2003 : Added Types.DECIMAL (see bug report 677814) (DG);
+ * 13-Jun-2003 : Added Types.TIME as suggest by Bryan Scott in the forum (DG);
+ * 30-Jun-2003 : CVS Write test (BS);
+ * 30-Jul-2003 : Added empty contructor and executeQuery(connection,string)
+ *               method (BS);
+ * 29-Aug-2003 : Added a 'transpose' flag, so that data can be easily
+ *               transposed if required (DG);
+ * 10-Sep-2003 : Added support for additional JDBC types (DG);
+ * 24-Sep-2003 : Added clearing results from previous queries to executeQuery
+ *               following being highlighted on online forum (BS);
+ * 02-Dec-2003 : Throwing exceptions allows to handle errors, removed default
+ *               constructor, as without a connection, a query can never be
+ *               executed (TM);
+ * 04-Dec-2003 : Added missing Javadocs (DG);
+ * ------------- JFREECHART 1.0.0 ---------------------------------------------
+ * 08-Mar-2006 : Fixed bug 1445748 where an exception is thrown if
+ *               executeQuery() is called more than once (DG);
+ *
+ */
+
+package org.jfree.data.jdbc;
+
+import java.sql.Connection;
+import java.sql.Date;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Types;
+
+import org.jfree.data.category.CategoryDataset;
+import org.jfree.data.category.DefaultCategoryDataset;
+
+/**
+ * A {@link CategoryDataset} implementation over a database JDBC result set.
+ * The dataset is populated via a call to {@link #executeQuery(String)} with
+ * the string SQL query.  The SQL query must return at least two columns.  The
+ * first column will be the category name and remaining columns values (each
+ * column represents a series).  Subsequent calls to
+ * {@link #executeQuery(String)} will refresh the dataset.
+ * &lt;p&gt;
+ * The database connection is read-only and no write back facility exists.
+ * &lt;p&gt;
+ * NOTE: Many people have found this class too restrictive in general use.
+ * For the greatest flexibility, please consider writing your own code to read
+ * data from a &lt;code&gt;ResultSet&lt;/code&gt; and populate a
+ * {@link DefaultCategoryDataset} directly.
+ */
+public class JDBCCategoryDataset extends DefaultCategoryDataset {
+
+    /** For serialization. */
+    static final long serialVersionUID = -3080395327918844965L;
+
+    /** The database connection. */
+    private transient Connection connection;
+
+    /**
+     * A flag the controls whether or not the table is transposed.  The default
+     * is 'true' because this provides the behaviour described in the
+     * documentation.
+     */
+<span class="nc" id="L106">    private boolean transpose = true;</span>
+
+
+    /**
+     * Creates a new dataset with a database connection.
+     *
+     * @param  url  the URL of the database connection.
+     * @param  driverName  the database driver class name.
+     * @param  user  the database user.
+     * @param  passwd  the database user's password.
+     *
+     * @throws ClassNotFoundException if the driver cannot be found.
+     * @throws SQLException if there is an error obtaining a connection to the
+     *                      database.
+     */
+    public JDBCCategoryDataset(String url,
+                               String driverName,
+                               String user,
+                               String passwd)
+<span class="nc" id="L125">        throws ClassNotFoundException, SQLException {</span>
+
+<span class="nc" id="L127">        Class.forName(driverName);</span>
+<span class="nc" id="L128">        this.connection = DriverManager.getConnection(url, user, passwd);</span>
+<span class="nc" id="L129">    }</span>
+
+    /**
+     * Create a new dataset with the given database connection.
+     *
+     * @param connection  the database connection.
+     */
+<span class="nc" id="L136">    public JDBCCategoryDataset(Connection connection) {</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">        if (connection == null) {</span>
+<span class="nc" id="L138">            throw new NullPointerException(&quot;A connection must be supplied.&quot;);</span>
+        }
+<span class="nc" id="L140">        this.connection = connection;</span>
+<span class="nc" id="L141">    }</span>
+
+    /**
+     * Creates a new dataset with the given database connection, and executes
+     * the supplied query to populate the dataset.
+     *
+     * @param connection  the connection.
+     * @param query  the query.
+     *
+     * @throws SQLException if there is a problem executing the query.
+     */
+    public JDBCCategoryDataset(Connection connection, String query)
+        throws SQLException {
+<span class="nc" id="L154">        this(connection);</span>
+<span class="nc" id="L155">        executeQuery(query);</span>
+<span class="nc" id="L156">    }</span>
+
+    /**
+     * Returns a flag that controls whether or not the table values are
+     * transposed when added to the dataset.
+     *
+     * @return A boolean.
+     */
+    public boolean getTranspose() {
+<span class="nc" id="L165">        return this.transpose;</span>
+    }
+
+    /**
+     * Sets a flag that controls whether or not the table values are transposed
+     * when added to the dataset.
+     *
+     * @param transpose  the flag.
+     */
+    public void setTranspose(boolean transpose) {
+<span class="nc" id="L175">        this.transpose = transpose;</span>
+<span class="nc" id="L176">    }</span>
+
+    /**
+     * Populates the dataset by executing the supplied query against the
+     * existing database connection.  If no connection exists then no action
+     * is taken.
+     * &lt;p&gt;
+     * The results from the query are extracted and cached locally, thus
+     * applying an upper limit on how many rows can be retrieved successfully.
+     *
+     * @param query  the query.
+     *
+     * @throws SQLException if there is a problem executing the query.
+     */
+    public void executeQuery(String query) throws SQLException {
+<span class="nc" id="L191">        executeQuery(this.connection, query);</span>
+<span class="nc" id="L192">    }</span>
+
+    /**
+     * Populates the dataset by executing the supplied query against the
+     * existing database connection.  If no connection exists then no action
+     * is taken.
+     * &lt;p&gt;
+     * The results from the query are extracted and cached locally, thus
+     * applying an upper limit on how many rows can be retrieved successfully.
+     *
+     * @param con  the connection.
+     * @param query  the query.
+     *
+     * @throws SQLException if there is a problem executing the query.
+     */
+    public void executeQuery(Connection con, String query) throws SQLException {
+
+<span class="nc" id="L209">        Statement statement = null;</span>
+<span class="nc" id="L210">        ResultSet resultSet = null;</span>
+        try {
+<span class="nc" id="L212">            statement = con.createStatement();</span>
+<span class="nc" id="L213">            resultSet = statement.executeQuery(query);</span>
+<span class="nc" id="L214">            ResultSetMetaData metaData = resultSet.getMetaData();</span>
+
+<span class="nc" id="L216">            int columnCount = metaData.getColumnCount();</span>
+
+<span class="nc bnc" id="L218" title="All 2 branches missed.">            if (columnCount &lt; 2) {</span>
+<span class="nc" id="L219">                throw new SQLException(</span>
+                    &quot;JDBCCategoryDataset.executeQuery() : insufficient columns &quot;
+                    + &quot;returned from the database.&quot;);
+            }
+
+            // Remove any previous old data
+<span class="nc" id="L225">            int i = getRowCount();</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">            while (--i &gt;= 0) {</span>
+<span class="nc" id="L227">                removeRow(i);</span>
+            }
+
+<span class="nc bnc" id="L230" title="All 2 branches missed.">            while (resultSet.next()) {</span>
+                // first column contains the row key...
+<span class="nc" id="L232">                Comparable rowKey = resultSet.getString(1);</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">                for (int column = 2; column &lt;= columnCount; column++) {</span>
+
+<span class="nc" id="L235">                    Comparable columnKey = metaData.getColumnName(column);</span>
+<span class="nc" id="L236">                    int columnType = metaData.getColumnType(column);</span>
+
+<span class="nc bnc" id="L238" title="All 4 branches missed.">                    switch (columnType) {</span>
+                        case Types.TINYINT:
+                        case Types.SMALLINT:
+                        case Types.INTEGER:
+                        case Types.BIGINT:
+                        case Types.FLOAT:
+                        case Types.DOUBLE:
+                        case Types.DECIMAL:
+                        case Types.NUMERIC:
+                        case Types.REAL: {
+<span class="nc" id="L248">                            Number value = (Number) resultSet.getObject(column);</span>
+<span class="nc bnc" id="L249" title="All 2 branches missed.">                            if (this.transpose) {</span>
+<span class="nc" id="L250">                                setValue(value, columnKey, rowKey);</span>
+                            }
+                            else {
+<span class="nc" id="L253">                                setValue(value, rowKey, columnKey);</span>
+                            }
+<span class="nc" id="L255">                            break;</span>
+                        }
+                        case Types.DATE:
+                        case Types.TIME:
+                        case Types.TIMESTAMP: {
+<span class="nc" id="L260">                            Date date = (Date) resultSet.getObject(column);</span>
+<span class="nc" id="L261">                            Number value = new Long(date.getTime());</span>
+<span class="nc bnc" id="L262" title="All 2 branches missed.">                            if (this.transpose) {</span>
+<span class="nc" id="L263">                                setValue(value, columnKey, rowKey);</span>
+                            }
+                            else {
+<span class="nc" id="L266">                                setValue(value, rowKey, columnKey);</span>
+                            }
+<span class="nc" id="L268">                            break;</span>
+                        }
+                        case Types.CHAR:
+                        case Types.VARCHAR:
+                        case Types.LONGVARCHAR: {
+<span class="nc" id="L273">                            String string</span>
+                                = (String) resultSet.getObject(column);
+                            try {
+<span class="nc" id="L276">                                Number value = Double.valueOf(string);</span>
+<span class="nc bnc" id="L277" title="All 2 branches missed.">                                if (this.transpose) {</span>
+<span class="nc" id="L278">                                    setValue(value, columnKey, rowKey);</span>
+                                }
+                                else {
+<span class="nc" id="L281">                                    setValue(value, rowKey, columnKey);</span>
+                                }
+                            }
+<span class="nc" id="L284">                            catch (NumberFormatException e) {</span>
+                                // suppress (value defaults to null)
+<span class="nc" id="L286">                            }</span>
+<span class="nc" id="L287">                            break;</span>
+                        }
+                        default:
+                            // not a value, can't use it (defaults to null)
+                            break;
+                    }
+                }
+<span class="nc" id="L294">            }</span>
+
+<span class="nc" id="L296">            fireDatasetChanged();</span>
+        }
+        finally {
+<span class="nc bnc" id="L299" title="All 4 branches missed.">            if (resultSet != null) {</span>
+                try {
+<span class="nc" id="L301">                    resultSet.close();</span>
+                }
+<span class="nc" id="L303">                catch (Exception e) {</span>
+                    // report this?
+<span class="nc" id="L305">                }</span>
+            }
+<span class="nc bnc" id="L307" title="All 4 branches missed.">            if (statement != null) {</span>
+                try {
+<span class="nc" id="L309">                    statement.close();</span>
+                }
+<span class="nc" id="L311">                catch (Exception e) {</span>
+                    // report this?
+<span class="nc" id="L313">                }</span>
+            }
+        }
+<span class="nc" id="L316">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

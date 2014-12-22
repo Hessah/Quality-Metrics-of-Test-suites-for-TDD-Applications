@@ -1,0 +1,1092 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>LogarithmicAxis.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.axis</a> &gt; <span class="el_source">LogarithmicAxis.java</span></div><h1>LogarithmicAxis.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * --------------------
+ * LogarithmicAxis.java
+ * --------------------
+ * (C) Copyright 2000-2008, by Object Refinery Limited and Contributors.
+ *
+ * Original Author:  Michael Duffy / Eric Thomas;
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *                   David M. O'Donnell;
+ *                   Scott Sams;
+ *                   Sergei Ivanov;
+ *
+ * Changes
+ * -------
+ * 14-Mar-2002 : Version 1 contributed by Michael Duffy (DG);
+ * 19-Apr-2002 : drawVerticalString() is now drawRotatedString() in
+ *               RefineryUtilities (DG);
+ * 23-Apr-2002 : Added a range property (DG);
+ * 15-May-2002 : Modified to be able to deal with negative and zero values (via
+ *               new 'adjustedLog10()' method);  occurrences of &quot;Math.log(10)&quot;
+ *               changed to &quot;LOG10_VALUE&quot;; changed 'intValue()' to
+ *               'longValue()' in 'refreshTicks()' to fix label-text value
+ *               out-of-range problem; removed 'draw()' method; added
+ *               'autoRangeMinimumSize' check; added 'log10TickLabelsFlag'
+ *               parameter flag and implementation (ET);
+ * 25-Jun-2002 : Removed redundant import (DG);
+ * 25-Jul-2002 : Changed order of parameters in ValueAxis constructor (DG);
+ * 16-Jul-2002 : Implemented support for plotting positive values arbitrarily
+ *               close to zero (added 'allowNegativesFlag' flag) (ET).
+ * 05-Sep-2002 : Updated constructor reflecting changes in the Axis class (DG);
+ * 02-Oct-2002 : Fixed errors reported by Checkstyle (DG);
+ * 08-Nov-2002 : Moved to new package com.jrefinery.chart.axis (DG);
+ * 22-Nov-2002 : Bug fixes from David M. O'Donnell (DG);
+ * 14-Jan-2003 : Changed autoRangeMinimumSize from Number --&gt; double (DG);
+ * 20-Jan-2003 : Removed unnecessary constructors (DG);
+ * 26-Mar-2003 : Implemented Serializable (DG);
+ * 08-May-2003 : Fixed plotting of datasets with lower==upper bounds when
+ *               'minAutoRange' is very small; added 'strictValuesFlag'
+ *               and default functionality of throwing a runtime exception
+ *               if 'allowNegativesFlag' is false and any values are less
+ *               than or equal to zero; added 'expTickLabelsFlag' and
+ *               changed to use &quot;1e#&quot;-style tick labels by default
+ *               (&quot;10^n&quot;-style tick labels still supported via 'set'
+ *               method); improved generation of tick labels when range of
+ *               values is small; changed to use 'NumberFormat.getInstance()'
+ *               to create 'numberFormatterObj' (ET);
+ * 14-May-2003 : Merged HorizontalLogarithmicAxis and
+ *               VerticalLogarithmicAxis (DG);
+ * 29-Oct-2003 : Added workaround for font alignment in PDF output (DG);
+ * 07-Nov-2003 : Modified to use new NumberTick class (DG);
+ * 08-Apr-2004 : Use numberFormatOverride if set - see patch 930139 (DG);
+ * 11-Jan-2005 : Removed deprecated code in preparation for 1.0.0 release (DG);
+ * 21-Apr-2005 : Added support for upper and lower margins; added
+ *               get/setAutoRangeNextLogFlag() methods and changed
+ *               default to 'autoRangeNextLogFlag'==false (ET);
+ * 22-Apr-2005 : Removed refreshTicks() and fixed names and parameters for
+ *               refreshHorizontalTicks() &amp; refreshVerticalTicks();
+ *               changed javadoc on setExpTickLabelsFlag() to specify
+ *               proper default (ET);
+ * 22-Apr-2005 : Renamed refreshHorizontalTicks --&gt; refreshTicksHorizontal
+ *               (and likewise the vertical version) for consistency with
+ *               other axis classes (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 02-Feb-2007 : Removed author tags all over JFreeChart sources (DG);
+ * 02-Mar-2007 : Applied patch 1671069 to fix zooming (DG);
+ * 22-Mar-2007 : Use new defaultAutoRange attribute (DG);
+ *
+ */
+
+package org.jfree.chart.axis;
+
+import java.awt.Graphics2D;
+import java.awt.geom.Rectangle2D;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
+import java.util.List;
+
+import org.jfree.chart.plot.Plot;
+import org.jfree.chart.plot.ValueAxisPlot;
+import org.jfree.data.Range;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.ui.TextAnchor;
+
+/**
+ * A numerical axis that uses a logarithmic scale.
+ */
+public class LogarithmicAxis extends NumberAxis {
+
+    /** For serialization. */
+    private static final long serialVersionUID = 2502918599004103054L;
+
+    /** Useful constant for log(10). */
+<span class="fc" id="L118">    public static final double LOG10_VALUE = Math.log(10.0);</span>
+
+    /** Smallest arbitrarily-close-to-zero value allowed. */
+    public static final double SMALL_LOG_VALUE = 1e-100;
+
+    /** Flag set true to allow negative values in data. */
+<span class="fc" id="L124">    protected boolean allowNegativesFlag = false;</span>
+
+    /**
+     * Flag set true make axis throw exception if any values are
+     * &lt;= 0 and 'allowNegativesFlag' is false.
+     */
+<span class="fc" id="L130">    protected boolean strictValuesFlag = true;</span>
+
+    /** Number formatter for generating numeric strings. */
+<span class="fc" id="L133">    protected final NumberFormat numberFormatterObj</span>
+        = NumberFormat.getInstance();
+
+    /** Flag set true for &quot;1e#&quot;-style tick labels. */
+<span class="fc" id="L137">    protected boolean expTickLabelsFlag = false;</span>
+
+    /** Flag set true for &quot;10^n&quot;-style tick labels. */
+<span class="fc" id="L140">    protected boolean log10TickLabelsFlag = false;</span>
+
+    /** True to make 'autoAdjustRange()' select &quot;10^n&quot; values. */
+<span class="fc" id="L143">    protected boolean autoRangeNextLogFlag = false;</span>
+
+    /** Helper flag for log axis processing. */
+<span class="fc" id="L146">    protected boolean smallLogFlag = false;</span>
+
+    /**
+     * Creates a new axis.
+     *
+     * @param label  the axis label.
+     */
+    public LogarithmicAxis(String label) {
+<span class="fc" id="L154">        super(label);</span>
+<span class="fc" id="L155">        setupNumberFmtObj();      //setup number formatter obj</span>
+<span class="fc" id="L156">    }</span>
+
+    /**
+     * Sets the 'allowNegativesFlag' flag; true to allow negative values
+     * in data, false to be able to plot positive values arbitrarily close to
+     * zero.
+     *
+     * @param flgVal  the new value of the flag.
+     */
+    public void setAllowNegativesFlag(boolean flgVal) {
+<span class="fc" id="L166">        this.allowNegativesFlag = flgVal;</span>
+<span class="fc" id="L167">    }</span>
+
+    /**
+     * Returns the 'allowNegativesFlag' flag; true to allow negative values
+     * in data, false to be able to plot positive values arbitrarily close
+     * to zero.
+     *
+     * @return The flag.
+     */
+    public boolean getAllowNegativesFlag() {
+<span class="fc" id="L177">        return this.allowNegativesFlag;</span>
+    }
+
+    /**
+     * Sets the 'strictValuesFlag' flag; if true and 'allowNegativesFlag'
+     * is false then this axis will throw a runtime exception if any of its
+     * values are less than or equal to zero; if false then the axis will
+     * adjust for values less than or equal to zero as needed.
+     *
+     * @param flgVal true for strict enforcement.
+     */
+    public void setStrictValuesFlag(boolean flgVal) {
+<span class="nc" id="L189">        this.strictValuesFlag = flgVal;</span>
+<span class="nc" id="L190">    }</span>
+
+    /**
+     * Returns the 'strictValuesFlag' flag; if true and 'allowNegativesFlag'
+     * is false then this axis will throw a runtime exception if any of its
+     * values are less than or equal to zero; if false then the axis will
+     * adjust for values less than or equal to zero as needed.
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; if strict enforcement is enabled.
+     */
+    public boolean getStrictValuesFlag() {
+<span class="nc" id="L201">        return this.strictValuesFlag;</span>
+    }
+
+    /**
+     * Sets the 'expTickLabelsFlag' flag.  If the 'log10TickLabelsFlag'
+     * is false then this will set whether or not &quot;1e#&quot;-style tick labels
+     * are used.  The default is to use regular numeric tick labels.
+     *
+     * @param flgVal true for &quot;1e#&quot;-style tick labels, false for
+     * log10 or regular numeric tick labels.
+     */
+    public void setExpTickLabelsFlag(boolean flgVal) {
+<span class="nc" id="L213">        this.expTickLabelsFlag = flgVal;</span>
+<span class="nc" id="L214">        setupNumberFmtObj();             //setup number formatter obj</span>
+<span class="nc" id="L215">    }</span>
+
+    /**
+     * Returns the 'expTickLabelsFlag' flag.
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; for &quot;1e#&quot;-style tick labels,
+     *         &lt;code&gt;false&lt;/code&gt; for log10 or regular numeric tick labels.
+     */
+    public boolean getExpTickLabelsFlag() {
+<span class="nc" id="L224">      return this.expTickLabelsFlag;</span>
+    }
+
+    /**
+     * Sets the 'log10TickLabelsFlag' flag.  The default value is false.
+     *
+     * @param flag true for &quot;10^n&quot;-style tick labels, false for &quot;1e#&quot;-style
+     * or regular numeric tick labels.
+     */
+    public void setLog10TickLabelsFlag(boolean flag) {
+<span class="fc" id="L234">        this.log10TickLabelsFlag = flag;</span>
+<span class="fc" id="L235">    }</span>
+
+    /**
+     * Returns the 'log10TickLabelsFlag' flag.
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; for &quot;10^n&quot;-style tick labels,
+     *         &lt;code&gt;false&lt;/code&gt; for &quot;1e#&quot;-style or regular numeric tick
+     *         labels.
+     */
+    public boolean getLog10TickLabelsFlag() {
+<span class="nc" id="L245">        return this.log10TickLabelsFlag;</span>
+    }
+
+    /**
+     * Sets the 'autoRangeNextLogFlag' flag.  This determines whether or
+     * not the 'autoAdjustRange()' method will select the next &quot;10^n&quot;
+     * values when determining the upper and lower bounds.  The default
+     * value is false.
+     *
+     * @param flag &lt;code&gt;true&lt;/code&gt; to make the 'autoAdjustRange()'
+     * method select the next &quot;10^n&quot; values, &lt;code&gt;false&lt;/code&gt; to not.
+     */
+    public void setAutoRangeNextLogFlag(boolean flag) {
+<span class="nc" id="L258">        this.autoRangeNextLogFlag = flag;</span>
+<span class="nc" id="L259">    }</span>
+
+    /**
+     * Returns the 'autoRangeNextLogFlag' flag.
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; if the 'autoAdjustRange()' method will
+     * select the next &quot;10^n&quot; values, &lt;code&gt;false&lt;/code&gt; if not.
+     */
+    public boolean getAutoRangeNextLogFlag() {
+<span class="nc" id="L268">        return this.autoRangeNextLogFlag;</span>
+    }
+
+    /**
+     * Overridden version that calls original and then sets up flag for
+     * log axis processing.
+     *
+     * @param range  the new range.
+     */
+    @Override
+    public void setRange(Range range) {
+<span class="fc" id="L279">        super.setRange(range);      // call parent method</span>
+<span class="fc" id="L280">        setupSmallLogFlag();        // setup flag based on bounds values</span>
+<span class="fc" id="L281">    }</span>
+
+    /**
+     * Sets up flag for log axis processing.  Set true if negative values
+     * not allowed and the lower bound is between 0 and 10.
+     */
+    protected void setupSmallLogFlag() {
+        // set flag true if negative values not allowed and the
+        // lower bound is between 0 and 10:
+<span class="fc" id="L290">        double lowerVal = getRange().getLowerBound();</span>
+<span class="pc bpc" id="L291" title="2 of 6 branches missed.">        this.smallLogFlag = (!this.allowNegativesFlag &amp;&amp; lowerVal &lt; 10.0</span>
+                &amp;&amp; lowerVal &gt; 0.0);
+<span class="fc" id="L293">    }</span>
+
+    /**
+     * Sets up the number formatter object according to the
+     * 'expTickLabelsFlag' flag.
+     */
+    protected void setupNumberFmtObj() {
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">        if (this.numberFormatterObj instanceof DecimalFormat) {</span>
+            //setup for &quot;1e#&quot;-style tick labels or regular
+            // numeric tick labels, depending on flag:
+<span class="pc bpc" id="L303" title="1 of 2 branches missed.">            ((DecimalFormat) this.numberFormatterObj).applyPattern(</span>
+                    this.expTickLabelsFlag ? &quot;0E0&quot; : &quot;0.###&quot;);
+        }
+<span class="fc" id="L306">    }</span>
+
+    /**
+     * Returns the log10 value, depending on if values between 0 and
+     * 1 are being plotted.  If negative values are not allowed and
+     * the lower bound is between 0 and 10 then a normal log is
+     * returned; otherwise the returned value is adjusted if the
+     * given value is less than 10.
+     *
+     * @param val the value.
+     *
+     * @return log&lt;sub&gt;10&lt;/sub&gt;(val).
+     *
+     * @see #switchedPow10(double)
+     */
+    protected double switchedLog10(double val) {
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        return this.smallLogFlag ? Math.log(val)</span>
+                / LOG10_VALUE : adjustedLog10(val);
+    }
+
+    /**
+     * Returns a power of 10, depending on if values between 0 and
+     * 1 are being plotted.  If negative values are not allowed and
+     * the lower bound is between 0 and 10 then a normal power is
+     * returned; otherwise the returned value is adjusted if the
+     * given value is less than 1.
+     *
+     * @param val the value.
+     *
+     * @return 10&lt;sup&gt;val&lt;/sup&gt;.
+     *
+     * @since 1.0.5
+     * @see #switchedLog10(double)
+     */
+    public double switchedPow10(double val) {
+<span class="fc bfc" id="L341" title="All 2 branches covered.">        return this.smallLogFlag ? Math.pow(10.0, val) : adjustedPow10(val);</span>
+    }
+
+    /**
+     * Returns an adjusted log10 value for graphing purposes.  The first
+     * adjustment is that negative values are changed to positive during
+     * the calculations, and then the answer is negated at the end.  The
+     * second is that, for values less than 10, an increasingly large
+     * (0 to 1) scaling factor is added such that at 0 the value is
+     * adjusted to 1, resulting in a returned result of 0.
+     *
+     * @param val  value for which log10 should be calculated.
+     *
+     * @return An adjusted log&lt;sub&gt;10&lt;/sub&gt;(val).
+     *
+     * @see #adjustedPow10(double)
+     */
+    public double adjustedLog10(double val) {
+<span class="pc bpc" id="L359" title="1 of 2 branches missed.">        boolean negFlag = (val &lt; 0.0);</span>
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">        if (negFlag) {</span>
+<span class="nc" id="L361">            val = -val;          // if negative then set flag and make positive</span>
+        }
+<span class="fc bfc" id="L363" title="All 2 branches covered.">        if (val &lt; 10.0) {                // if &lt; 10 then</span>
+<span class="fc" id="L364">            val += (10.0 - val) / 10.0;  //increase so 0 translates to 0</span>
+        }
+        //return value; negate if original value was negative:
+<span class="fc" id="L367">        double res = Math.log(val) / LOG10_VALUE;</span>
+<span class="pc bpc" id="L368" title="1 of 2 branches missed.">        return negFlag ? (-res) : res;</span>
+    }
+
+    /**
+     * Returns an adjusted power of 10 value for graphing purposes.  The first
+     * adjustment is that negative values are changed to positive during
+     * the calculations, and then the answer is negated at the end.  The
+     * second is that, for values less than 1, a progressive logarithmic
+     * offset is subtracted such that at 0 the returned result is also 0.
+     *
+     * @param val  value for which power of 10 should be calculated.
+     *
+     * @return An adjusted 10&lt;sup&gt;val&lt;/sup&gt;.
+     *
+     * @since 1.0.5
+     * @see #adjustedLog10(double)
+     */
+    public double adjustedPow10(double val) {
+<span class="pc bpc" id="L386" title="1 of 2 branches missed.">        boolean negFlag = (val &lt; 0.0);</span>
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">        if (negFlag) {</span>
+<span class="nc" id="L388">            val = -val; // if negative then set flag and make positive</span>
+        }
+        double res;
+<span class="fc bfc" id="L391" title="All 2 branches covered.">        if (val &lt; 1.0) {</span>
+<span class="fc" id="L392">            res = (Math.pow(10, val + 1.0) - 10.0) / 9.0; //invert adjustLog10</span>
+        }
+        else {
+<span class="fc" id="L395">            res = Math.pow(10, val);</span>
+        }
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">        return negFlag ? (-res) : res;</span>
+    }
+
+    /**
+     * Returns the largest (closest to positive infinity) double value that is
+     * not greater than the argument, is equal to a mathematical integer and
+     * satisfying the condition that log base 10 of the value is an integer
+     * (i.e., the value returned will be a power of 10: 1, 10, 100, 1000, etc.).
+     *
+     * @param lower a double value below which a floor will be calcualted.
+     *
+     * @return 10&lt;sup&gt;N&lt;/sup&gt; with N .. { 1 ... }
+     */
+    protected double computeLogFloor(double lower) {
+
+        double logFloor;
+<span class="nc bnc" id="L413" title="All 2 branches missed.">        if (this.allowNegativesFlag) {</span>
+            //negative values are allowed
+<span class="nc bnc" id="L415" title="All 2 branches missed.">            if (lower &gt; 10.0) {   //parameter value is &gt; 10</span>
+                // The Math.log() function is based on e not 10.
+<span class="nc" id="L417">                logFloor = Math.log(lower) / LOG10_VALUE;</span>
+<span class="nc" id="L418">                logFloor = Math.floor(logFloor);</span>
+<span class="nc" id="L419">                logFloor = Math.pow(10, logFloor);</span>
+            }
+<span class="nc bnc" id="L421" title="All 2 branches missed.">            else if (lower &lt; -10.0) {   //parameter value is &lt; -10</span>
+                //calculate log using positive value:
+<span class="nc" id="L423">                logFloor = Math.log(-lower) / LOG10_VALUE;</span>
+                //calculate floor using negative value:
+<span class="nc" id="L425">                logFloor = Math.floor(-logFloor);</span>
+                //calculate power using positive value; then negate
+<span class="nc" id="L427">                logFloor = -Math.pow(10, -logFloor);</span>
+            }
+            else {
+                //parameter value is -10 &gt; val &lt; 10
+<span class="nc" id="L431">                logFloor = Math.floor(lower);   //use as-is</span>
+            }
+        }
+        else {
+            //negative values not allowed
+<span class="nc bnc" id="L436" title="All 2 branches missed.">            if (lower &gt; 0.0) {   //parameter value is &gt; 0</span>
+                // The Math.log() function is based on e not 10.
+<span class="nc" id="L438">                logFloor = Math.log(lower) / LOG10_VALUE;</span>
+<span class="nc" id="L439">                logFloor = Math.floor(logFloor);</span>
+<span class="nc" id="L440">                logFloor = Math.pow(10, logFloor);</span>
+            }
+            else {
+                //parameter value is &lt;= 0
+<span class="nc" id="L444">                logFloor = Math.floor(lower);   //use as-is</span>
+            }
+        }
+<span class="nc" id="L447">        return logFloor;</span>
+    }
+
+    /**
+     * Returns the smallest (closest to negative infinity) double value that is
+     * not less than the argument, is equal to a mathematical integer and
+     * satisfying the condition that log base 10 of the value is an integer
+     * (i.e., the value returned will be a power of 10: 1, 10, 100, 1000, etc.).
+     *
+     * @param upper a double value above which a ceiling will be calcualted.
+     *
+     * @return 10&lt;sup&gt;N&lt;/sup&gt; with N .. { 1 ... }
+     */
+    protected double computeLogCeil(double upper) {
+
+        double logCeil;
+<span class="nc bnc" id="L463" title="All 2 branches missed.">        if (this.allowNegativesFlag) {</span>
+            //negative values are allowed
+<span class="nc bnc" id="L465" title="All 2 branches missed.">            if (upper &gt; 10.0) {</span>
+                //parameter value is &gt; 10
+                // The Math.log() function is based on e not 10.
+<span class="nc" id="L468">                logCeil = Math.log(upper) / LOG10_VALUE;</span>
+<span class="nc" id="L469">                logCeil = Math.ceil(logCeil);</span>
+<span class="nc" id="L470">                logCeil = Math.pow(10, logCeil);</span>
+            }
+<span class="nc bnc" id="L472" title="All 2 branches missed.">            else if (upper &lt; -10.0) {</span>
+                //parameter value is &lt; -10
+                //calculate log using positive value:
+<span class="nc" id="L475">                logCeil = Math.log(-upper) / LOG10_VALUE;</span>
+                //calculate ceil using negative value:
+<span class="nc" id="L477">                logCeil = Math.ceil(-logCeil);</span>
+                //calculate power using positive value; then negate
+<span class="nc" id="L479">                logCeil = -Math.pow(10, -logCeil);</span>
+            }
+            else {
+               //parameter value is -10 &gt; val &lt; 10
+<span class="nc" id="L483">               logCeil = Math.ceil(upper);     //use as-is</span>
+            }
+        }
+        else {
+            //negative values not allowed
+<span class="nc bnc" id="L488" title="All 2 branches missed.">            if (upper &gt; 0.0) {</span>
+                //parameter value is &gt; 0
+                // The Math.log() function is based on e not 10.
+<span class="nc" id="L491">                logCeil = Math.log(upper) / LOG10_VALUE;</span>
+<span class="nc" id="L492">                logCeil = Math.ceil(logCeil);</span>
+<span class="nc" id="L493">                logCeil = Math.pow(10, logCeil);</span>
+            }
+            else {
+                //parameter value is &lt;= 0
+<span class="nc" id="L497">                logCeil = Math.ceil(upper);     //use as-is</span>
+            }
+        }
+<span class="nc" id="L500">        return logCeil;</span>
+    }
+
+    /**
+     * Rescales the axis to ensure that all data is visible.
+     */
+    @Override
+    public void autoAdjustRange() {
+
+<span class="fc" id="L509">        Plot plot = getPlot();</span>
+<span class="pc bpc" id="L510" title="1 of 2 branches missed.">        if (plot == null) {</span>
+<span class="fc" id="L511">            return;  // no plot, no data.</span>
+        }
+
+<span class="nc bnc" id="L514" title="All 2 branches missed.">        if (plot instanceof ValueAxisPlot) {</span>
+<span class="nc" id="L515">            ValueAxisPlot vap = (ValueAxisPlot) plot;</span>
+
+            double lower;
+<span class="nc" id="L518">            Range r = vap.getDataRange(this);</span>
+<span class="nc bnc" id="L519" title="All 2 branches missed.">            if (r == null) {</span>
+                   //no real data present
+<span class="nc" id="L521">                r = getDefaultAutoRange();</span>
+<span class="nc" id="L522">                lower = r.getLowerBound();    //get lower bound value</span>
+            }
+            else {
+                //actual data is present
+<span class="nc" id="L526">                lower = r.getLowerBound();    //get lower bound value</span>
+<span class="nc bnc" id="L527" title="All 6 branches missed.">                if (this.strictValuesFlag</span>
+                        &amp;&amp; !this.allowNegativesFlag &amp;&amp; lower &lt;= 0.0) {
+                    //strict flag set, allow-negatives not set and values &lt;= 0
+<span class="nc" id="L530">                    throw new RuntimeException(&quot;Values less than or equal to &quot;</span>
+                            + &quot;zero not allowed with logarithmic axis&quot;);
+                }
+            }
+
+            //apply lower margin by decreasing lower bound:
+            final double lowerMargin;
+<span class="nc bnc" id="L537" title="All 4 branches missed.">            if (lower &gt; 0.0 &amp;&amp; (lowerMargin = getLowerMargin()) &gt; 0.0) {</span>
+                   //lower bound and margin OK; get log10 of lower bound
+<span class="nc" id="L539">                final double logLower = (Math.log(lower) / LOG10_VALUE);</span>
+                double logAbs;      //get absolute value of log10 value
+<span class="nc bnc" id="L541" title="All 2 branches missed.">                if ((logAbs = Math.abs(logLower)) &lt; 1.0) {</span>
+<span class="nc" id="L542">                    logAbs = 1.0;     //if less than 1.0 then make it 1.0</span>
+                }              //subtract out margin and get exponential value:
+<span class="nc" id="L544">                lower = Math.pow(10, (logLower - (logAbs * lowerMargin)));</span>
+            }
+
+            //if flag then change to log version of lowest value
+            // to make range begin at a 10^n value:
+<span class="nc bnc" id="L549" title="All 2 branches missed.">            if (this.autoRangeNextLogFlag) {</span>
+<span class="nc" id="L550">                lower = computeLogFloor(lower);</span>
+            }
+
+<span class="nc bnc" id="L553" title="All 6 branches missed.">            if (!this.allowNegativesFlag &amp;&amp; lower &gt;= 0.0</span>
+                    &amp;&amp; lower &lt; SMALL_LOG_VALUE) {
+                //negatives not allowed and lower range bound is zero
+<span class="nc" id="L556">                lower = r.getLowerBound();    //use data range bound instead</span>
+            }
+
+<span class="nc" id="L559">            double upper = r.getUpperBound();</span>
+
+             //apply upper margin by increasing upper bound:
+            final double upperMargin;
+<span class="nc bnc" id="L563" title="All 4 branches missed.">            if (upper &gt; 0.0 &amp;&amp; (upperMargin = getUpperMargin()) &gt; 0.0) {</span>
+                   //upper bound and margin OK; get log10 of upper bound
+<span class="nc" id="L565">                final double logUpper = (Math.log(upper) / LOG10_VALUE);</span>
+                double logAbs;      //get absolute value of log10 value
+<span class="nc bnc" id="L567" title="All 2 branches missed.">                if ((logAbs = Math.abs(logUpper)) &lt; 1.0) {</span>
+<span class="nc" id="L568">                    logAbs = 1.0;     //if less than 1.0 then make it 1.0</span>
+                }              //add in margin and get exponential value:
+<span class="nc" id="L570">                upper = Math.pow(10, (logUpper + (logAbs * upperMargin)));</span>
+            }
+
+<span class="nc bnc" id="L573" title="All 8 branches missed.">            if (!this.allowNegativesFlag &amp;&amp; upper &lt; 1.0 &amp;&amp; upper &gt; 0.0</span>
+                    &amp;&amp; lower &gt; 0.0) {
+                //negatives not allowed and upper bound between 0 &amp; 1
+                //round up to nearest significant digit for bound:
+                //get negative exponent:
+<span class="nc" id="L578">                double expVal = Math.log(upper) / LOG10_VALUE;</span>
+<span class="nc" id="L579">                expVal = Math.ceil(-expVal + 0.001); //get positive exponent</span>
+<span class="nc" id="L580">                expVal = Math.pow(10, expVal);      //create multiplier value</span>
+                //multiply, round up, and divide for bound value:
+<span class="nc bnc" id="L582" title="All 2 branches missed.">                upper = (expVal &gt; 0.0) ? Math.ceil(upper * expVal) / expVal</span>
+                    : Math.ceil(upper);
+<span class="nc" id="L584">            }</span>
+            else {
+                //negatives allowed or upper bound not between 0 &amp; 1
+                //if flag then change to log version of highest value to
+                // make range begin at a 10^n value; else use nearest int
+<span class="nc bnc" id="L589" title="All 2 branches missed.">                upper = (this.autoRangeNextLogFlag) ? computeLogCeil(upper)</span>
+                    : Math.ceil(upper);
+            }
+            // ensure the autorange is at least &lt;minRange&gt; in size...
+<span class="nc" id="L593">            double minRange = getAutoRangeMinimumSize();</span>
+<span class="nc bnc" id="L594" title="All 2 branches missed.">            if (upper - lower &lt; minRange) {</span>
+<span class="nc" id="L595">                upper = (upper + lower + minRange) / 2;</span>
+<span class="nc" id="L596">                lower = (upper + lower - minRange) / 2;</span>
+                //if autorange still below minimum then adjust by 1%
+                // (can be needed when minRange is very small):
+<span class="nc bnc" id="L599" title="All 2 branches missed.">                if (upper - lower &lt; minRange) {</span>
+<span class="nc" id="L600">                    double absUpper = Math.abs(upper);</span>
+                    //need to account for case where upper==0.0
+<span class="nc bnc" id="L602" title="All 2 branches missed.">                    double adjVal = (absUpper &gt; SMALL_LOG_VALUE) ? absUpper</span>
+                        / 100.0 : 0.01;
+<span class="nc" id="L604">                    upper = (upper + lower + adjVal) / 2;</span>
+<span class="nc" id="L605">                    lower = (upper + lower - adjVal) / 2;</span>
+                }
+            }
+
+<span class="nc" id="L609">            setRange(new Range(lower, upper), false, false);</span>
+<span class="nc" id="L610">            setupSmallLogFlag();       //setup flag based on bounds values</span>
+        }
+<span class="nc" id="L612">    }</span>
+
+    /**
+     * Converts a data value to a coordinate in Java2D space, assuming that
+     * the axis runs along one edge of the specified plotArea.
+     * Note that it is possible for the coordinate to fall outside the
+     * plotArea.
+     *
+     * @param value  the data value.
+     * @param plotArea  the area for plotting the data.
+     * @param edge  the axis location.
+     *
+     * @return The Java2D coordinate.
+     */
+    @Override
+    public double valueToJava2D(double value, Rectangle2D plotArea,
+                                RectangleEdge edge) {
+
+<span class="fc" id="L630">        Range range = getRange();</span>
+<span class="fc" id="L631">        double axisMin = switchedLog10(range.getLowerBound());</span>
+<span class="fc" id="L632">        double axisMax = switchedLog10(range.getUpperBound());</span>
+
+<span class="fc" id="L634">        double min = 0.0;</span>
+<span class="fc" id="L635">        double max = 0.0;</span>
+<span class="pc bpc" id="L636" title="1 of 2 branches missed.">        if (RectangleEdge.isTopOrBottom(edge)) {</span>
+<span class="fc" id="L637">            min = plotArea.getMinX();</span>
+<span class="fc" id="L638">            max = plotArea.getMaxX();</span>
+        }
+<span class="nc bnc" id="L640" title="All 2 branches missed.">        else if (RectangleEdge.isLeftOrRight(edge)) {</span>
+<span class="nc" id="L641">            min = plotArea.getMaxY();</span>
+<span class="nc" id="L642">            max = plotArea.getMinY();</span>
+        }
+
+<span class="fc" id="L645">        value = switchedLog10(value);</span>
+
+<span class="pc bpc" id="L647" title="1 of 2 branches missed.">        if (isInverted()) {</span>
+<span class="nc" id="L648">            return max - (((value - axisMin) / (axisMax - axisMin))</span>
+                    * (max - min));
+        }
+        else {
+<span class="fc" id="L652">            return min + (((value - axisMin) / (axisMax - axisMin))</span>
+                    * (max - min));
+        }
+
+    }
+
+    /**
+     * Converts a coordinate in Java2D space to the corresponding data
+     * value, assuming that the axis runs along one edge of the specified
+     * plotArea.
+     *
+     * @param java2DValue  the coordinate in Java2D space.
+     * @param plotArea  the area in which the data is plotted.
+     * @param edge  the axis location.
+     *
+     * @return The data value.
+     */
+    @Override
+    public double java2DToValue(double java2DValue, Rectangle2D plotArea,
+                                RectangleEdge edge) {
+
+<span class="fc" id="L673">        Range range = getRange();</span>
+<span class="fc" id="L674">        double axisMin = switchedLog10(range.getLowerBound());</span>
+<span class="fc" id="L675">        double axisMax = switchedLog10(range.getUpperBound());</span>
+
+<span class="fc" id="L677">        double plotMin = 0.0;</span>
+<span class="fc" id="L678">        double plotMax = 0.0;</span>
+<span class="pc bpc" id="L679" title="1 of 2 branches missed.">        if (RectangleEdge.isTopOrBottom(edge)) {</span>
+<span class="fc" id="L680">            plotMin = plotArea.getX();</span>
+<span class="fc" id="L681">            plotMax = plotArea.getMaxX();</span>
+        }
+<span class="nc bnc" id="L683" title="All 2 branches missed.">        else if (RectangleEdge.isLeftOrRight(edge)) {</span>
+<span class="nc" id="L684">            plotMin = plotArea.getMaxY();</span>
+<span class="nc" id="L685">            plotMax = plotArea.getMinY();</span>
+        }
+
+<span class="pc bpc" id="L688" title="1 of 2 branches missed.">        if (isInverted()) {</span>
+<span class="nc" id="L689">            return switchedPow10(axisMax - ((java2DValue - plotMin)</span>
+                    / (plotMax - plotMin)) * (axisMax - axisMin));
+        }
+        else {
+<span class="fc" id="L693">            return switchedPow10(axisMin + ((java2DValue - plotMin)</span>
+                    / (plotMax - plotMin)) * (axisMax - axisMin));
+        }
+    }
+
+    /**
+     * Zooms in on the current range.
+     *
+     * @param lowerPercent  the new lower bound.
+     * @param upperPercent  the new upper bound.
+     */
+    @Override
+    public void zoomRange(double lowerPercent, double upperPercent) {
+<span class="nc" id="L706">        double startLog = switchedLog10(getRange().getLowerBound());</span>
+<span class="nc" id="L707">        double lengthLog = switchedLog10(getRange().getUpperBound()) - startLog;</span>
+        Range adjusted;
+
+<span class="nc bnc" id="L710" title="All 2 branches missed.">        if (isInverted()) {</span>
+<span class="nc" id="L711">            adjusted = new Range(</span>
+                    switchedPow10(startLog + (lengthLog * (1 - upperPercent))),
+                    switchedPow10(startLog + (lengthLog * (1 - lowerPercent))));
+        }
+        else {
+<span class="nc" id="L716">            adjusted = new Range(</span>
+                    switchedPow10(startLog + (lengthLog * lowerPercent)),
+                    switchedPow10(startLog + (lengthLog * upperPercent)));
+        }
+
+<span class="nc" id="L721">        setRange(adjusted);</span>
+<span class="nc" id="L722">    }</span>
+
+    /**
+     * Calculates the positions of the tick labels for the axis, storing the
+     * results in the tick label list (ready for drawing).
+     *
+     * @param g2  the graphics device.
+     * @param dataArea  the area in which the plot should be drawn.
+     * @param edge  the location of the axis.
+     *
+     * @return A list of ticks.
+     */
+    @Override
+    protected List refreshTicksHorizontal(Graphics2D g2, Rectangle2D dataArea,
+            RectangleEdge edge) {
+
+<span class="nc" id="L738">        List ticks = new java.util.ArrayList();</span>
+<span class="nc" id="L739">        Range range = getRange();</span>
+
+        //get lower bound value:
+<span class="nc" id="L742">        double lowerBoundVal = range.getLowerBound();</span>
+              //if small log values and lower bound value too small
+              // then set to a small value (don't allow &lt;= 0):
+<span class="nc bnc" id="L745" title="All 4 branches missed.">        if (this.smallLogFlag &amp;&amp; lowerBoundVal &lt; SMALL_LOG_VALUE) {</span>
+<span class="nc" id="L746">            lowerBoundVal = SMALL_LOG_VALUE;</span>
+        }
+
+        //get upper bound value
+<span class="nc" id="L750">        double upperBoundVal = range.getUpperBound();</span>
+
+        //get log10 version of lower bound and round to integer:
+<span class="nc" id="L753">        int iBegCount = (int) Math.rint(switchedLog10(lowerBoundVal));</span>
+        //get log10 version of upper bound and round to integer:
+<span class="nc" id="L755">        int iEndCount = (int) Math.rint(switchedLog10(upperBoundVal));</span>
+
+<span class="nc bnc" id="L757" title="All 6 branches missed.">        if (iBegCount == iEndCount &amp;&amp; iBegCount &gt; 0</span>
+                &amp;&amp; Math.pow(10, iBegCount) &gt; lowerBoundVal) {
+              //only 1 power of 10 value, it's &gt; 0 and its resulting
+              // tick value will be larger than lower bound of data
+<span class="nc" id="L761">            --iBegCount;       //decrement to generate more ticks</span>
+        }
+
+        double currentTickValue;
+        String tickLabel;
+<span class="nc" id="L766">        boolean zeroTickFlag = false;</span>
+<span class="nc bnc" id="L767" title="All 2 branches missed.">        for (int i = iBegCount; i &lt;= iEndCount; i++) {</span>
+            //for each power of 10 value; create ten ticks
+<span class="nc bnc" id="L769" title="All 2 branches missed.">            for (int j = 0; j &lt; 10; ++j) {</span>
+                //for each tick to be displayed
+<span class="nc bnc" id="L771" title="All 2 branches missed.">                if (this.smallLogFlag) {</span>
+                    //small log values in use; create numeric value for tick
+<span class="nc" id="L773">                    currentTickValue = Math.pow(10, i) + (Math.pow(10, i) * j);</span>
+<span class="nc bnc" id="L774" title="All 8 branches missed.">                    if (this.expTickLabelsFlag</span>
+                        || (i &lt; 0 &amp;&amp; currentTickValue &gt; 0.0
+                        &amp;&amp; currentTickValue &lt; 1.0)) {
+                        //showing &quot;1e#&quot;-style ticks or negative exponent
+                        // generating tick value between 0 &amp; 1; show fewer
+<span class="nc bnc" id="L779" title="All 8 branches missed.">                        if (j == 0 || (i &gt; -4 &amp;&amp; j &lt; 2)</span>
+                                   || currentTickValue &gt;= upperBoundVal) {
+                          //first tick of series, or not too small a value and
+                          // one of first 3 ticks, or last tick to be displayed
+                            // set exact number of fractional digits to be shown
+                            // (no effect if showing &quot;1e#&quot;-style ticks):
+<span class="nc" id="L785">                            this.numberFormatterObj</span>
+                                .setMaximumFractionDigits(-i);
+                               //create tick label (force use of fmt obj):
+<span class="nc" id="L788">                            tickLabel = makeTickLabel(currentTickValue, true);</span>
+                        }
+                        else {    //no tick label to be shown
+<span class="nc" id="L791">                            tickLabel = &quot;&quot;;</span>
+                        }
+                    }
+                    else {     //tick value not between 0 &amp; 1
+                               //show tick label if it's the first or last in
+                               // the set, or if it's 1-5; beyond that show
+                               // fewer as the values get larger:
+<span class="nc bnc" id="L798" title="All 10 branches missed.">                        tickLabel = (j &lt; 1 || (i &lt; 1 &amp;&amp; j &lt; 5) || (j &lt; 4 - i)</span>
+                                         || currentTickValue &gt;= upperBoundVal)
+                                         ? makeTickLabel(currentTickValue) : &quot;&quot;;
+                    }
+                }
+                else { //not small log values in use; allow for values &lt;= 0
+<span class="nc bnc" id="L804" title="All 2 branches missed.">                    if (zeroTickFlag) {   //if did zero tick last iter then</span>
+<span class="nc" id="L805">                        --j;              //decrement to do 1.0 tick now</span>
+                    }     //calculate power-of-ten value for tick:
+<span class="nc bnc" id="L807" title="All 2 branches missed.">                    currentTickValue = (i &gt;= 0)</span>
+                        ? Math.pow(10, i) + (Math.pow(10, i) * j)
+                        : -(Math.pow(10, -i) - (Math.pow(10, -i - 1) * j));
+<span class="nc bnc" id="L810" title="All 2 branches missed.">                    if (!zeroTickFlag) {  // did not do zero tick last iteration</span>
+<span class="nc bnc" id="L811" title="All 6 branches missed.">                        if (Math.abs(currentTickValue - 1.0) &lt; 0.0001</span>
+                            &amp;&amp; lowerBoundVal &lt;= 0.0 &amp;&amp; upperBoundVal &gt;= 0.0) {
+                            //tick value is 1.0 and 0.0 is within data range
+<span class="nc" id="L814">                            currentTickValue = 0.0;     //set tick value to zero</span>
+<span class="nc" id="L815">                            zeroTickFlag = true;        //indicate zero tick</span>
+                        }
+                    }
+                    else {     //did zero tick last iteration
+<span class="nc" id="L819">                        zeroTickFlag = false;         //clear flag</span>
+                    }               //create tick label string:
+                               //show tick label if &quot;1e#&quot;-style and it's one
+                               // of the first two, if it's the first or last
+                               // in the set, or if it's 1-5; beyond that
+                               // show fewer as the values get larger:
+<span class="nc bnc" id="L825" title="All 14 branches missed.">                    tickLabel = ((this.expTickLabelsFlag &amp;&amp; j &lt; 2)</span>
+                                || j &lt; 1
+                                || (i &lt; 1 &amp;&amp; j &lt; 5) || (j &lt; 4 - i)
+                                || currentTickValue &gt;= upperBoundVal)
+                                   ? makeTickLabel(currentTickValue) : &quot;&quot;;
+                }
+
+<span class="nc bnc" id="L832" title="All 2 branches missed.">                if (currentTickValue &gt; upperBoundVal) {</span>
+<span class="nc" id="L833">                    return ticks;   // if past highest data value then exit</span>
+                                    // method
+                }
+
+<span class="nc bnc" id="L837" title="All 2 branches missed.">                if (currentTickValue &gt;= lowerBoundVal - SMALL_LOG_VALUE) {</span>
+                    //tick value not below lowest data value
+                    TextAnchor anchor;
+                    TextAnchor rotationAnchor;
+<span class="nc" id="L841">                    double angle = 0.0;</span>
+<span class="nc bnc" id="L842" title="All 2 branches missed.">                    if (isVerticalTickLabels()) {</span>
+<span class="nc" id="L843">                        anchor = TextAnchor.CENTER_RIGHT;</span>
+<span class="nc" id="L844">                        rotationAnchor = TextAnchor.CENTER_RIGHT;</span>
+<span class="nc bnc" id="L845" title="All 2 branches missed.">                        if (edge == RectangleEdge.TOP) {</span>
+<span class="nc" id="L846">                            angle = Math.PI / 2.0;</span>
+                        }
+                        else {
+<span class="nc" id="L849">                            angle = -Math.PI / 2.0;</span>
+                        }
+                    }
+                    else {
+<span class="nc bnc" id="L853" title="All 2 branches missed.">                        if (edge == RectangleEdge.TOP) {</span>
+<span class="nc" id="L854">                            anchor = TextAnchor.BOTTOM_CENTER;</span>
+<span class="nc" id="L855">                            rotationAnchor = TextAnchor.BOTTOM_CENTER;</span>
+                        }
+                        else {
+<span class="nc" id="L858">                            anchor = TextAnchor.TOP_CENTER;</span>
+<span class="nc" id="L859">                            rotationAnchor = TextAnchor.TOP_CENTER;</span>
+                        }
+                    }
+
+<span class="nc" id="L863">                    Tick tick = new NumberTick(new Double(currentTickValue),</span>
+                            tickLabel, anchor, rotationAnchor, angle);
+<span class="nc" id="L865">                    ticks.add(tick);</span>
+                }
+            }
+        }
+<span class="nc" id="L869">        return ticks;</span>
+
+    }
+
+    /**
+     * Calculates the positions of the tick labels for the axis, storing the
+     * results in the tick label list (ready for drawing).
+     *
+     * @param g2  the graphics device.
+     * @param dataArea  the area in which the plot should be drawn.
+     * @param edge  the location of the axis.
+     *
+     * @return A list of ticks.
+     */
+    @Override
+    protected List refreshTicksVertical(Graphics2D g2, Rectangle2D dataArea,
+            RectangleEdge edge) {
+
+<span class="nc" id="L887">        List ticks = new java.util.ArrayList();</span>
+
+        //get lower bound value:
+<span class="nc" id="L890">        double lowerBoundVal = getRange().getLowerBound();</span>
+        //if small log values and lower bound value too small
+        // then set to a small value (don't allow &lt;= 0):
+<span class="nc bnc" id="L893" title="All 4 branches missed.">        if (this.smallLogFlag &amp;&amp; lowerBoundVal &lt; SMALL_LOG_VALUE) {</span>
+<span class="nc" id="L894">            lowerBoundVal = SMALL_LOG_VALUE;</span>
+        }
+        //get upper bound value
+<span class="nc" id="L897">        double upperBoundVal = getRange().getUpperBound();</span>
+
+        //get log10 version of lower bound and round to integer:
+<span class="nc" id="L900">        int iBegCount = (int) Math.rint(switchedLog10(lowerBoundVal));</span>
+        //get log10 version of upper bound and round to integer:
+<span class="nc" id="L902">        int iEndCount = (int) Math.rint(switchedLog10(upperBoundVal));</span>
+
+<span class="nc bnc" id="L904" title="All 6 branches missed.">        if (iBegCount == iEndCount &amp;&amp; iBegCount &gt; 0</span>
+                &amp;&amp; Math.pow(10, iBegCount) &gt; lowerBoundVal) {
+              //only 1 power of 10 value, it's &gt; 0 and its resulting
+              // tick value will be larger than lower bound of data
+<span class="nc" id="L908">            --iBegCount;       //decrement to generate more ticks</span>
+        }
+
+        double tickVal;
+        String tickLabel;
+<span class="nc" id="L913">        boolean zeroTickFlag = false;</span>
+<span class="nc bnc" id="L914" title="All 2 branches missed.">        for (int i = iBegCount; i &lt;= iEndCount; i++) {</span>
+            //for each tick with a label to be displayed
+<span class="nc" id="L916">            int jEndCount = 10;</span>
+<span class="nc bnc" id="L917" title="All 2 branches missed.">            if (i == iEndCount) {</span>
+<span class="nc" id="L918">                jEndCount = 1;</span>
+            }
+
+<span class="nc bnc" id="L921" title="All 2 branches missed.">            for (int j = 0; j &lt; jEndCount; j++) {</span>
+                //for each tick to be displayed
+<span class="nc bnc" id="L923" title="All 2 branches missed.">                if (this.smallLogFlag) {</span>
+                    //small log values in use
+<span class="nc" id="L925">                    tickVal = Math.pow(10, i) + (Math.pow(10, i) * j);</span>
+<span class="nc bnc" id="L926" title="All 2 branches missed.">                    if (j == 0) {</span>
+                        //first tick of group; create label text
+<span class="nc bnc" id="L928" title="All 2 branches missed.">                        if (this.log10TickLabelsFlag) {</span>
+                            //if flag then
+<span class="nc" id="L930">                            tickLabel = &quot;10^&quot; + i;   //create &quot;log10&quot;-type label</span>
+                        }
+                        else {    //not &quot;log10&quot;-type label
+<span class="nc bnc" id="L933" title="All 2 branches missed.">                            if (this.expTickLabelsFlag) {</span>
+                                //if flag then
+<span class="nc" id="L935">                                tickLabel = &quot;1e&quot; + i;  //create &quot;1e#&quot;-type label</span>
+                            }
+                            else {    //not &quot;1e#&quot;-type label
+<span class="nc bnc" id="L938" title="All 2 branches missed.">                                if (i &gt;= 0) {   // if positive exponent then</span>
+                                                // make integer
+<span class="nc" id="L940">                                    NumberFormat format</span>
+                                        = getNumberFormatOverride();
+<span class="nc bnc" id="L942" title="All 2 branches missed.">                                    if (format != null) {</span>
+<span class="nc" id="L943">                                        tickLabel = format.format(tickVal);</span>
+                                    }
+                                    else {
+<span class="nc" id="L946">                                        tickLabel = Long.toString((long)</span>
+                                                Math.rint(tickVal));
+                                    }
+<span class="nc" id="L949">                                }</span>
+                                else {
+                                    //negative exponent; create fractional value
+                                    //set exact number of fractional digits to
+                                    // be shown:
+<span class="nc" id="L954">                                    this.numberFormatterObj</span>
+                                        .setMaximumFractionDigits(-i);
+                                    //create tick label:
+<span class="nc" id="L957">                                    tickLabel = this.numberFormatterObj.format(</span>
+                                            tickVal);
+                                }
+                            }
+                        }
+                    }
+                    else {   //not first tick to be displayed
+<span class="nc" id="L964">                        tickLabel = &quot;&quot;;     //no tick label</span>
+                    }
+                }
+                else { //not small log values in use; allow for values &lt;= 0
+<span class="nc bnc" id="L968" title="All 2 branches missed.">                    if (zeroTickFlag) {      //if did zero tick last iter then</span>
+<span class="nc" id="L969">                        --j;</span>
+                    }               //decrement to do 1.0 tick now
+<span class="nc bnc" id="L971" title="All 2 branches missed.">                    tickVal = (i &gt;= 0) ? Math.pow(10, i) + (Math.pow(10, i) * j)</span>
+                             : -(Math.pow(10, -i) - (Math.pow(10, -i - 1) * j));
+<span class="nc bnc" id="L973" title="All 2 branches missed.">                    if (j == 0) {  //first tick of group</span>
+<span class="nc bnc" id="L974" title="All 2 branches missed.">                        if (!zeroTickFlag) {     // did not do zero tick last</span>
+                                                 // iteration
+<span class="nc bnc" id="L976" title="All 6 branches missed.">                            if (i &gt; iBegCount &amp;&amp; i &lt; iEndCount</span>
+                                    &amp;&amp; Math.abs(tickVal - 1.0) &lt; 0.0001) {
+                                // not first or last tick on graph and value
+                                // is 1.0
+<span class="nc" id="L980">                                tickVal = 0.0;        //change value to 0.0</span>
+<span class="nc" id="L981">                                zeroTickFlag = true;  //indicate zero tick</span>
+<span class="nc" id="L982">                                tickLabel = &quot;0&quot;;      //create label for tick</span>
+                            }
+                            else {
+                                //first or last tick on graph or value is 1.0
+                                //create label for tick:
+<span class="nc bnc" id="L987" title="All 2 branches missed.">                                if (this.log10TickLabelsFlag) {</span>
+                                       //create &quot;log10&quot;-type label
+<span class="nc bnc" id="L989" title="All 2 branches missed.">                                    tickLabel = (((i &lt; 0) ? &quot;-&quot; : &quot;&quot;)</span>
+                                            + &quot;10^&quot; + Math.abs(i));
+                                }
+                                else {
+<span class="nc bnc" id="L993" title="All 2 branches missed.">                                    if (this.expTickLabelsFlag) {</span>
+                                           //create &quot;1e#&quot;-type label
+<span class="nc bnc" id="L995" title="All 2 branches missed.">                                        tickLabel = (((i &lt; 0) ? &quot;-&quot; : &quot;&quot;)</span>
+                                                + &quot;1e&quot; + Math.abs(i));
+                                    }
+                                    else {
+<span class="nc" id="L999">                                        NumberFormat format</span>
+                                            = getNumberFormatOverride();
+<span class="nc bnc" id="L1001" title="All 2 branches missed.">                                        if (format != null) {</span>
+<span class="nc" id="L1002">                                            tickLabel = format.format(tickVal);</span>
+                                        }
+                                        else {
+<span class="nc" id="L1005">                                            tickLabel =  Long.toString(</span>
+                                                    (long) Math.rint(tickVal));
+                                        }
+<span class="nc" id="L1008">                                    }</span>
+                                }
+                            }
+                        }
+                        else {     // did zero tick last iteration
+<span class="nc" id="L1013">                            tickLabel = &quot;&quot;;         //no label</span>
+<span class="nc" id="L1014">                            zeroTickFlag = false;   //clear flag</span>
+                        }
+                    }
+                    else {       // not first tick of group
+<span class="nc" id="L1018">                        tickLabel = &quot;&quot;;           //no label</span>
+<span class="nc" id="L1019">                        zeroTickFlag = false;     //make sure flag cleared</span>
+                    }
+                }
+
+<span class="nc bnc" id="L1023" title="All 2 branches missed.">                if (tickVal &gt; upperBoundVal) {</span>
+<span class="nc" id="L1024">                    return ticks;  //if past highest data value then exit method</span>
+                }
+
+<span class="nc bnc" id="L1027" title="All 2 branches missed.">                if (tickVal &gt;= lowerBoundVal - SMALL_LOG_VALUE) {</span>
+                    //tick value not below lowest data value
+                    TextAnchor anchor;
+                    TextAnchor rotationAnchor;
+<span class="nc" id="L1031">                    double angle = 0.0;</span>
+<span class="nc bnc" id="L1032" title="All 2 branches missed.">                    if (isVerticalTickLabels()) {</span>
+<span class="nc bnc" id="L1033" title="All 2 branches missed.">                        if (edge == RectangleEdge.LEFT) {</span>
+<span class="nc" id="L1034">                            anchor = TextAnchor.BOTTOM_CENTER;</span>
+<span class="nc" id="L1035">                            rotationAnchor = TextAnchor.BOTTOM_CENTER;</span>
+<span class="nc" id="L1036">                            angle = -Math.PI / 2.0;</span>
+                        }
+                        else {
+<span class="nc" id="L1039">                            anchor = TextAnchor.BOTTOM_CENTER;</span>
+<span class="nc" id="L1040">                            rotationAnchor = TextAnchor.BOTTOM_CENTER;</span>
+<span class="nc" id="L1041">                            angle = Math.PI / 2.0;</span>
+                        }
+                    }
+                    else {
+<span class="nc bnc" id="L1045" title="All 2 branches missed.">                        if (edge == RectangleEdge.LEFT) {</span>
+<span class="nc" id="L1046">                            anchor = TextAnchor.CENTER_RIGHT;</span>
+<span class="nc" id="L1047">                            rotationAnchor = TextAnchor.CENTER_RIGHT;</span>
+                        }
+                        else {
+<span class="nc" id="L1050">                            anchor = TextAnchor.CENTER_LEFT;</span>
+<span class="nc" id="L1051">                            rotationAnchor = TextAnchor.CENTER_LEFT;</span>
+                        }
+                    }
+                    //create tick object and add to list:
+<span class="nc" id="L1055">                    ticks.add(new NumberTick(new Double(tickVal), tickLabel,</span>
+                            anchor, rotationAnchor, angle));
+                }
+            }
+        }
+<span class="nc" id="L1060">        return ticks;</span>
+    }
+
+    /**
+     * Converts the given value to a tick label string.
+     *
+     * @param val the value to convert.
+     * @param forceFmtFlag true to force the number-formatter object
+     * to be used.
+     *
+     * @return The tick label string.
+     */
+    protected String makeTickLabel(double val, boolean forceFmtFlag) {
+<span class="nc bnc" id="L1073" title="All 4 branches missed.">        if (this.expTickLabelsFlag || forceFmtFlag) {</span>
+            //using exponents or force-formatter flag is set
+            // (convert 'E' to lower-case 'e'):
+<span class="nc" id="L1076">            return this.numberFormatterObj.format(val).toLowerCase();</span>
+        }
+<span class="nc" id="L1078">        return getTickUnit().valueToString(val);</span>
+    }
+
+    /**
+     * Converts the given value to a tick label string.
+     * @param val the value to convert.
+     *
+     * @return The tick label string.
+     */
+    protected String makeTickLabel(double val) {
+<span class="nc" id="L1088">        return makeTickLabel(val, false);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

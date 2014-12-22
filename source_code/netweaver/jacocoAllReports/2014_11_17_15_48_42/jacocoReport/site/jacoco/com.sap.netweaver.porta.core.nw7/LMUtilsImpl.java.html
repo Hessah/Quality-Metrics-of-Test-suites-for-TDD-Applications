@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>LMUtilsImpl.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">netweaver</a> &gt; <a href="index.source.html" class="el_package">com.sap.netweaver.porta.core.nw7</a> &gt; <span class="el_source">LMUtilsImpl.java</span></div><h1>LMUtilsImpl.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2009, 2010 SAP AG.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *    Kaloyan Raev (SAP AG) - initial API and implementation
+ *******************************************************************************/
+package com.sap.netweaver.porta.core.nw7;
+
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.rmi.RemoteException;
+import java.util.HashSet;
+import java.util.Set;
+
+import javax.xml.rpc.ServiceException;
+
+import com.sap.managementconsole.soap.axis.sapcontrol.AccessPoint;
+import com.sap.managementconsole.soap.axis.sapcontrol.InstanceProperty;
+import com.sap.managementconsole.soap.axis.sapcontrol.J2EEPSTATE;
+import com.sap.managementconsole.soap.axis.sapcontrol.J2EEProcess;
+import com.sap.managementconsole.soap.axis.sapcontrol.SAPControlPortType;
+import com.sap.managementconsole.soap.axis.sapcontrol.SAPControl_ServiceLocator;
+import com.sap.managementconsole.soap.axis.sapcontrol.SAPInstance;
+import com.sap.netweaver.porta.core.ServerState;
+
+<span class="fc" id="L30">class LMUtilsImpl implements LMUtils {</span>
+
+	public URL getSAPControlWSUrlByPort(String host, int port) throws MalformedURLException {
+<span class="fc" id="L33">		return new URL(&quot;http&quot;, host, port, &quot;/SAPControl.cgi&quot;);</span>
+	}
+
+	public URL getSAPControlWSUrlByInstance(String host, int instNr) throws MalformedURLException {
+<span class="pc bpc" id="L37" title="24 of 40 branches missed.">		int port = 50013 + instNr * 100;</span>
+<span class="fc" id="L38">		return getSAPControlWSUrlByPort(host, port);</span>
+	}
+
+	public SAPControlPortType getSAPControlWSProxy(URL wsUrl) throws ServiceException {
+<span class="fc" id="L42">		return new SAPControl_ServiceLocator().getSAPControl(wsUrl);</span>
+	}
+
+	public SAPControlPortType getSAPControlWSProxyToFirstJ2EEInstance(SAPControlPortType control) throws ServiceException, RemoteException, MalformedURLException {
+		// check if the current instance is a J2EE instance
+		// retrieve the instance properties
+<span class="fc" id="L48">		InstanceProperty[] props = control.getInstanceProperties();</span>
+		// look for J2EE Processes property
+<span class="fc bfc" id="L50" title="All 2 branches covered.">		for (InstanceProperty prop : props) {</span>
+<span class="pc bpc" id="L51" title="7 of 12 branches missed.">			if (&quot;J2EE Process Table&quot;.equals(prop.getProperty())) {</span>
+<span class="fc" id="L52">				return control;</span>
+			}
+		}
+		
+		// retrieve the list of all instances in the system
+<span class="fc" id="L57">		SAPInstance[] instances = control.getSystemInstanceList();</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">		for (SAPInstance inst : instances) {</span>
+			// find the first J2EE instance
+<span class="pc bpc" id="L60" title="17 of 26 branches missed.">			if (inst.getFeatures().indexOf(&quot;J2EE&quot;) != -1) {</span>
+				// determine the sapControlWSUrl
+<span class="fc" id="L62">				URL sapControlWSUrl = getSAPControlWSUrlByPort(inst.getHostname(), inst.getHttpPort());</span>
+				// initialize the ws proxy to the SAPControl of the J2EE instance
+<span class="fc" id="L64">				return getSAPControlWSProxy(sapControlWSUrl);</span>
+			}
+		}
+		
+		// no J2EE instance found
+<span class="fc" id="L69">		return null;</span>
+	}
+
+	public AccessPoint findIcmHttpAccessPoint(SAPControlPortType control) throws RemoteException {
+<span class="fc" id="L73">		AccessPoint[] points = control.getAccessPointList();</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">		for (AccessPoint ap : points) {</span>
+<span class="pc bpc" id="L75" title="17 of 26 branches missed.">			if (&quot;icm&quot;.equals(ap.getProcessname()) &amp;&amp; &quot;HTTP&quot;.equals(ap.getProtocol())) {</span>
+<span class="fc" id="L76">				return ap;</span>
+			}
+		}
+		
+<span class="fc" id="L80">		throw new IllegalStateException(&quot;cannot find the ICM HTTP port&quot;);</span>
+	}
+	
+	public ServerState determineServerState(J2EEProcess[] processes) {
+		// check if there are any J2EE processes already available
+<span class="pc bpc" id="L85" title="44 of 62 branches missed.">		if (processes == null || processes.length == 0) {</span>
+<span class="fc" id="L86">			return ServerState.STOPPED;</span>
+		} 
+		
+		// check if the bootstrap process is running
+<span class="pc bpc" id="L90" title="41 of 60 branches missed.">		if (processes.length == 1 &amp;&amp; &quot;J2EE Bootstrap&quot;.equals(processes[0].getType())) {</span>
+<span class="fc" id="L91">			return ServerState.STARTING;</span>
+		}
+
+		// collect the running states of all J2EE processes
+<span class="fc" id="L95">		Set&lt;J2EEPSTATE&gt; states = new HashSet&lt;J2EEPSTATE&gt;(processes.length);</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">		for (J2EEProcess p : processes) {</span>
+<span class="pc bpc" id="L97" title="8 of 12 branches missed.">			if (&quot;J2EE Server&quot;.equals(p.getType())) {</span>
+				// if there is still a process in Initial state, then the system is still starting
+<span class="pc bpc" id="L99" title="7 of 12 branches missed.">				if (&quot;Initial&quot;.equals(p.getStatetext())){</span>
+<span class="fc" id="L100">					return ServerState.STARTING;</span>
+				} else {
+<span class="pc bpc" id="L102" title="4 of 6 branches missed.">					states.add(p.getState());</span>
+				}
+			}
+		}
+		
+		// check if there is a process in RUNNING state
+<span class="pc bpc" id="L108" title="7 of 12 branches missed.">		if (states.contains(J2EEPSTATE.value4)) {</span>
+<span class="fc" id="L109">			return ServerState.RUNNING;</span>
+		// check if all processes are in STOPPED state
+<span class="pc bpc" id="L111" title="36 of 52 branches missed.">		} else if (states.size() == 1 &amp;&amp; states.contains(J2EEPSTATE.value1)) {</span>
+<span class="fc" id="L112">			return ServerState.STOPPED;</span>
+		// check if there is a process in STARTING or CORE-RUNNING state
+<span class="pc bpc" id="L114" title="17 of 26 branches missed.">		} else if (states.contains(J2EEPSTATE.value2) || states.contains(J2EEPSTATE.value3)) {</span>
+<span class="fc" id="L115">			return ServerState.STARTING;</span>
+		// check if all processes are in STOPPING state
+<span class="pc bpc" id="L117" title="37 of 52 branches missed."> 		} else if (states.size() == 1 &amp;&amp; states.contains(J2EEPSTATE.value5)) {</span>
+<span class="fc" id="L118">			return ServerState.STOPPING;</span>
+		// check if all processes are in STOPPING and STOPPED state
+<span class="pc bpc" id="L120" title="63 of 84 branches missed.">		} else if (states.size() == 2 &amp;&amp; states.contains(J2EEPSTATE.value1) &amp;&amp; states.contains(J2EEPSTATE.value5)) {</span>
+<span class="fc" id="L121">			return ServerState.STOPPING;</span>
+		}
+		
+<span class="fc" id="L124">		return ServerState.UNKNOWN;</span>
+	}
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

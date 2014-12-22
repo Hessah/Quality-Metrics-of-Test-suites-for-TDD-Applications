@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>CharSequenceTranslator.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-lang3</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.lang3.text.translate</a> &gt; <span class="el_source">CharSequenceTranslator.java</span></div><h1>CharSequenceTranslator.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ * 
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.lang3.text.translate;
+
+import java.io.IOException;
+import java.io.StringWriter;
+import java.io.Writer;
+import java.util.Locale;
+
+/**
+ * An API for translating text. 
+ * Its core use is to escape and unescape text. Because escaping and unescaping 
+ * is completely contextual, the API does not present two separate signatures.
+ * 
+ * @since 3.0
+ * @version $Id: CharSequenceTranslator.java 1471063 2013-04-23 17:31:21Z sebb $
+ */
+<span class="fc" id="L32">public abstract class CharSequenceTranslator {</span>
+
+    /**
+     * Translate a set of codepoints, represented by an int index into a CharSequence, 
+     * into another set of codepoints. The number of codepoints consumed must be returned, 
+     * and the only IOExceptions thrown must be from interacting with the Writer so that 
+     * the top level API may reliably ignore StringWriter IOExceptions. 
+     *
+     * @param input CharSequence that is being translated
+     * @param index int representing the current point of translation
+     * @param out Writer to translate the text to
+     * @return int count of codepoints consumed
+     * @throws IOException if and only if the Writer produces an IOException
+     */
+    public abstract int translate(CharSequence input, int index, Writer out) throws IOException;
+
+    /**
+     * Helper for non-Writer usage. 
+     * @param input CharSequence to be translated
+     * @return String output of translation
+     */
+    public final String translate(final CharSequence input) {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (input == null) {</span>
+<span class="fc" id="L55">            return null;</span>
+        }
+        try {
+<span class="fc" id="L58">            final StringWriter writer = new StringWriter(input.length() * 2);</span>
+<span class="fc" id="L59">            translate(input, writer);</span>
+<span class="fc" id="L60">            return writer.toString();</span>
+<span class="nc" id="L61">        } catch (final IOException ioe) {</span>
+            // this should never ever happen while writing to a StringWriter
+<span class="nc" id="L63">            throw new RuntimeException(ioe);</span>
+        }
+    }
+
+    /**
+     * Translate an input onto a Writer. This is intentionally final as its algorithm is 
+     * tightly coupled with the abstract method of this class. 
+     *
+     * @param input CharSequence that is being translated
+     * @param out Writer to translate the text to
+     * @throws IOException if and only if the Writer produces an IOException
+     */
+    public final void translate(final CharSequence input, final Writer out) throws IOException {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (out == null) {</span>
+<span class="fc" id="L77">            throw new IllegalArgumentException(&quot;The Writer must not be null&quot;);</span>
+        }
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (input == null) {</span>
+<span class="fc" id="L80">            return;</span>
+        }
+<span class="fc" id="L82">        int pos = 0;</span>
+<span class="fc" id="L83">        final int len = input.length();</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        while (pos &lt; len) {</span>
+<span class="fc" id="L85">            final int consumed = translate(input, pos, out);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            if (consumed == 0) {</span>
+<span class="fc" id="L87">                final char[] c = Character.toChars(Character.codePointAt(input, pos));</span>
+<span class="fc" id="L88">                out.write(c);</span>
+<span class="fc" id="L89">                pos+= c.length;</span>
+<span class="fc" id="L90">                continue;</span>
+            }
+//          // contract with translators is that they have to understand codepoints 
+//          // and they just took care of a surrogate pair
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            for (int pt = 0; pt &lt; consumed; pt++) {</span>
+<span class="fc" id="L95">                pos += Character.charCount(Character.codePointAt(input, pt));</span>
+            }
+<span class="fc" id="L97">        }</span>
+<span class="fc" id="L98">    }</span>
+
+    /**
+     * Helper method to create a merger of this translator with another set of 
+     * translators. Useful in customizing the standard functionality.
+     *
+     * @param translators CharSequenceTranslator array of translators to merge with this one
+     * @return CharSequenceTranslator merging this translator with the others
+     */
+    public final CharSequenceTranslator with(final CharSequenceTranslator... translators) {
+<span class="fc" id="L108">        final CharSequenceTranslator[] newArray = new CharSequenceTranslator[translators.length + 1];</span>
+<span class="fc" id="L109">        newArray[0] = this;</span>
+<span class="fc" id="L110">        System.arraycopy(translators, 0, newArray, 1, translators.length);</span>
+<span class="fc" id="L111">        return new AggregateTranslator(newArray);</span>
+    }
+
+    /**
+     * &lt;p&gt;Returns an upper case hexadecimal &lt;code&gt;String&lt;/code&gt; for the given
+     * character.&lt;/p&gt;
+     *
+     * @param codepoint The codepoint to convert.
+     * @return An upper case hexadecimal &lt;code&gt;String&lt;/code&gt;
+     */
+    public static String hex(final int codepoint) {
+<span class="fc" id="L122">        return Integer.toHexString(codepoint).toUpperCase(Locale.ENGLISH);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -134,7 +134,8 @@ final public class Verifier {
 	/**
 	 * The seed array used with LENCONST to populate CHARFLAGS.
 	 */
-	private static final byte[] VALCONST = new byte[] {
+private static final class VALCONST {
+	private static final byte[] VALUES = new byte[] {
         0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x41, 0x01, 
         0x41, 0x49, 0x41, 0x59, 0x41, 0x01, 0x41, 0x01, 
         0x41, 0x4f, 0x01, 0x4d, 0x01, 0x4f, 0x01, 0x41, 
@@ -213,7 +214,7 @@ final public class Verifier {
         0x01, 0x09, 0x01, 0x0f, 0x01, 0x29, 0x01, 0x09, 
         0x01, 0x0f, 0x01, 0x09, 0x01, 0x0f, 0x01, 0x0f, 
         0x01, 0x0f, 0x01, 0x00, 0x01, 0x00};
-
+}
 	/**
 	 * The seed array used with VALCONST to populate CHARFLAGS.
 	 */
@@ -316,9 +317,9 @@ final public class Verifier {
 	private static final byte[] buildBitFlags() {
 		final byte[] ret = new byte[CHARCNT];
 		int index = 0;
-		for (int i = 0; i < VALCONST.length; i++) {
+		for (int i = 0; i < VALCONST.VALUES.length; i++) {
 			// v represents the roles a character can play.
-			final byte v = VALCONST[i];
+			final byte v = VALCONST.VALUES[i];
 			// l is the number of consecutive chars that have the same
 			// roles 'v'
 			int l = LENCONST[i];

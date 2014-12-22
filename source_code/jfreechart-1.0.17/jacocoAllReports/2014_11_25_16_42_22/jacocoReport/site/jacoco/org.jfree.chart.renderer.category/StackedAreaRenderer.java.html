@@ -1,0 +1,550 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StackedAreaRenderer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.renderer.category</a> &gt; <span class="el_source">StackedAreaRenderer.java</span></div><h1>StackedAreaRenderer.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ------------------------
+ * StackedAreaRenderer.java
+ * ------------------------
+ * (C) Copyright 2002-2009, by Dan Rivett (d.rivett@ukonline.co.uk) and
+ *                          Contributors.
+ *
+ * Original Author:  Dan Rivett (adapted from AreaRenderer);
+ * Contributor(s):   Jon Iles;
+ *                   David Gilbert (for Object Refinery Limited);
+ *                   Christian W. Zuckschwerdt;
+ *                   Peter Kolb (patch 2511330);
+ *
+ * Changes:
+ * --------
+ * 20-Sep-2002 : Version 1, contributed by Dan Rivett;
+ * 24-Oct-2002 : Amendments for changes in CategoryDataset interface and
+ *               CategoryToolTipGenerator interface (DG);
+ * 01-Nov-2002 : Added tooltips (DG);
+ * 06-Nov-2002 : Renamed drawCategoryItem() --&gt; drawItem() and now using axis
+ *               for category spacing. Renamed StackedAreaCategoryItemRenderer
+ *               --&gt; StackedAreaRenderer (DG);
+ * 26-Nov-2002 : Switched CategoryDataset --&gt; TableDataset (DG);
+ * 26-Nov-2002 : Replaced isStacked() method with getRangeType() method (DG);
+ * 17-Jan-2003 : Moved plot classes to a separate package (DG);
+ * 25-Mar-2003 : Implemented Serializable (DG);
+ * 13-May-2003 : Modified to take into account the plot orientation (DG);
+ * 30-Jul-2003 : Modified entity constructor (CZ);
+ * 07-Oct-2003 : Added renderer state (DG);
+ * 29-Apr-2004 : Added getRangeExtent() override (DG);
+ * 05-Nov-2004 : Modified drawItem() signature (DG);
+ * 07-Jan-2005 : Renamed getRangeExtent() --&gt; findRangeBounds() (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 11-Oct-2006 : Added support for rendering data values as percentages,
+ *               and added a second pass for drawing item labels (DG);
+ * 04-Feb-2009 : Fixed support for hidden series, and bug in findRangeBounds()
+ *               method for null dataset (PK/DG);
+ * 04-Feb-2009 : Added item label support, and generate entities only in first
+ *               pass (DG);
+ * 04-Feb-2009 : Fixed bug for renderAsPercentages == true (DG);
+ *
+ */
+
+package org.jfree.chart.renderer.category;
+
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Shape;
+import java.awt.geom.GeneralPath;
+import java.awt.geom.Rectangle2D;
+import java.io.Serializable;
+
+import org.jfree.chart.axis.CategoryAxis;
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.entity.EntityCollection;
+import org.jfree.chart.event.RendererChangeEvent;
+import org.jfree.chart.plot.CategoryPlot;
+import org.jfree.data.DataUtilities;
+import org.jfree.data.Range;
+import org.jfree.data.category.CategoryDataset;
+import org.jfree.data.general.DatasetUtilities;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A renderer that draws stacked area charts for a {@link CategoryPlot}.
+ * The example shown here is generated by the
+ * &lt;code&gt;StackedAreaChartDemo1.java&lt;/code&gt; program included in the
+ * JFreeChart Demo Collection:
+ * &lt;br&gt;&lt;br&gt;
+ * &lt;img src=&quot;../../../../../images/StackedAreaRendererSample.png&quot;
+ * alt=&quot;StackedAreaRendererSample.png&quot; /&gt;
+ */
+public class StackedAreaRenderer extends AreaRenderer
+        implements Cloneable, PublicCloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = -3595635038460823663L;
+
+    /** A flag that controls whether the areas display values or percentages. */
+    private boolean renderAsPercentages;
+
+    /**
+     * Creates a new renderer.
+     */
+    public StackedAreaRenderer() {
+<span class="fc" id="L112">        this(false);</span>
+<span class="fc" id="L113">    }</span>
+
+    /**
+     * Creates a new renderer.
+     *
+     * @param renderAsPercentages  a flag that controls whether the data values
+     *                             are rendered as percentages.
+     */
+    public StackedAreaRenderer(boolean renderAsPercentages) {
+<span class="fc" id="L122">        super();</span>
+<span class="fc" id="L123">        this.renderAsPercentages = renderAsPercentages;</span>
+<span class="fc" id="L124">    }</span>
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; if the renderer displays each item value as
+     * a percentage (so that the stacked areas add to 100%), and
+     * &lt;code&gt;false&lt;/code&gt; otherwise.
+     *
+     * @return A boolean.
+     *
+     * @since 1.0.3
+     */
+    public boolean getRenderAsPercentages() {
+<span class="nc" id="L136">        return this.renderAsPercentages;</span>
+    }
+
+    /**
+     * Sets the flag that controls whether the renderer displays each item
+     * value as a percentage (so that the stacked areas add to 100%), and sends
+     * a {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param asPercentages  the flag.
+     *
+     * @since 1.0.3
+     */
+    public void setRenderAsPercentages(boolean asPercentages) {
+<span class="fc" id="L149">        this.renderAsPercentages = asPercentages;</span>
+<span class="fc" id="L150">        fireChangeEvent();</span>
+<span class="fc" id="L151">    }</span>
+
+    /**
+     * Returns the number of passes (&lt;code&gt;2&lt;/code&gt;) required by this renderer.
+     * The first pass is used to draw the areas, the second pass is used to
+     * draw the item labels (if visible).
+     *
+     * @return The number of passes required by the renderer.
+     */
+    @Override
+    public int getPassCount() {
+<span class="nc" id="L162">        return 2;</span>
+    }
+
+    /**
+     * Returns the range of values the renderer requires to display all the
+     * items from the specified dataset.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return The range (or &lt;code&gt;null&lt;/code&gt; if the dataset is empty).
+     */
+    @Override
+    public Range findRangeBounds(CategoryDataset dataset) {
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        if (dataset == null) {</span>
+<span class="fc" id="L176">            return null;</span>
+        }
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        if (this.renderAsPercentages) {</span>
+<span class="nc" id="L179">            return new Range(0.0, 1.0);</span>
+        }
+        else {
+<span class="fc" id="L182">            return DatasetUtilities.findStackedRangeBounds(dataset);</span>
+        }
+    }
+
+    /**
+     * Draw a single data item.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the data plot area.
+     * @param plot  the plot.
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the data.
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     * @param pass  the pass index.
+     */
+    @Override
+    public void drawItem(Graphics2D g2, CategoryItemRendererState state,
+            Rectangle2D dataArea, CategoryPlot plot, CategoryAxis domainAxis,
+            ValueAxis rangeAxis, CategoryDataset dataset, int row, int column,
+            int pass) {
+
+<span class="nc bnc" id="L206" title="All 2 branches missed.">        if (!isSeriesVisible(row)) {</span>
+<span class="nc" id="L207">            return;</span>
+        }
+        
+        // setup for collecting optional entity info...
+        Shape entityArea;
+<span class="nc" id="L212">        EntityCollection entities = state.getEntityCollection();</span>
+
+<span class="nc" id="L214">        double y1 = 0.0;</span>
+<span class="nc" id="L215">        Number n = dataset.getValue(row, column);</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (n != null) {</span>
+<span class="nc" id="L217">            y1 = n.doubleValue();</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">            if (this.renderAsPercentages) {</span>
+<span class="nc" id="L219">                double total = DataUtilities.calculateColumnTotal(dataset,</span>
+                        column, state.getVisibleSeriesArray());
+<span class="nc" id="L221">                y1 = y1 / total;</span>
+            }
+        }
+<span class="nc" id="L224">        double[] stack1 = getStackValues(dataset, row, column,</span>
+                state.getVisibleSeriesArray());
+
+
+        // leave the y values (y1, y0) untranslated as it is going to be be
+        // stacked up later by previous series values, after this it will be
+        // translated.
+<span class="nc" id="L231">        double xx1 = domainAxis.getCategoryMiddle(column, getColumnCount(),</span>
+                dataArea, plot.getDomainAxisEdge());
+
+
+        // get the previous point and the next point so we can calculate a
+        // &quot;hot spot&quot; for the area (used by the chart entity)...
+<span class="nc" id="L237">        double y0 = 0.0;</span>
+<span class="nc" id="L238">        n = dataset.getValue(row, Math.max(column - 1, 0));</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">        if (n != null) {</span>
+<span class="nc" id="L240">            y0 = n.doubleValue();</span>
+<span class="nc bnc" id="L241" title="All 2 branches missed.">            if (this.renderAsPercentages) {</span>
+<span class="nc" id="L242">                double total = DataUtilities.calculateColumnTotal(dataset,</span>
+                        Math.max(column - 1, 0), state.getVisibleSeriesArray());
+<span class="nc" id="L244">                y0 = y0 / total;</span>
+            }
+        }
+<span class="nc" id="L247">        double[] stack0 = getStackValues(dataset, row, Math.max(column - 1, 0),</span>
+                state.getVisibleSeriesArray());
+
+        // FIXME: calculate xx0
+<span class="nc" id="L251">        double xx0 = domainAxis.getCategoryStart(column, getColumnCount(),</span>
+                dataArea, plot.getDomainAxisEdge());
+
+<span class="nc" id="L254">        int itemCount = dataset.getColumnCount();</span>
+<span class="nc" id="L255">        double y2 = 0.0;</span>
+<span class="nc" id="L256">        n = dataset.getValue(row, Math.min(column + 1, itemCount - 1));</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">        if (n != null) {</span>
+<span class="nc" id="L258">            y2 = n.doubleValue();</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">            if (this.renderAsPercentages) {</span>
+<span class="nc" id="L260">                double total = DataUtilities.calculateColumnTotal(dataset,</span>
+                        Math.min(column + 1, itemCount - 1),
+                        state.getVisibleSeriesArray());
+<span class="nc" id="L263">                y2 = y2 / total;</span>
+            }
+        }
+<span class="nc" id="L266">        double[] stack2 = getStackValues(dataset, row, Math.min(column + 1,</span>
+                itemCount - 1), state.getVisibleSeriesArray());
+
+<span class="nc" id="L269">        double xx2 = domainAxis.getCategoryEnd(column, getColumnCount(),</span>
+                dataArea, plot.getDomainAxisEdge());
+
+        // FIXME: calculate xxLeft and xxRight
+<span class="nc" id="L273">        double xxLeft = xx0;</span>
+<span class="nc" id="L274">        double xxRight = xx2;</span>
+
+<span class="nc" id="L276">        double[] stackLeft = averageStackValues(stack0, stack1);</span>
+<span class="nc" id="L277">        double[] stackRight = averageStackValues(stack1, stack2);</span>
+<span class="nc" id="L278">        double[] adjStackLeft = adjustedStackValues(stack0, stack1);</span>
+<span class="nc" id="L279">        double[] adjStackRight = adjustedStackValues(stack1, stack2);</span>
+
+        float transY1;
+
+<span class="nc" id="L283">        RectangleEdge edge1 = plot.getRangeAxisEdge();</span>
+
+<span class="nc" id="L285">        GeneralPath left = new GeneralPath();</span>
+<span class="nc" id="L286">        GeneralPath right = new GeneralPath();</span>
+<span class="nc bnc" id="L287" title="All 2 branches missed.">        if (y1 &gt;= 0.0) {  // handle positive value</span>
+<span class="nc" id="L288">            transY1 = (float) rangeAxis.valueToJava2D(y1 + stack1[1], dataArea,</span>
+                    edge1);
+<span class="nc" id="L290">            float transStack1 = (float) rangeAxis.valueToJava2D(stack1[1],</span>
+                    dataArea, edge1);
+<span class="nc" id="L292">            float transStackLeft = (float) rangeAxis.valueToJava2D(</span>
+                    adjStackLeft[1], dataArea, edge1);
+
+            // LEFT POLYGON
+<span class="nc bnc" id="L296" title="All 2 branches missed.">            if (y0 &gt;= 0.0) {</span>
+<span class="nc" id="L297">                double yleft = (y0 + y1) / 2.0 + stackLeft[1];</span>
+<span class="nc" id="L298">                float transYLeft</span>
+                    = (float) rangeAxis.valueToJava2D(yleft, dataArea, edge1);
+<span class="nc" id="L300">                left.moveTo((float) xx1, transY1);</span>
+<span class="nc" id="L301">                left.lineTo((float) xx1, transStack1);</span>
+<span class="nc" id="L302">                left.lineTo((float) xxLeft, transStackLeft);</span>
+<span class="nc" id="L303">                left.lineTo((float) xxLeft, transYLeft);</span>
+<span class="nc" id="L304">                left.closePath();</span>
+<span class="nc" id="L305">            }</span>
+            else {
+<span class="nc" id="L307">                left.moveTo((float) xx1, transStack1);</span>
+<span class="nc" id="L308">                left.lineTo((float) xx1, transY1);</span>
+<span class="nc" id="L309">                left.lineTo((float) xxLeft, transStackLeft);</span>
+<span class="nc" id="L310">                left.closePath();</span>
+            }
+
+<span class="nc" id="L313">            float transStackRight = (float) rangeAxis.valueToJava2D(</span>
+                    adjStackRight[1], dataArea, edge1);
+            // RIGHT POLYGON
+<span class="nc bnc" id="L316" title="All 2 branches missed.">            if (y2 &gt;= 0.0) {</span>
+<span class="nc" id="L317">                double yright = (y1 + y2) / 2.0 + stackRight[1];</span>
+<span class="nc" id="L318">                float transYRight</span>
+                    = (float) rangeAxis.valueToJava2D(yright, dataArea, edge1);
+<span class="nc" id="L320">                right.moveTo((float) xx1, transStack1);</span>
+<span class="nc" id="L321">                right.lineTo((float) xx1, transY1);</span>
+<span class="nc" id="L322">                right.lineTo((float) xxRight, transYRight);</span>
+<span class="nc" id="L323">                right.lineTo((float) xxRight, transStackRight);</span>
+<span class="nc" id="L324">                right.closePath();</span>
+<span class="nc" id="L325">            }</span>
+            else {
+<span class="nc" id="L327">                right.moveTo((float) xx1, transStack1);</span>
+<span class="nc" id="L328">                right.lineTo((float) xx1, transY1);</span>
+<span class="nc" id="L329">                right.lineTo((float) xxRight, transStackRight);</span>
+<span class="nc" id="L330">                right.closePath();</span>
+            }
+<span class="nc" id="L332">        }</span>
+        else {  // handle negative value
+<span class="nc" id="L334">            transY1 = (float) rangeAxis.valueToJava2D(y1 + stack1[0], dataArea,</span>
+                    edge1);
+<span class="nc" id="L336">            float transStack1 = (float) rangeAxis.valueToJava2D(stack1[0],</span>
+                    dataArea, edge1);
+<span class="nc" id="L338">            float transStackLeft = (float) rangeAxis.valueToJava2D(</span>
+                    adjStackLeft[0], dataArea, edge1);
+
+            // LEFT POLYGON
+<span class="nc bnc" id="L342" title="All 2 branches missed.">            if (y0 &gt;= 0.0) {</span>
+<span class="nc" id="L343">                left.moveTo((float) xx1, transStack1);</span>
+<span class="nc" id="L344">                left.lineTo((float) xx1, transY1);</span>
+<span class="nc" id="L345">                left.lineTo((float) xxLeft, transStackLeft);</span>
+<span class="nc" id="L346">                left.clone();</span>
+            }
+            else {
+<span class="nc" id="L349">                double yleft = (y0 + y1) / 2.0 + stackLeft[0];</span>
+<span class="nc" id="L350">                float transYLeft = (float) rangeAxis.valueToJava2D(yleft,</span>
+                        dataArea, edge1);
+<span class="nc" id="L352">                left.moveTo((float) xx1, transY1);</span>
+<span class="nc" id="L353">                left.lineTo((float) xx1, transStack1);</span>
+<span class="nc" id="L354">                left.lineTo((float) xxLeft, transStackLeft);</span>
+<span class="nc" id="L355">                left.lineTo((float) xxLeft, transYLeft);</span>
+<span class="nc" id="L356">                left.closePath();</span>
+            }
+<span class="nc" id="L358">            float transStackRight = (float) rangeAxis.valueToJava2D(</span>
+                    adjStackRight[0], dataArea, edge1);
+
+            // RIGHT POLYGON
+<span class="nc bnc" id="L362" title="All 2 branches missed.">            if (y2 &gt;= 0.0) {</span>
+<span class="nc" id="L363">                right.moveTo((float) xx1, transStack1);</span>
+<span class="nc" id="L364">                right.lineTo((float) xx1, transY1);</span>
+<span class="nc" id="L365">                right.lineTo((float) xxRight, transStackRight);</span>
+<span class="nc" id="L366">                right.closePath();</span>
+            }
+            else {
+<span class="nc" id="L369">                double yright = (y1 + y2) / 2.0 + stackRight[0];</span>
+<span class="nc" id="L370">                float transYRight = (float) rangeAxis.valueToJava2D(yright,</span>
+                        dataArea, edge1);
+<span class="nc" id="L372">                right.moveTo((float) xx1, transStack1);</span>
+<span class="nc" id="L373">                right.lineTo((float) xx1, transY1);</span>
+<span class="nc" id="L374">                right.lineTo((float) xxRight, transYRight);</span>
+<span class="nc" id="L375">                right.lineTo((float) xxRight, transStackRight);</span>
+<span class="nc" id="L376">                right.closePath();</span>
+            }
+        }
+
+<span class="nc bnc" id="L380" title="All 2 branches missed.">        if (pass == 0) {</span>
+<span class="nc" id="L381">            Paint itemPaint = getItemPaint(row, column);</span>
+<span class="nc" id="L382">            g2.setPaint(itemPaint);</span>
+<span class="nc" id="L383">            g2.fill(left);</span>
+<span class="nc" id="L384">            g2.fill(right);</span>
+
+            // add an entity for the item...
+<span class="nc bnc" id="L387" title="All 2 branches missed.">            if (entities != null) {</span>
+<span class="nc" id="L388">                GeneralPath gp = new GeneralPath(left);</span>
+<span class="nc" id="L389">                gp.append(right, false);</span>
+<span class="nc" id="L390">                entityArea = gp;</span>
+<span class="nc" id="L391">                addItemEntity(entities, dataset, row, column, entityArea);</span>
+            }
+<span class="nc" id="L393">        }</span>
+<span class="nc bnc" id="L394" title="All 2 branches missed.">        else if (pass == 1) {</span>
+<span class="nc bnc" id="L395" title="All 2 branches missed.">            drawItemLabel(g2, plot.getOrientation(), dataset, row, column,</span>
+                    xx1, transY1, y1 &lt; 0.0);
+        }
+
+<span class="nc" id="L399">    }</span>
+
+    /**
+     * Calculates the stacked values (one positive and one negative) of all
+     * series up to, but not including, &lt;code&gt;series&lt;/code&gt; for the specified
+     * item. It returns [0.0, 0.0] if &lt;code&gt;series&lt;/code&gt; is the first series.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param series  the series index.
+     * @param index  the item index.
+     * @param validRows  the valid rows.
+     *
+     * @return An array containing the cumulative negative and positive values
+     *     for all series values up to but excluding &lt;code&gt;series&lt;/code&gt;
+     *     for &lt;code&gt;index&lt;/code&gt;.
+     */
+    protected double[] getStackValues(CategoryDataset dataset,
+            int series, int index, int[] validRows) {
+<span class="nc" id="L417">        double[] result = new double[2];</span>
+<span class="nc" id="L418">        double total = 0.0;</span>
+<span class="nc bnc" id="L419" title="All 2 branches missed.">        if (this.renderAsPercentages) {</span>
+<span class="nc" id="L420">            total = DataUtilities.calculateColumnTotal(dataset, index, </span>
+                    validRows);
+        }
+<span class="nc bnc" id="L423" title="All 2 branches missed.">        for (int i = 0; i &lt; series; i++) {</span>
+<span class="nc bnc" id="L424" title="All 2 branches missed.">            if (isSeriesVisible(i)) {</span>
+<span class="nc" id="L425">                double v = 0.0;</span>
+<span class="nc" id="L426">                Number n = dataset.getValue(i, index);</span>
+<span class="nc bnc" id="L427" title="All 2 branches missed.">                if (n != null) {</span>
+<span class="nc" id="L428">                    v = n.doubleValue();</span>
+<span class="nc bnc" id="L429" title="All 2 branches missed.">                    if (this.renderAsPercentages) {</span>
+<span class="nc" id="L430">                        v = v / total;</span>
+                    }
+                }
+<span class="nc bnc" id="L433" title="All 2 branches missed.">                if (!Double.isNaN(v)) {</span>
+<span class="nc bnc" id="L434" title="All 2 branches missed.">                    if (v &gt;= 0.0) {</span>
+<span class="nc" id="L435">                        result[1] += v;</span>
+                    }
+                    else {
+<span class="nc" id="L438">                        result[0] += v;</span>
+                    }
+                }
+            }
+        }
+<span class="nc" id="L443">        return result;</span>
+    }
+
+    /**
+     * Returns a pair of &quot;stack&quot; values calculated as the mean of the two
+     * specified stack value pairs.
+     *
+     * @param stack1  the first stack pair.
+     * @param stack2  the second stack pair.
+     *
+     * @return A pair of average stack values.
+     */
+    private double[] averageStackValues(double[] stack1, double[] stack2) {
+<span class="nc" id="L456">        double[] result = new double[2];</span>
+<span class="nc" id="L457">        result[0] = (stack1[0] + stack2[0]) / 2.0;</span>
+<span class="nc" id="L458">        result[1] = (stack1[1] + stack2[1]) / 2.0;</span>
+<span class="nc" id="L459">        return result;</span>
+    }
+
+    /**
+     * Calculates adjusted stack values from the supplied values.  The value is
+     * the mean of the supplied values, unless either of the supplied values
+     * is zero, in which case the adjusted value is zero also.
+     *
+     * @param stack1  the first stack pair.
+     * @param stack2  the second stack pair.
+     *
+     * @return A pair of average stack values.
+     */
+    private double[] adjustedStackValues(double[] stack1, double[] stack2) {
+<span class="nc" id="L473">        double[] result = new double[2];</span>
+<span class="nc bnc" id="L474" title="All 4 branches missed.">        if (stack1[0] == 0.0 || stack2[0] == 0.0) {</span>
+<span class="nc" id="L475">            result[0] = 0.0;</span>
+        }
+        else {
+<span class="nc" id="L478">            result[0] = (stack1[0] + stack2[0]) / 2.0;</span>
+        }
+<span class="nc bnc" id="L480" title="All 4 branches missed.">        if (stack1[1] == 0.0 || stack2[1] == 0.0) {</span>
+<span class="nc" id="L481">            result[1] = 0.0;</span>
+        }
+        else {
+<span class="nc" id="L484">            result[1] = (stack1[1] + stack2[1]) / 2.0;</span>
+        }
+<span class="nc" id="L486">        return result;</span>
+    }
+
+    /**
+     * Checks this instance for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L498" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L499">            return true;</span>
+        }
+<span class="pc bpc" id="L501" title="1 of 2 branches missed.">        if (!(obj instanceof StackedAreaRenderer)) {</span>
+<span class="nc" id="L502">            return false;</span>
+        }
+<span class="fc" id="L504">        StackedAreaRenderer that = (StackedAreaRenderer) obj;</span>
+<span class="fc bfc" id="L505" title="All 2 branches covered.">        if (this.renderAsPercentages != that.renderAsPercentages) {</span>
+<span class="fc" id="L506">            return false;</span>
+        }
+<span class="fc" id="L508">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Calculates the stacked value of the all series up to, but not including
+     * &lt;code&gt;series&lt;/code&gt; for the specified category, &lt;code&gt;category&lt;/code&gt;.
+     * It returns 0.0 if &lt;code&gt;series&lt;/code&gt; is the first series, i.e. 0.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param series  the series.
+     * @param category  the category.
+     *
+     * @return double returns a cumulative value for all series' values up to
+     *         but excluding &lt;code&gt;series&lt;/code&gt; for Object
+     *         &lt;code&gt;category&lt;/code&gt;.
+     *
+     * @deprecated As of 1.0.13, as the method is never used internally.
+     */
+    protected double getPreviousHeight(CategoryDataset dataset,
+            int series, int category) {
+
+<span class="nc" id="L529">        double result = 0.0;</span>
+        Number n;
+<span class="nc" id="L531">        double total = 0.0;</span>
+<span class="nc bnc" id="L532" title="All 2 branches missed.">        if (this.renderAsPercentages) {</span>
+<span class="nc" id="L533">            total = DataUtilities.calculateColumnTotal(dataset, category);</span>
+        }
+<span class="nc bnc" id="L535" title="All 2 branches missed.">        for (int i = 0; i &lt; series; i++) {</span>
+<span class="nc" id="L536">            n = dataset.getValue(i, category);</span>
+<span class="nc bnc" id="L537" title="All 2 branches missed.">            if (n != null) {</span>
+<span class="nc" id="L538">                double v = n.doubleValue();</span>
+<span class="nc bnc" id="L539" title="All 2 branches missed.">                if (this.renderAsPercentages) {</span>
+<span class="nc" id="L540">                    v = v / total;</span>
+                }
+<span class="nc" id="L542">                result += v;</span>
+            }
+        }
+<span class="nc" id="L545">        return result;</span>
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

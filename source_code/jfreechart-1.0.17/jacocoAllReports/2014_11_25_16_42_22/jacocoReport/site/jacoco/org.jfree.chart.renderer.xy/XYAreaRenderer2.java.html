@@ -1,0 +1,474 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>XYAreaRenderer2.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.renderer.xy</a> &gt; <span class="el_source">XYAreaRenderer2.java</span></div><h1>XYAreaRenderer2.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * --------------------
+ * XYAreaRenderer2.java
+ * --------------------
+ * (C) Copyright 2004-2013, by Hari and Contributors.
+ *
+ * Original Author:  Hari (ourhari@hotmail.com);
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *                   Richard Atkinson;
+ *                   Christian W. Zuckschwerdt;
+ *                   Martin Krauskopf;
+ *
+ * Changes:
+ * --------
+ * 03-Apr-2002 : Version 1, contributed by Hari.  This class is based on the
+ *               StandardXYItemRenderer class (DG);
+ * 09-Apr-2002 : Removed the translated zero from the drawItem method -
+ *               overridden the initialise() method to calculate it (DG);
+ * 30-May-2002 : Added tool tip generator to constructor to match super
+ *               class (DG);
+ * 25-Jun-2002 : Removed unnecessary local variable (DG);
+ * 05-Aug-2002 : Small modification to drawItem method to support URLs for
+ *               HTML image maps (RA);
+ * 01-Oct-2002 : Fixed errors reported by Checkstyle (DG);
+ * 07-Nov-2002 : Renamed AreaXYItemRenderer --&gt; XYAreaRenderer (DG);
+ * 25-Mar-2003 : Implemented Serializable (DG);
+ * 01-May-2003 : Modified drawItem() method signature (DG);
+ * 27-Jul-2003 : Made line and polygon properties protected rather than
+ *               private (RA);
+ * 30-Jul-2003 : Modified entity constructor (CZ);
+ * 20-Aug-2003 : Implemented Cloneable and PublicCloneable (DG);
+ * 16-Sep-2003 : Changed ChartRenderingInfo --&gt; PlotRenderingInfo (DG);
+ * 07-Oct-2003 : Added renderer state (DG);
+ * 08-Dec-2003 : Modified hotspot for chart entity (DG);
+ * 10-Feb-2004 : Changed the drawItem() method to make cut-and-paste
+ *               overriding easier.  Also moved state class into this
+ *               class (DG);
+ * 25-Feb-2004 : Replaced CrosshairInfo with CrosshairState.  Renamed
+ *               XYToolTipGenerator --&gt; XYItemLabelGenerator (DG);
+ * 15-Jul-2004 : Switched getX() with getXValue() and getY() with
+ *               getYValue() (DG);
+ * 11-Nov-2004 : Now uses ShapeUtilities to translate shapes (DG);
+ * 19-Jan-2005 : Now accesses only primitives from the dataset (DG);
+ * 21-Mar-2005 : Override getLegendItem() (DG);
+ * 20-Apr-2005 : Use generators for legend tooltips and URLs (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 30-Nov-2006 : Fixed equals() and clone() implementations (DG);
+ * 06-Feb-2007 : Fixed bug 1086307, crosshairs with multiple axes (DG);
+ * 20-Apr-2007 : Updated getLegendItem() and drawItem() for renderer
+ *               change (DG);
+ * 17-May-2007 : Set datasetIndex and seriesIndex in getLegendItem() (DG);
+ * 18-May-2007 : Set dataset and seriesKey for LegendItem (DG);
+ * 17-Jun-2008 : Apply legend font and paint attributes (DG);
+ * 06-Oct-2011 : Avoid GeneralPath methods requiring Java 1.5 (MK);
+ * 03-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.chart.renderer.xy;
+
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.geom.GeneralPath;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+
+import org.jfree.chart.LegendItem;
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.entity.EntityCollection;
+import org.jfree.chart.entity.XYItemEntity;
+import org.jfree.chart.event.RendererChangeEvent;
+import org.jfree.chart.labels.XYSeriesLabelGenerator;
+import org.jfree.chart.labels.XYToolTipGenerator;
+import org.jfree.chart.plot.CrosshairState;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.plot.PlotRenderingInfo;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.urls.XYURLGenerator;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.data.xy.XYDataset;
+import org.jfree.io.SerialUtilities;
+import org.jfree.util.PublicCloneable;
+import org.jfree.util.ShapeUtilities;
+
+/**
+ * Area item renderer for an {@link XYPlot}. The example shown here is
+ * generated by the &lt;code&gt;XYAreaRenderer2Demo1.java&lt;/code&gt; program included in
+ * the JFreeChart demo collection:
+ * &lt;br&gt;&lt;br&gt;
+ * &lt;img src=&quot;../../../../../images/XYAreaRenderer2Sample.png&quot;
+ * alt=&quot;XYAreaRenderer2Sample.png&quot; /&gt;
+ */
+public class XYAreaRenderer2 extends AbstractXYItemRenderer
+        implements XYItemRenderer, PublicCloneable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = -7378069681579984133L;
+
+    /** A flag that controls whether or not the outline is shown. */
+    private boolean showOutline;
+
+    /**
+     * The shape used to represent an area in each legend item (this should
+     * never be &lt;code&gt;null&lt;/code&gt;).
+     */
+    private transient Shape legendArea;
+
+    /**
+     * Constructs a new renderer.
+     */
+    public XYAreaRenderer2() {
+<span class="fc" id="L141">        this(null, null);</span>
+<span class="fc" id="L142">    }</span>
+
+    /**
+     * Constructs a new renderer.
+     *
+     * @param labelGenerator  the tool tip generator to use.  &lt;code&gt;null&lt;/code&gt;
+     *                        is none.
+     * @param urlGenerator  the URL generator (null permitted).
+     */
+    public XYAreaRenderer2(XYToolTipGenerator labelGenerator,
+                           XYURLGenerator urlGenerator) {
+<span class="fc" id="L153">        super();</span>
+<span class="fc" id="L154">        this.showOutline = false;</span>
+<span class="fc" id="L155">        setBaseToolTipGenerator(labelGenerator);</span>
+<span class="fc" id="L156">        setURLGenerator(urlGenerator);</span>
+<span class="fc" id="L157">        GeneralPath area = new GeneralPath();</span>
+<span class="fc" id="L158">        area.moveTo(0.0f, -4.0f);</span>
+<span class="fc" id="L159">        area.lineTo(3.0f, -2.0f);</span>
+<span class="fc" id="L160">        area.lineTo(4.0f, 4.0f);</span>
+<span class="fc" id="L161">        area.lineTo(-4.0f, 4.0f);</span>
+<span class="fc" id="L162">        area.lineTo(-3.0f, -2.0f);</span>
+<span class="fc" id="L163">        area.closePath();</span>
+<span class="fc" id="L164">        this.legendArea = area;</span>
+<span class="fc" id="L165">    }</span>
+
+    /**
+     * Returns a flag that controls whether or not outlines of the areas are
+     * drawn.
+     *
+     * @return The flag.
+     *
+     * @see #setOutline(boolean)
+     */
+    public boolean isOutline() {
+<span class="fc" id="L176">        return this.showOutline;</span>
+    }
+
+    /**
+     * Sets a flag that controls whether or not outlines of the areas are
+     * drawn, and sends a {@link RendererChangeEvent} to all registered
+     * listeners.
+     *
+     * @param show  the flag.
+     *
+     * @see #isOutline()
+     */
+    public void setOutline(boolean show) {
+<span class="fc" id="L189">        this.showOutline = show;</span>
+<span class="fc" id="L190">        fireChangeEvent();</span>
+<span class="fc" id="L191">    }</span>
+
+    /**
+     * This method should not be used.
+     *
+     * @return &lt;code&gt;false&lt;/code&gt; always.
+     *
+     * @deprecated This method was included in the API by mistake and serves
+     *     no useful purpose.  It has always returned &lt;code&gt;false&lt;/code&gt;.
+     *
+     */
+    public boolean getPlotLines() {
+<span class="nc" id="L203">        return false;</span>
+    }
+
+    /**
+     * Returns the shape used to represent an area in the legend.
+     *
+     * @return The legend area (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setLegendArea(Shape)
+     */
+    public Shape getLegendArea() {
+<span class="nc" id="L214">        return this.legendArea;</span>
+    }
+
+    /**
+     * Sets the shape used as an area in each legend item and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param area  the area (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getLegendArea()
+     */
+    public void setLegendArea(Shape area) {
+<span class="fc" id="L226">        ParamChecks.nullNotPermitted(area, &quot;area&quot;);</span>
+<span class="fc" id="L227">        this.legendArea = area;</span>
+<span class="fc" id="L228">        fireChangeEvent();</span>
+<span class="fc" id="L229">    }</span>
+
+    /**
+     * Returns a default legend item for the specified series.  Subclasses
+     * should override this method to generate customised items.
+     *
+     * @param datasetIndex  the dataset index (zero-based).
+     * @param series  the series index (zero-based).
+     *
+     * @return A legend item for the series.
+     */
+    @Override
+    public LegendItem getLegendItem(int datasetIndex, int series) {
+<span class="fc" id="L242">        LegendItem result = null;</span>
+<span class="fc" id="L243">        XYPlot xyplot = getPlot();</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">        if (xyplot != null) {</span>
+<span class="fc" id="L245">            XYDataset dataset = xyplot.getDataset(datasetIndex);</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">            if (dataset != null) {</span>
+<span class="fc" id="L247">                XYSeriesLabelGenerator lg = getLegendItemLabelGenerator();</span>
+<span class="fc" id="L248">                String label = lg.generateLabel(dataset, series);</span>
+<span class="fc" id="L249">                String description = label;</span>
+<span class="fc" id="L250">                String toolTipText = null;</span>
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">                if (getLegendItemToolTipGenerator() != null) {</span>
+<span class="nc" id="L252">                    toolTipText = getLegendItemToolTipGenerator().generateLabel(</span>
+                            dataset, series);
+                }
+<span class="fc" id="L255">                String urlText = null;</span>
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">                if (getLegendItemURLGenerator() != null) {</span>
+<span class="nc" id="L257">                    urlText = getLegendItemURLGenerator().generateLabel(</span>
+                            dataset, series);
+                }
+<span class="fc" id="L260">                Paint paint = lookupSeriesPaint(series);</span>
+<span class="fc" id="L261">                result = new LegendItem(label, description, toolTipText,</span>
+                        urlText, this.legendArea, paint);
+<span class="fc" id="L263">                result.setLabelFont(lookupLegendTextFont(series));</span>
+<span class="fc" id="L264">                Paint labelPaint = lookupLegendTextPaint(series);</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">                if (labelPaint != null) {</span>
+<span class="nc" id="L266">                    result.setLabelPaint(labelPaint);</span>
+                }
+<span class="fc" id="L268">                result.setDataset(dataset);</span>
+<span class="fc" id="L269">                result.setDatasetIndex(datasetIndex);</span>
+<span class="fc" id="L270">                result.setSeriesKey(dataset.getSeriesKey(series));</span>
+<span class="fc" id="L271">                result.setSeriesIndex(series);</span>
+            }
+        }
+<span class="fc" id="L274">        return result;</span>
+    }
+
+    /**
+     * Draws the visual representation of a single data item.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the area within which the data is being drawn.
+     * @param info  collects information about the drawing.
+     * @param plot  the plot (can be used to obtain standard color
+     *              information etc).
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the dataset.
+     * @param series  the series index (zero-based).
+     * @param item  the item index (zero-based).
+     * @param crosshairState  crosshair information for the plot
+     *                        (&lt;code&gt;null&lt;/code&gt; permitted).
+     * @param pass  the pass index.
+     */
+    @Override
+    public void drawItem(Graphics2D g2, XYItemRendererState state,
+         Rectangle2D dataArea, PlotRenderingInfo info, XYPlot plot,
+         ValueAxis domainAxis, ValueAxis rangeAxis, XYDataset dataset,
+         int series, int item, CrosshairState crosshairState, int pass) {
+
+<span class="pc bpc" id="L301" title="1 of 2 branches missed.">        if (!getItemVisible(series, item)) {</span>
+<span class="nc" id="L302">            return;</span>
+        }
+        // get the data point...
+<span class="fc" id="L305">        double x1 = dataset.getXValue(series, item);</span>
+<span class="fc" id="L306">        double y1 = dataset.getYValue(series, item);</span>
+<span class="pc bpc" id="L307" title="1 of 2 branches missed.">        if (Double.isNaN(y1)) {</span>
+<span class="nc" id="L308">            y1 = 0.0;</span>
+        }
+
+<span class="fc" id="L311">        double transX1 = domainAxis.valueToJava2D(x1, dataArea,</span>
+                plot.getDomainAxisEdge());
+<span class="fc" id="L313">        double transY1 = rangeAxis.valueToJava2D(y1, dataArea,</span>
+                plot.getRangeAxisEdge());
+
+        // get the previous point and the next point so we can calculate a
+        // &quot;hot spot&quot; for the area (used by the chart entity)...
+<span class="fc" id="L318">        double x0 = dataset.getXValue(series, Math.max(item - 1, 0));</span>
+<span class="fc" id="L319">        double y0 = dataset.getYValue(series, Math.max(item - 1, 0));</span>
+<span class="pc bpc" id="L320" title="1 of 2 branches missed.">        if (Double.isNaN(y0)) {</span>
+<span class="nc" id="L321">            y0 = 0.0;</span>
+        }
+<span class="fc" id="L323">        double transX0 = domainAxis.valueToJava2D(x0, dataArea,</span>
+                plot.getDomainAxisEdge());
+<span class="fc" id="L325">        double transY0 = rangeAxis.valueToJava2D(y0, dataArea,</span>
+                plot.getRangeAxisEdge());
+
+<span class="fc" id="L328">        int itemCount = dataset.getItemCount(series);</span>
+<span class="fc" id="L329">        double x2 = dataset.getXValue(series, Math.min(item + 1,</span>
+                itemCount - 1));
+<span class="fc" id="L331">        double y2 = dataset.getYValue(series, Math.min(item + 1,</span>
+                itemCount - 1));
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">        if (Double.isNaN(y2)) {</span>
+<span class="nc" id="L334">            y2 = 0.0;</span>
+        }
+<span class="fc" id="L336">        double transX2 = domainAxis.valueToJava2D(x2, dataArea,</span>
+                plot.getDomainAxisEdge());
+<span class="fc" id="L338">        double transY2 = rangeAxis.valueToJava2D(y2, dataArea,</span>
+                plot.getRangeAxisEdge());
+
+<span class="fc" id="L341">        double transZero = rangeAxis.valueToJava2D(0.0, dataArea,</span>
+                plot.getRangeAxisEdge());
+<span class="fc" id="L343">        GeneralPath hotspot = new GeneralPath();</span>
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">        if (plot.getOrientation() == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L345">            moveTo(hotspot, transZero, ((transX0 + transX1) / 2.0));</span>
+<span class="nc" id="L346">            lineTo(hotspot, ((transY0 + transY1) / 2.0),</span>
+                            ((transX0 + transX1) / 2.0));
+<span class="nc" id="L348">            lineTo(hotspot, transY1, transX1);</span>
+<span class="nc" id="L349">            lineTo(hotspot, ((transY1 + transY2) / 2.0),</span>
+                            ((transX1 + transX2) / 2.0));
+<span class="nc" id="L351">            lineTo(hotspot, transZero, ((transX1 + transX2) / 2.0));</span>
+        }
+        else {  // vertical orientation
+<span class="fc" id="L354">            moveTo(hotspot, ((transX0 + transX1) / 2.0), transZero);</span>
+<span class="fc" id="L355">            lineTo(hotspot, ((transX0 + transX1) / 2.0),</span>
+                            ((transY0 + transY1) / 2.0));
+<span class="fc" id="L357">            lineTo(hotspot, transX1, transY1);</span>
+<span class="fc" id="L358">            lineTo(hotspot, ((transX1 + transX2) / 2.0),</span>
+                            ((transY1 + transY2) / 2.0));
+<span class="fc" id="L360">            lineTo(hotspot, ((transX1 + transX2) / 2.0), transZero);</span>
+        }
+<span class="fc" id="L362">        hotspot.closePath();</span>
+
+<span class="fc" id="L364">        PlotOrientation orientation = plot.getOrientation();</span>
+<span class="fc" id="L365">        Paint paint = getItemPaint(series, item);</span>
+<span class="fc" id="L366">        Stroke stroke = getItemStroke(series, item);</span>
+<span class="fc" id="L367">        g2.setPaint(paint);</span>
+<span class="fc" id="L368">        g2.setStroke(stroke);</span>
+
+        // Check if the item is the last item for the series.
+        // and number of items &gt; 0.  We can't draw an area for a single point.
+<span class="fc" id="L372">        g2.fill(hotspot);</span>
+
+        // draw an outline around the Area.
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">        if (isOutline()) {</span>
+<span class="nc" id="L376">            g2.setStroke(lookupSeriesOutlineStroke(series));</span>
+<span class="nc" id="L377">            g2.setPaint(lookupSeriesOutlinePaint(series));</span>
+<span class="nc" id="L378">            g2.draw(hotspot);</span>
+        }
+<span class="fc" id="L380">        int domainAxisIndex = plot.getDomainAxisIndex(domainAxis);</span>
+<span class="fc" id="L381">        int rangeAxisIndex = plot.getRangeAxisIndex(rangeAxis);</span>
+<span class="fc" id="L382">        updateCrosshairValues(crosshairState, x1, y1, domainAxisIndex,</span>
+                rangeAxisIndex, transX1, transY1, orientation);
+
+        // collect entity and tool tip information...
+<span class="pc bpc" id="L386" title="1 of 2 branches missed.">        if (state.getInfo() != null) {</span>
+<span class="nc" id="L387">            EntityCollection entities = state.getEntityCollection();</span>
+<span class="nc bnc" id="L388" title="All 2 branches missed.">            if (entities != null) {</span>
+<span class="nc" id="L389">                String tip = null;</span>
+<span class="nc" id="L390">                XYToolTipGenerator generator = getToolTipGenerator(series,</span>
+                        item);
+<span class="nc bnc" id="L392" title="All 2 branches missed.">                if (generator != null) {</span>
+<span class="nc" id="L393">                    tip = generator.generateToolTip(dataset, series, item);</span>
+                }
+<span class="nc" id="L395">                String url = null;</span>
+<span class="nc bnc" id="L396" title="All 2 branches missed.">                if (getURLGenerator() != null) {</span>
+<span class="nc" id="L397">                    url = getURLGenerator().generateURL(dataset, series, item);</span>
+                }
+<span class="nc" id="L399">                XYItemEntity entity = new XYItemEntity(hotspot, dataset,</span>
+                        series, item, tip, url);
+<span class="nc" id="L401">                entities.add(entity);</span>
+            }
+        }
+
+<span class="fc" id="L405">    }</span>
+
+    /**
+     * Tests this renderer for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L416" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L417">            return true;</span>
+        }
+<span class="pc bpc" id="L419" title="1 of 2 branches missed.">        if (!(obj instanceof XYAreaRenderer2)) {</span>
+<span class="nc" id="L420">            return false;</span>
+        }
+<span class="fc" id="L422">        XYAreaRenderer2 that = (XYAreaRenderer2) obj;</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">        if (this.showOutline != that.showOutline) {</span>
+<span class="fc" id="L424">            return false;</span>
+        }
+<span class="fc bfc" id="L426" title="All 2 branches covered.">        if (!ShapeUtilities.equal(this.legendArea, that.legendArea)) {</span>
+<span class="fc" id="L427">            return false;</span>
+        }
+<span class="fc" id="L429">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Returns a clone of the renderer.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException  if the renderer cannot be cloned.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L441">        XYAreaRenderer2 clone = (XYAreaRenderer2) super.clone();</span>
+<span class="fc" id="L442">        clone.legendArea = ShapeUtilities.clone(this.legendArea);</span>
+<span class="fc" id="L443">        return clone;</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+            throws IOException, ClassNotFoundException {
+<span class="fc" id="L456">        stream.defaultReadObject();</span>
+<span class="fc" id="L457">        this.legendArea = SerialUtilities.readShape(stream);</span>
+<span class="fc" id="L458">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L468">        stream.defaultWriteObject();</span>
+<span class="fc" id="L469">        SerialUtilities.writeShape(this.legendArea, stream);</span>
+<span class="fc" id="L470">    }</span>
+
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

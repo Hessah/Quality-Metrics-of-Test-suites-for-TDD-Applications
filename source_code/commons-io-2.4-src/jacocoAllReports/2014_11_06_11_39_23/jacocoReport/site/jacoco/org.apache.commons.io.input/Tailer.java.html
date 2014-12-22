@@ -1,0 +1,491 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Tailer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">commons-io-2.4</a> &gt; <a href="index.source.html" class="el_package">org.apache.commons.io.input</a> &gt; <span class="el_source">Tailer.java</span></div><h1>Tailer.java</h1><pre class="source lang-java linenums">/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the &quot;License&quot;); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.commons.io.input;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+
+/**
+ * Simple implementation of the unix &quot;tail -f&quot; functionality.
+ * &lt;p&gt;
+ * &lt;h2&gt;1. Create a TailerListener implementation&lt;/h3&gt;
+ * &lt;p&gt;
+ * First you need to create a {@link TailerListener} implementation
+ * ({@link TailerListenerAdapter} is provided for convenience so that you don't have to
+ * implement every method).
+ * &lt;/p&gt;
+ *
+ * &lt;p&gt;For example:&lt;/p&gt;
+ * &lt;pre&gt;
+ *  public class MyTailerListener extends TailerListenerAdapter {
+ *      public void handle(String line) {
+ *          System.out.println(line);
+ *      }
+ *  }
+ * &lt;/pre&gt;
+ * 
+ * &lt;h2&gt;2. Using a Tailer&lt;/h2&gt;
+ *
+ * You can create and use a Tailer in one of three ways:
+ * &lt;ul&gt;
+ *   &lt;li&gt;Using one of the static helper methods:
+ *     &lt;ul&gt;
+ *       &lt;li&gt;{@link Tailer#create(File, TailerListener)}&lt;/li&gt;
+ *       &lt;li&gt;{@link Tailer#create(File, TailerListener, long)}&lt;/li&gt;
+ *       &lt;li&gt;{@link Tailer#create(File, TailerListener, long, boolean)}&lt;/li&gt;
+ *     &lt;/ul&gt;
+ *   &lt;/li&gt;
+ *   &lt;li&gt;Using an {@link java.util.concurrent.Executor}&lt;/li&gt;
+ *   &lt;li&gt;Using an {@link Thread}&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * An example of each of these is shown below.
+ * 
+ * &lt;h3&gt;2.1 Using the static helper method&lt;/h3&gt;
+ *
+ * &lt;pre&gt;
+ *      TailerListener listener = new MyTailerListener();
+ *      Tailer tailer = Tailer.create(file, listener, delay);
+ * &lt;/pre&gt;
+ *      
+ * &lt;h3&gt;2.2 Use an Executor&lt;/h3&gt;
+ * 
+ * &lt;pre&gt;
+ *      TailerListener listener = new MyTailerListener();
+ *      Tailer tailer = new Tailer(file, listener, delay);
+ *
+ *      // stupid executor impl. for demo purposes
+ *      Executor executor = new Executor() {
+ *          public void execute(Runnable command) {
+ *              command.run();
+ *           }
+ *      };
+ *
+ *      executor.execute(tailer);
+ * &lt;/pre&gt;
+ *      
+ *      
+ * &lt;h3&gt;2.3 Use a Thread&lt;/h3&gt;
+ * &lt;pre&gt;
+ *      TailerListener listener = new MyTailerListener();
+ *      Tailer tailer = new Tailer(file, listener, delay);
+ *      Thread thread = new Thread(tailer);
+ *      thread.setDaemon(true); // optional
+ *      thread.start();
+ * &lt;/pre&gt;
+ *
+ * &lt;h2&gt;3. Stop Tailing&lt;/h3&gt;
+ * &lt;p&gt;Remember to stop the tailer when you have done with it:&lt;/p&gt;
+ * &lt;pre&gt;
+ *      tailer.stop();
+ * &lt;/pre&gt;
+ *
+ * @see TailerListener
+ * @see TailerListenerAdapter
+ * @version $Id: Tailer.java 1348698 2012-06-11 01:09:58Z ggregory $
+ * @since 2.0
+ */
+public class Tailer implements Runnable {
+
+    private static final int DEFAULT_DELAY_MILLIS = 1000;
+
+    private static final String RAF_MODE = &quot;r&quot;;
+
+    private static final int DEFAULT_BUFSIZE = 4096;
+  
+    /**
+     * Buffer on top of RandomAccessFile.
+     */
+    private final byte inbuf[];
+    
+    /**
+     * The file which will be tailed.
+     */
+    private final File file;
+
+    /**
+     * The amount of time to wait for the file to be updated.
+     */
+    private final long delayMillis;
+
+    /**
+     * Whether to tail from the end or start of file
+     */
+    private final boolean end;
+
+    /**
+     * The listener to notify of events when tailing.
+     */
+    private final TailerListener listener;
+
+    /**
+     * Whether to close and reopen the file whilst waiting for more input.
+     */
+    private final boolean reOpen;
+    
+    /**
+     * The tailer will run as long as this value is true.
+     */
+<span class="fc" id="L148">    private volatile boolean run = true;</span>
+
+    /**
+     * Creates a Tailer for the given file, starting from the beginning, with the default delay of 1.0s.
+     * @param file The file to follow.
+     * @param listener the TailerListener to use.
+     */
+    public Tailer(File file, TailerListener listener) {
+<span class="nc" id="L156">        this(file, listener, DEFAULT_DELAY_MILLIS);</span>
+<span class="nc" id="L157">    }</span>
+
+    /**
+     * Creates a Tailer for the given file, starting from the beginning.
+     * @param file the file to follow.
+     * @param listener the TailerListener to use.
+     * @param delayMillis the delay between checks of the file for new content in milliseconds.
+     */
+    public Tailer(File file, TailerListener listener, long delayMillis) {
+<span class="nc" id="L166">        this(file, listener, delayMillis, false);</span>
+<span class="nc" id="L167">    }</span>
+
+    /**
+     * Creates a Tailer for the given file, with a delay other than the default 1.0s.
+     * @param file the file to follow.
+     * @param listener the TailerListener to use.
+     * @param delayMillis the delay between checks of the file for new content in milliseconds.
+     * @param end Set to true to tail from the end of the file, false to tail from the beginning of the file.
+     */
+    public Tailer(File file, TailerListener listener, long delayMillis, boolean end) {
+<span class="fc" id="L177">        this(file, listener, delayMillis, end, DEFAULT_BUFSIZE);</span>
+<span class="fc" id="L178">    }</span>
+    
+    /**
+     * Creates a Tailer for the given file, with a delay other than the default 1.0s.
+     * @param file the file to follow.
+     * @param listener the TailerListener to use.
+     * @param delayMillis the delay between checks of the file for new content in milliseconds.
+     * @param end Set to true to tail from the end of the file, false to tail from the beginning of the file.
+     * @param reOpen if true, close and reopen the file between reading chunks 
+     */
+    public Tailer(File file, TailerListener listener, long delayMillis, boolean end, boolean reOpen) {
+<span class="fc" id="L189">        this(file, listener, delayMillis, end, reOpen, DEFAULT_BUFSIZE);</span>
+<span class="fc" id="L190">    }</span>
+    
+    /**
+     * Creates a Tailer for the given file, with a specified buffer size.
+     * @param file the file to follow.
+     * @param listener the TailerListener to use.
+     * @param delayMillis the delay between checks of the file for new content in milliseconds.
+     * @param end Set to true to tail from the end of the file, false to tail from the beginning of the file.
+     * @param bufSize Buffer size
+     */
+    public Tailer(File file, TailerListener listener, long delayMillis, boolean end, int bufSize) {
+<span class="fc" id="L201">        this(file, listener, delayMillis, end, false, bufSize);</span>
+<span class="fc" id="L202">    }</span>
+    
+    /**
+     * Creates a Tailer for the given file, with a specified buffer size.
+     * @param file the file to follow.
+     * @param listener the TailerListener to use.
+     * @param delayMillis the delay between checks of the file for new content in milliseconds.
+     * @param end Set to true to tail from the end of the file, false to tail from the beginning of the file.
+     * @param reOpen if true, close and reopen the file between reading chunks 
+     * @param bufSize Buffer size
+     */
+<span class="fc" id="L213">    public Tailer(File file, TailerListener listener, long delayMillis, boolean end, boolean reOpen, int bufSize) {</span>
+<span class="fc" id="L214">        this.file = file;</span>
+<span class="fc" id="L215">        this.delayMillis = delayMillis;</span>
+<span class="fc" id="L216">        this.end = end;</span>
+        
+<span class="fc" id="L218">        this.inbuf = new byte[bufSize];</span>
+
+        // Save and prepare the listener
+<span class="fc" id="L221">        this.listener = listener;</span>
+<span class="fc" id="L222">        listener.init(this);</span>
+<span class="fc" id="L223">        this.reOpen = reOpen;</span>
+<span class="fc" id="L224">    }</span>
+    
+    /**
+     * Creates and starts a Tailer for the given file.
+     * 
+     * @param file the file to follow.
+     * @param listener the TailerListener to use.
+     * @param delayMillis the delay between checks of the file for new content in milliseconds.
+     * @param end Set to true to tail from the end of the file, false to tail from the beginning of the file.
+     * @param bufSize buffer size.
+     * @return The new tailer
+     */
+    public static Tailer create(File file, TailerListener listener, long delayMillis, boolean end, int bufSize) {
+<span class="fc" id="L237">        Tailer tailer = new Tailer(file, listener, delayMillis, end, bufSize);</span>
+<span class="fc" id="L238">        Thread thread = new Thread(tailer);</span>
+<span class="fc" id="L239">        thread.setDaemon(true);</span>
+<span class="fc" id="L240">        thread.start();</span>
+<span class="fc" id="L241">        return tailer;</span>
+    }
+
+    /**
+     * Creates and starts a Tailer for the given file.
+     * 
+     * @param file the file to follow.
+     * @param listener the TailerListener to use.
+     * @param delayMillis the delay between checks of the file for new content in milliseconds.
+     * @param end Set to true to tail from the end of the file, false to tail from the beginning of the file.
+     * @param reOpen whether to close/reopen the file between chunks
+     * @param bufSize buffer size.
+     * @return The new tailer
+     */
+    public static Tailer create(File file, TailerListener listener, long delayMillis, boolean end, boolean reOpen, 
+            int bufSize) {
+<span class="nc" id="L257">        Tailer tailer = new Tailer(file, listener, delayMillis, end, reOpen, bufSize);</span>
+<span class="nc" id="L258">        Thread thread = new Thread(tailer);</span>
+<span class="nc" id="L259">        thread.setDaemon(true);</span>
+<span class="nc" id="L260">        thread.start();</span>
+<span class="nc" id="L261">        return tailer;</span>
+    }
+
+    /**
+     * Creates and starts a Tailer for the given file with default buffer size.
+     * 
+     * @param file the file to follow.
+     * @param listener the TailerListener to use.
+     * @param delayMillis the delay between checks of the file for new content in milliseconds.
+     * @param end Set to true to tail from the end of the file, false to tail from the beginning of the file.
+     * @return The new tailer
+     */
+    public static Tailer create(File file, TailerListener listener, long delayMillis, boolean end) {
+<span class="fc" id="L274">        return create(file, listener, delayMillis, end, DEFAULT_BUFSIZE);</span>
+    }
+
+    /**
+     * Creates and starts a Tailer for the given file with default buffer size.
+     * 
+     * @param file the file to follow.
+     * @param listener the TailerListener to use.
+     * @param delayMillis the delay between checks of the file for new content in milliseconds.
+     * @param end Set to true to tail from the end of the file, false to tail from the beginning of the file.
+     * @param reOpen whether to close/reopen the file between chunks
+     * @return The new tailer
+     */
+    public static Tailer create(File file, TailerListener listener, long delayMillis, boolean end, boolean reOpen) {
+<span class="nc" id="L288">        return create(file, listener, delayMillis, end, reOpen, DEFAULT_BUFSIZE);</span>
+    }
+
+    /**
+     * Creates and starts a Tailer for the given file, starting at the beginning of the file
+     * 
+     * @param file the file to follow.
+     * @param listener the TailerListener to use.
+     * @param delayMillis the delay between checks of the file for new content in milliseconds.
+     * @return The new tailer
+     */
+    public static Tailer create(File file, TailerListener listener, long delayMillis) {
+<span class="nc" id="L300">        return create(file, listener, delayMillis, false);</span>
+    }
+
+    /**
+     * Creates and starts a Tailer for the given file, starting at the beginning of the file
+     * with the default delay of 1.0s
+     * 
+     * @param file the file to follow.
+     * @param listener the TailerListener to use.
+     * @return The new tailer
+     */
+    public static Tailer create(File file, TailerListener listener) {
+<span class="nc" id="L312">        return create(file, listener, DEFAULT_DELAY_MILLIS, false);</span>
+    }
+
+    /**
+     * Return the file.
+     *
+     * @return the file
+     */
+    public File getFile() {
+<span class="nc" id="L321">        return file;</span>
+    }
+
+    /**
+     * Return the delay in milliseconds.
+     *
+     * @return the delay in milliseconds.
+     */
+    public long getDelay() {
+<span class="nc" id="L330">        return delayMillis;</span>
+    }
+
+    /**
+     * Follows changes in the file, calling the TailerListener's handle method for each new line.
+     */
+    public void run() {
+<span class="fc" id="L337">        RandomAccessFile reader = null;</span>
+        try {
+<span class="fc" id="L339">            long last = 0; // The last time the file was checked for changes</span>
+<span class="fc" id="L340">            long position = 0; // position within the file</span>
+            // Open the file
+<span class="fc bfc" id="L342" title="All 4 branches covered.">            while (run &amp;&amp; reader == null) {</span>
+                try {
+<span class="fc" id="L344">                    reader = new RandomAccessFile(file, RAF_MODE);</span>
+<span class="fc" id="L345">                } catch (FileNotFoundException e) {</span>
+<span class="fc" id="L346">                    listener.fileNotFound();</span>
+<span class="fc" id="L347">                }</span>
+
+<span class="fc bfc" id="L349" title="All 2 branches covered.">                if (reader == null) {</span>
+                    try {
+<span class="fc" id="L351">                        Thread.sleep(delayMillis);</span>
+<span class="nc" id="L352">                    } catch (InterruptedException e) {</span>
+<span class="pc" id="L353">                    }</span>
+                } else {
+                    // The current position in the file
+<span class="pc bpc" id="L356" title="1 of 2 branches missed.">                    position = end ? file.length() : 0;</span>
+<span class="fc" id="L357">                    last = System.currentTimeMillis();</span>
+<span class="fc" id="L358">                    reader.seek(position);</span>
+                }
+            }
+
+<span class="fc bfc" id="L362" title="All 2 branches covered.">            while (run) {</span>
+
+<span class="fc" id="L364">                boolean newer = FileUtils.isFileNewer(file, last); // IO-279, must be done first</span>
+
+                // Check the file length to see if it was rotated
+<span class="fc" id="L367">                long length = file.length();</span>
+
+<span class="fc bfc" id="L369" title="All 2 branches covered.">                if (length &lt; position) {</span>
+
+                    // File was rotated
+<span class="fc" id="L372">                    listener.fileRotated();</span>
+
+                    // Reopen the reader after rotation
+                    try {
+                        // Ensure that the old file is closed iff we re-open it successfully
+<span class="fc" id="L377">                        RandomAccessFile save = reader;</span>
+<span class="fc" id="L378">                        reader = new RandomAccessFile(file, RAF_MODE);</span>
+<span class="fc" id="L379">                        position = 0;</span>
+                        // close old file explicitly rather than relying on GC picking up previous RAF
+<span class="fc" id="L381">                        IOUtils.closeQuietly(save);</span>
+<span class="nc" id="L382">                    } catch (FileNotFoundException e) {</span>
+                        // in this case we continue to use the previous reader and position values
+<span class="nc" id="L384">                        listener.fileNotFound();</span>
+<span class="fc" id="L385">                    }</span>
+<span class="nc" id="L386">                    continue;</span>
+                } else {
+
+                    // File was not rotated
+
+                    // See if the file needs to be read again
+<span class="fc bfc" id="L392" title="All 2 branches covered.">                    if (length &gt; position) {</span>
+
+                        // The file has more content than it did last time
+<span class="fc" id="L395">                        position = readLines(reader);</span>
+<span class="fc" id="L396">                        last = System.currentTimeMillis();</span>
+
+<span class="fc bfc" id="L398" title="All 2 branches covered.">                    } else if (newer) {</span>
+
+                        /*
+                         * This can happen if the file is truncated or overwritten with the exact same length of
+                         * information. In cases like this, the file position needs to be reset
+                         */
+<span class="fc" id="L404">                        position = 0;</span>
+<span class="fc" id="L405">                        reader.seek(position); // cannot be null here</span>
+
+                        // Now we can read new lines
+<span class="fc" id="L408">                        position = readLines(reader);</span>
+<span class="fc" id="L409">                        last = System.currentTimeMillis();</span>
+                    }
+                }
+<span class="pc bpc" id="L412" title="1 of 2 branches missed.">                if (reOpen) {</span>
+<span class="nc" id="L413">                    IOUtils.closeQuietly(reader);</span>
+                }
+                try {
+<span class="fc" id="L416">                    Thread.sleep(delayMillis);</span>
+<span class="fc" id="L417">                } catch (InterruptedException e) {</span>
+<span class="fc" id="L418">                }</span>
+<span class="pc bpc" id="L419" title="1 of 4 branches missed.">                if (run &amp;&amp; reOpen) {</span>
+<span class="nc" id="L420">                    reader = new RandomAccessFile(file, RAF_MODE);</span>
+<span class="nc" id="L421">                    reader.seek(position);</span>
+                }
+<span class="fc" id="L423">            }</span>
+
+<span class="nc" id="L425">        } catch (Exception e) {</span>
+
+<span class="nc" id="L427">            listener.handle(e);</span>
+
+        } finally {
+<span class="pc" id="L430">            IOUtils.closeQuietly(reader);</span>
+<span class="pc" id="L431">        }</span>
+<span class="fc" id="L432">    }</span>
+
+    /**
+     * Allows the tailer to complete its current loop and return.
+     */
+    public void stop() {
+<span class="fc" id="L438">        this.run = false;</span>
+<span class="fc" id="L439">    }</span>
+
+    /**
+     * Read new lines.
+     *
+     * @param reader The file to read
+     * @return The new position after the lines have been read
+     * @throws java.io.IOException if an I/O error occurs.
+     */
+    private long readLines(RandomAccessFile reader) throws IOException {
+<span class="fc" id="L449">        StringBuilder sb = new StringBuilder();</span>
+
+<span class="fc" id="L451">        long pos = reader.getFilePointer();</span>
+<span class="fc" id="L452">        long rePos = pos; // position to re-read</span>
+
+        int num;
+<span class="fc" id="L455">        boolean seenCR = false;</span>
+<span class="pc bpc" id="L456" title="1 of 4 branches missed.">        while (run &amp;&amp; ((num = reader.read(inbuf)) != -1)) {</span>
+<span class="fc bfc" id="L457" title="All 2 branches covered.">            for (int i = 0; i &lt; num; i++) {</span>
+<span class="fc" id="L458">                byte ch = inbuf[i];</span>
+<span class="fc bfc" id="L459" title="All 3 branches covered.">                switch (ch) {</span>
+                case '\n':
+<span class="fc" id="L461">                    seenCR = false; // swallow CR before LF</span>
+<span class="fc" id="L462">                    listener.handle(sb.toString());</span>
+<span class="fc" id="L463">                    sb.setLength(0);</span>
+<span class="fc" id="L464">                    rePos = pos + i + 1;</span>
+<span class="fc" id="L465">                    break;</span>
+                case '\r':
+<span class="fc bfc" id="L467" title="All 2 branches covered.">                    if (seenCR) {</span>
+<span class="fc" id="L468">                        sb.append('\r');</span>
+                    }
+<span class="fc" id="L470">                    seenCR = true;</span>
+<span class="fc" id="L471">                    break;</span>
+                default:
+<span class="fc bfc" id="L473" title="All 2 branches covered.">                    if (seenCR) {</span>
+<span class="fc" id="L474">                        seenCR = false; // swallow final CR</span>
+<span class="fc" id="L475">                        listener.handle(sb.toString());</span>
+<span class="fc" id="L476">                        sb.setLength(0);</span>
+<span class="fc" id="L477">                        rePos = pos + i + 1;</span>
+                    }
+<span class="fc" id="L479">                    sb.append((char) ch); // add character, not its ascii value</span>
+                }
+            }
+
+<span class="fc" id="L483">            pos = reader.getFilePointer();</span>
+        }
+
+<span class="fc" id="L486">        reader.seek(rePos); // Ensure we can re-read if necessary</span>
+<span class="fc" id="L487">        return rePos;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

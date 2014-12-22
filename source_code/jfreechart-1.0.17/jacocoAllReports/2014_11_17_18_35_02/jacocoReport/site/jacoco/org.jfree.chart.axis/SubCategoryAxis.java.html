@@ -1,0 +1,455 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>SubCategoryAxis.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.axis</a> &gt; <span class="el_source">SubCategoryAxis.java</span></div><h1>SubCategoryAxis.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * --------------------
+ * SubCategoryAxis.java
+ * --------------------
+ * (C) Copyright 2004-2013, by Object Refinery Limited.
+ *
+ * Original Author:  David Gilbert;
+ * Contributor(s):   Adriaan Joubert;
+ *
+ * Changes
+ * -------
+ * 12-May-2004 : Version 1 (DG);
+ * 30-Sep-2004 : Moved drawRotatedString() from RefineryUtilities
+ *               --&gt; TextUtilities (DG);
+ * 26-Apr-2005 : Removed logger (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 18-Aug-2006 : Fix for bug drawing category labels, thanks to Adriaan
+ *               Joubert (1277726) (DG);
+ * 30-May-2007 : Added argument check and event notification to
+ *               addSubCategory() (DG);
+ * 13-Nov-2008 : Fix NullPointerException when dataset is null - see bug
+ *               report 2275695 (DG);
+ * 02-Jul-2013 : Use ParamChecks (DG);
+ * 01-Aug-2013 : Added attributedLabel override to support superscripts,
+ *               subscripts and more (DG);
+ */
+
+package org.jfree.chart.axis;
+
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.Iterator;
+import java.util.List;
+
+import org.jfree.chart.event.AxisChangeEvent;
+import org.jfree.chart.plot.CategoryPlot;
+import org.jfree.chart.plot.Plot;
+import org.jfree.chart.plot.PlotRenderingInfo;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.data.category.CategoryDataset;
+import org.jfree.io.SerialUtilities;
+import org.jfree.text.TextUtilities;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.ui.TextAnchor;
+
+/**
+ * A specialised category axis that can display sub-categories.
+ */
+public class SubCategoryAxis extends CategoryAxis
+        implements Cloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = -1279463299793228344L;
+
+    /** Storage for the sub-categories (these need to be set manually). */
+    private List subCategories;
+
+    /** The font for the sub-category labels. */
+<span class="fc" id="L92">    private Font subLabelFont = new Font(&quot;SansSerif&quot;, Font.PLAIN, 10);</span>
+
+    /** The paint for the sub-category labels. */
+<span class="fc" id="L95">    private transient Paint subLabelPaint = Color.black;</span>
+
+    /**
+     * Creates a new axis.
+     *
+     * @param label  the axis label.
+     */
+    public SubCategoryAxis(String label) {
+<span class="fc" id="L103">        super(label);</span>
+<span class="fc" id="L104">        this.subCategories = new java.util.ArrayList();</span>
+<span class="fc" id="L105">    }</span>
+
+    /**
+     * Adds a sub-category to the axis and sends an {@link AxisChangeEvent} to
+     * all registered listeners.
+     *
+     * @param subCategory  the sub-category (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void addSubCategory(Comparable subCategory) {
+<span class="fc" id="L114">        ParamChecks.nullNotPermitted(subCategory, &quot;subCategory&quot;);</span>
+<span class="fc" id="L115">        this.subCategories.add(subCategory);</span>
+<span class="fc" id="L116">        notifyListeners(new AxisChangeEvent(this));</span>
+<span class="fc" id="L117">    }</span>
+
+    /**
+     * Returns the font used to display the sub-category labels.
+     *
+     * @return The font (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setSubLabelFont(Font)
+     */
+    public Font getSubLabelFont() {
+<span class="nc" id="L127">        return this.subLabelFont;</span>
+    }
+
+    /**
+     * Sets the font used to display the sub-category labels and sends an
+     * {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param font  the font (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getSubLabelFont()
+     */
+    public void setSubLabelFont(Font font) {
+<span class="fc" id="L139">        ParamChecks.nullNotPermitted(font, &quot;font&quot;);</span>
+<span class="fc" id="L140">        this.subLabelFont = font;</span>
+<span class="fc" id="L141">        notifyListeners(new AxisChangeEvent(this));</span>
+<span class="fc" id="L142">    }</span>
+
+    /**
+     * Returns the paint used to display the sub-category labels.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setSubLabelPaint(Paint)
+     */
+    public Paint getSubLabelPaint() {
+<span class="nc" id="L152">        return this.subLabelPaint;</span>
+    }
+
+    /**
+     * Sets the paint used to display the sub-category labels and sends an
+     * {@link AxisChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getSubLabelPaint()
+     */
+    public void setSubLabelPaint(Paint paint) {
+<span class="fc" id="L164">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L165">        this.subLabelPaint = paint;</span>
+<span class="fc" id="L166">        notifyListeners(new AxisChangeEvent(this));</span>
+<span class="fc" id="L167">    }</span>
+
+    /**
+     * Estimates the space required for the axis, given a specific drawing area.
+     *
+     * @param g2  the graphics device (used to obtain font information).
+     * @param plot  the plot that the axis belongs to.
+     * @param plotArea  the area within which the axis should be drawn.
+     * @param edge  the axis location (top or bottom).
+     * @param space  the space already reserved.
+     *
+     * @return The space required to draw the axis.
+     */
+    @Override
+    public AxisSpace reserveSpace(Graphics2D g2, Plot plot, 
+            Rectangle2D plotArea, RectangleEdge edge, AxisSpace space) {
+
+        // create a new space object if one wasn't supplied...
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        if (space == null) {</span>
+<span class="nc" id="L186">            space = new AxisSpace();</span>
+        }
+
+        // if the axis is not visible, no additional space is required...
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">        if (!isVisible()) {</span>
+<span class="nc" id="L191">            return space;</span>
+        }
+
+<span class="fc" id="L194">        space = super.reserveSpace(g2, plot, plotArea, edge, space);</span>
+<span class="fc" id="L195">        double maxdim = getMaxDim(g2, edge);</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">        if (RectangleEdge.isTopOrBottom(edge)) {</span>
+<span class="fc" id="L197">            space.add(maxdim, edge);</span>
+        }
+<span class="nc bnc" id="L199" title="All 2 branches missed.">        else if (RectangleEdge.isLeftOrRight(edge)) {</span>
+<span class="nc" id="L200">            space.add(maxdim, edge);</span>
+        }
+<span class="fc" id="L202">        return space;</span>
+    }
+
+    /**
+     * Returns the maximum of the relevant dimension (height or width) of the
+     * subcategory labels.
+     *
+     * @param g2  the graphics device.
+     * @param edge  the edge.
+     *
+     * @return The maximum dimension.
+     */
+    private double getMaxDim(Graphics2D g2, RectangleEdge edge) {
+<span class="fc" id="L215">        double result = 0.0;</span>
+<span class="fc" id="L216">        g2.setFont(this.subLabelFont);</span>
+<span class="fc" id="L217">        FontMetrics fm = g2.getFontMetrics();</span>
+<span class="fc" id="L218">        Iterator iterator = this.subCategories.iterator();</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">        while (iterator.hasNext()) {</span>
+<span class="nc" id="L220">            Comparable subcategory = (Comparable) iterator.next();</span>
+<span class="nc" id="L221">            String label = subcategory.toString();</span>
+<span class="nc" id="L222">            Rectangle2D bounds = TextUtilities.getTextBounds(label, g2, fm);</span>
+            double dim;
+<span class="nc bnc" id="L224" title="All 2 branches missed.">            if (RectangleEdge.isLeftOrRight(edge)) {</span>
+<span class="nc" id="L225">                dim = bounds.getWidth();</span>
+            }
+            else {  // must be top or bottom
+<span class="nc" id="L228">                dim = bounds.getHeight();</span>
+            }
+<span class="nc" id="L230">            result = Math.max(result, dim);</span>
+<span class="nc" id="L231">        }</span>
+<span class="fc" id="L232">        return result;</span>
+    }
+
+    /**
+     * Draws the axis on a Java 2D graphics device (such as the screen or a
+     * printer).
+     *
+     * @param g2  the graphics device (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param cursor  the cursor location.
+     * @param plotArea  the area within which the axis should be drawn
+     *                  (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param dataArea  the area within which the plot is being drawn
+     *                  (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param edge  the location of the axis (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param plotState  collects information about the plot
+     *                   (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return The axis state (never &lt;code&gt;null&lt;/code&gt;).
+     */
+    @Override
+    public AxisState draw(Graphics2D g2, double cursor, Rectangle2D plotArea,
+            Rectangle2D dataArea, RectangleEdge edge, 
+            PlotRenderingInfo plotState) {
+
+        // if the axis is not visible, don't draw it...
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        if (!isVisible()) {</span>
+<span class="nc" id="L258">            return new AxisState(cursor);</span>
+        }
+
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">        if (isAxisLineVisible()) {</span>
+<span class="fc" id="L262">            drawAxisLine(g2, cursor, dataArea, edge);</span>
+        }
+
+        // draw the category labels and axis label
+<span class="fc" id="L266">        AxisState state = new AxisState(cursor);</span>
+<span class="fc" id="L267">        state = drawSubCategoryLabels(g2, plotArea, dataArea, edge, state, </span>
+                plotState);
+<span class="fc" id="L269">        state = drawCategoryLabels(g2, plotArea, dataArea, edge, state,</span>
+                plotState);
+<span class="pc bpc" id="L271" title="1 of 2 branches missed.">        if (getAttributedLabel() != null) {</span>
+<span class="nc" id="L272">            state = drawAttributedLabel(getAttributedLabel(), g2, plotArea, </span>
+                    dataArea, edge, state);
+        } else {
+<span class="fc" id="L275">            state = drawLabel(getLabel(), g2, plotArea, dataArea, edge, state);</span>
+        } 
+<span class="fc" id="L277">        return state;</span>
+
+    }
+
+    /**
+     * Draws the category labels and returns the updated axis state.
+     *
+     * @param g2  the graphics device (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param plotArea  the plot area (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param dataArea  the area inside the axes (&lt;code&gt;null&lt;/code&gt; not
+     *                  permitted).
+     * @param edge  the axis location (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param state  the axis state (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param plotState  collects information about the plot (&lt;code&gt;null&lt;/code&gt;
+     *                   permitted).
+     *
+     * @return The updated axis state (never &lt;code&gt;null&lt;/code&gt;).
+     */
+    protected AxisState drawSubCategoryLabels(Graphics2D g2,
+            Rectangle2D plotArea, Rectangle2D dataArea, RectangleEdge edge,
+            AxisState state, PlotRenderingInfo plotState) {
+
+<span class="fc" id="L299">        ParamChecks.nullNotPermitted(state, &quot;state&quot;);</span>
+
+<span class="fc" id="L301">        g2.setFont(this.subLabelFont);</span>
+<span class="fc" id="L302">        g2.setPaint(this.subLabelPaint);</span>
+<span class="fc" id="L303">        CategoryPlot plot = (CategoryPlot) getPlot();</span>
+<span class="fc" id="L304">        int categoryCount = 0;</span>
+<span class="fc" id="L305">        CategoryDataset dataset = plot.getDataset();</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">        if (dataset != null) {</span>
+<span class="nc" id="L307">            categoryCount = dataset.getColumnCount();</span>
+        }
+
+<span class="fc" id="L310">        double maxdim = getMaxDim(g2, edge);</span>
+<span class="pc bpc" id="L311" title="1 of 2 branches missed.">        for (int categoryIndex = 0; categoryIndex &lt; categoryCount;</span>
+<span class="nc" id="L312">             categoryIndex++) {</span>
+
+<span class="nc" id="L314">            double x0 = 0.0;</span>
+<span class="nc" id="L315">            double x1 = 0.0;</span>
+<span class="nc" id="L316">            double y0 = 0.0;</span>
+<span class="nc" id="L317">            double y1 = 0.0;</span>
+<span class="nc bnc" id="L318" title="All 2 branches missed.">            if (edge == RectangleEdge.TOP) {</span>
+<span class="nc" id="L319">                x0 = getCategoryStart(categoryIndex, categoryCount, dataArea,</span>
+                        edge);
+<span class="nc" id="L321">                x1 = getCategoryEnd(categoryIndex, categoryCount, dataArea,</span>
+                        edge);
+<span class="nc" id="L323">                y1 = state.getCursor();</span>
+<span class="nc" id="L324">                y0 = y1 - maxdim;</span>
+            }
+<span class="nc bnc" id="L326" title="All 2 branches missed.">            else if (edge == RectangleEdge.BOTTOM) {</span>
+<span class="nc" id="L327">                x0 = getCategoryStart(categoryIndex, categoryCount, dataArea,</span>
+                        edge);
+<span class="nc" id="L329">                x1 = getCategoryEnd(categoryIndex, categoryCount, dataArea,</span>
+                        edge);
+<span class="nc" id="L331">                y0 = state.getCursor();</span>
+<span class="nc" id="L332">                y1 = y0 + maxdim;</span>
+            }
+<span class="nc bnc" id="L334" title="All 2 branches missed.">            else if (edge == RectangleEdge.LEFT) {</span>
+<span class="nc" id="L335">                y0 = getCategoryStart(categoryIndex, categoryCount, dataArea,</span>
+                        edge);
+<span class="nc" id="L337">                y1 = getCategoryEnd(categoryIndex, categoryCount, dataArea,</span>
+                        edge);
+<span class="nc" id="L339">                x1 = state.getCursor();</span>
+<span class="nc" id="L340">                x0 = x1 - maxdim;</span>
+            }
+<span class="nc bnc" id="L342" title="All 2 branches missed.">            else if (edge == RectangleEdge.RIGHT) {</span>
+<span class="nc" id="L343">                y0 = getCategoryStart(categoryIndex, categoryCount, dataArea,</span>
+                        edge);
+<span class="nc" id="L345">                y1 = getCategoryEnd(categoryIndex, categoryCount, dataArea,</span>
+                        edge);
+<span class="nc" id="L347">                x0 = state.getCursor();</span>
+<span class="nc" id="L348">                x1 = x0 + maxdim;</span>
+            }
+<span class="nc" id="L350">            Rectangle2D area = new Rectangle2D.Double(x0, y0, (x1 - x0),</span>
+                    (y1 - y0));
+<span class="nc" id="L352">            int subCategoryCount = this.subCategories.size();</span>
+<span class="nc" id="L353">            float width = (float) ((x1 - x0) / subCategoryCount);</span>
+<span class="nc" id="L354">            float height = (float) ((y1 - y0) / subCategoryCount);</span>
+            float xx, yy;
+<span class="nc bnc" id="L356" title="All 2 branches missed.">            for (int i = 0; i &lt; subCategoryCount; i++) {</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">                if (RectangleEdge.isTopOrBottom(edge)) {</span>
+<span class="nc" id="L358">                    xx = (float) (x0 + (i + 0.5) * width);</span>
+<span class="nc" id="L359">                    yy = (float) area.getCenterY();</span>
+                }
+                else {
+<span class="nc" id="L362">                    xx = (float) area.getCenterX();</span>
+<span class="nc" id="L363">                    yy = (float) (y0 + (i + 0.5) * height);</span>
+                }
+<span class="nc" id="L365">                String label = this.subCategories.get(i).toString();</span>
+<span class="nc" id="L366">                TextUtilities.drawRotatedString(label, g2, xx, yy,</span>
+                        TextAnchor.CENTER, 0.0, TextAnchor.CENTER);
+            }
+        }
+
+<span class="pc bpc" id="L371" title="1 of 2 branches missed.">        if (edge.equals(RectangleEdge.TOP)) {</span>
+<span class="nc" id="L372">            double h = maxdim;</span>
+<span class="nc" id="L373">            state.cursorUp(h);</span>
+<span class="nc" id="L374">        }</span>
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">        else if (edge.equals(RectangleEdge.BOTTOM)) {</span>
+<span class="fc" id="L376">            double h = maxdim;</span>
+<span class="fc" id="L377">            state.cursorDown(h);</span>
+<span class="fc" id="L378">        }</span>
+<span class="nc bnc" id="L379" title="All 2 branches missed.">        else if (edge == RectangleEdge.LEFT) {</span>
+<span class="nc" id="L380">            double w = maxdim;</span>
+<span class="nc" id="L381">            state.cursorLeft(w);</span>
+<span class="nc" id="L382">        }</span>
+<span class="nc bnc" id="L383" title="All 2 branches missed.">        else if (edge == RectangleEdge.RIGHT) {</span>
+<span class="nc" id="L384">            double w = maxdim;</span>
+<span class="nc" id="L385">            state.cursorRight(w);</span>
+        }
+<span class="fc" id="L387">        return state;</span>
+    }
+
+    /**
+     * Tests the axis for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L399" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L400">            return true;</span>
+        }
+<span class="pc bpc" id="L402" title="2 of 4 branches missed.">        if (obj instanceof SubCategoryAxis &amp;&amp; super.equals(obj)) {</span>
+<span class="fc" id="L403">            SubCategoryAxis axis = (SubCategoryAxis) obj;</span>
+<span class="fc bfc" id="L404" title="All 2 branches covered.">            if (!this.subCategories.equals(axis.subCategories)) {</span>
+<span class="fc" id="L405">                return false;</span>
+            }
+<span class="fc bfc" id="L407" title="All 2 branches covered.">            if (!this.subLabelFont.equals(axis.subLabelFont)) {</span>
+<span class="fc" id="L408">                return false;</span>
+            }
+<span class="fc bfc" id="L410" title="All 2 branches covered.">            if (!this.subLabelPaint.equals(axis.subLabelPaint)) {</span>
+<span class="fc" id="L411">                return false;</span>
+            }
+<span class="fc" id="L413">            return true;</span>
+        }
+<span class="nc" id="L415">        return false;</span>
+    }
+
+    /**
+     * Returns a hashcode for this instance.
+     * 
+     * @return A hashcode for this instance. 
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L425">        return super.hashCode();</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L436">        stream.defaultWriteObject();</span>
+<span class="fc" id="L437">        SerialUtilities.writePaint(this.subLabelPaint, stream);</span>
+<span class="fc" id="L438">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+        throws IOException, ClassNotFoundException {
+<span class="fc" id="L450">        stream.defaultReadObject();</span>
+<span class="fc" id="L451">        this.subLabelPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L452">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

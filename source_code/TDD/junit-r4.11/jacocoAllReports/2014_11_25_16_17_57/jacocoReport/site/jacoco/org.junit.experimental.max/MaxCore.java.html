@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>MaxCore.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Junit-r4.11</a> &gt; <a href="index.source.html" class="el_package">org.junit.experimental.max</a> &gt; <span class="el_source">MaxCore.java</span></div><h1>MaxCore.java</h1><pre class="source lang-java linenums">package org.junit.experimental.max;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import junit.framework.TestSuite;
+import org.junit.internal.requests.SortingRequest;
+import org.junit.internal.runners.ErrorReportingRunner;
+import org.junit.internal.runners.JUnit38ClassRunner;
+import org.junit.runner.Description;
+import org.junit.runner.JUnitCore;
+import org.junit.runner.Request;
+import org.junit.runner.Result;
+import org.junit.runner.Runner;
+import org.junit.runners.Suite;
+import org.junit.runners.model.InitializationError;
+
+/**
+ * A replacement for JUnitCore, which keeps track of runtime and failure history, and reorders tests
+ * to maximize the chances that a failing test occurs early in the test run.
+ *
+ * The rules for sorting are:
+ * &lt;ol&gt;
+ * &lt;li&gt; Never-run tests first, in arbitrary order
+ * &lt;li&gt; Group remaining tests by the date at which they most recently failed.
+ * &lt;li&gt; Sort groups such that the most recent failure date is first, and never-failing tests are at the end.
+ * &lt;li&gt; Within a group, run the fastest tests first.
+ * &lt;/ol&gt;
+ */
+public class MaxCore {
+    private static final String MALFORMED_JUNIT_3_TEST_CLASS_PREFIX = &quot;malformed JUnit 3 test class: &quot;;
+
+    /**
+     * Create a new MaxCore from a serialized file stored at storedResults
+     *
+     * @deprecated use storedLocally()
+     */
+    @Deprecated
+    public static MaxCore forFolder(String folderName) {
+<span class="nc" id="L42">        return storedLocally(new File(folderName));</span>
+    }
+
+    /**
+     * Create a new MaxCore from a serialized file stored at storedResults
+     */
+    public static MaxCore storedLocally(File storedResults) {
+<span class="nc" id="L49">        return new MaxCore(storedResults);</span>
+    }
+
+    private final MaxHistory fHistory;
+
+<span class="nc" id="L54">    private MaxCore(File storedResults) {</span>
+<span class="nc" id="L55">        fHistory = MaxHistory.forFolder(storedResults);</span>
+<span class="nc" id="L56">    }</span>
+
+    /**
+     * Run all the tests in &lt;code&gt;class&lt;/code&gt;.
+     *
+     * @return a {@link Result} describing the details of the test run and the failed tests.
+     */
+    public Result run(Class&lt;?&gt; testClass) {
+<span class="nc" id="L64">        return run(Request.aClass(testClass));</span>
+    }
+
+    /**
+     * Run all the tests contained in &lt;code&gt;request&lt;/code&gt;.
+     *
+     * @param request the request describing tests
+     * @return a {@link Result} describing the details of the test run and the failed tests.
+     */
+    public Result run(Request request) {
+<span class="nc" id="L74">        return run(request, new JUnitCore());</span>
+    }
+
+    /**
+     * Run all the tests contained in &lt;code&gt;request&lt;/code&gt;.
+     *
+     * This variant should be used if {@code core} has attached listeners that this
+     * run should notify.
+     *
+     * @param request the request describing tests
+     * @param core a JUnitCore to delegate to.
+     * @return a {@link Result} describing the details of the test run and the failed tests.
+     */
+    public Result run(Request request, JUnitCore core) {
+<span class="nc" id="L88">        core.addListener(fHistory.listener());</span>
+<span class="nc" id="L89">        return core.run(sortRequest(request).getRunner());</span>
+    }
+
+    /**
+     * @return a new Request, which contains all of the same tests, but in a new order.
+     */
+    public Request sortRequest(Request request) {
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        if (request instanceof SortingRequest) {</span>
+            // We'll pay big karma points for this
+<span class="nc" id="L98">            return request;</span>
+        }
+<span class="nc" id="L100">        List&lt;Description&gt; leaves = findLeaves(request);</span>
+<span class="nc" id="L101">        Collections.sort(leaves, fHistory.testComparator());</span>
+<span class="nc" id="L102">        return constructLeafRequest(leaves);</span>
+    }
+
+    private Request constructLeafRequest(List&lt;Description&gt; leaves) {
+<span class="nc" id="L106">        final List&lt;Runner&gt; runners = new ArrayList&lt;Runner&gt;();</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        for (Description each : leaves) {</span>
+<span class="nc" id="L108">            runners.add(buildRunner(each));</span>
+<span class="nc" id="L109">        }</span>
+<span class="nc" id="L110">        return new Request() {</span>
+            @Override
+            public Runner getRunner() {
+                try {
+<span class="nc" id="L114">                    return new Suite((Class&lt;?&gt;) null, runners) {</span>
+                    };
+<span class="nc" id="L116">                } catch (InitializationError e) {</span>
+<span class="nc" id="L117">                    return new ErrorReportingRunner(null, e);</span>
+                }
+            }
+        };
+    }
+
+    private Runner buildRunner(Description each) {
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        if (each.toString().equals(&quot;TestSuite with 0 tests&quot;)) {</span>
+<span class="nc" id="L125">            return Suite.emptySuite();</span>
+        }
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (each.toString().startsWith(MALFORMED_JUNIT_3_TEST_CLASS_PREFIX)) {</span>
+            // This is cheating, because it runs the whole class
+            // to get the warning for this method, but we can't do better,
+            // because JUnit 3.8's
+            // thrown away which method the warning is for.
+<span class="nc" id="L132">            return new JUnit38ClassRunner(new TestSuite(getMalformedTestClass(each)));</span>
+        }
+<span class="nc" id="L134">        Class&lt;?&gt; type = each.getTestClass();</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L136">            throw new RuntimeException(&quot;Can't build a runner from description [&quot; + each + &quot;]&quot;);</span>
+        }
+<span class="nc" id="L138">        String methodName = each.getMethodName();</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        if (methodName == null) {</span>
+<span class="nc" id="L140">            return Request.aClass(type).getRunner();</span>
+        }
+<span class="nc" id="L142">        return Request.method(type, methodName).getRunner();</span>
+    }
+
+    private Class&lt;?&gt; getMalformedTestClass(Description each) {
+        try {
+<span class="nc" id="L147">            return Class.forName(each.toString().replace(MALFORMED_JUNIT_3_TEST_CLASS_PREFIX, &quot;&quot;));</span>
+<span class="nc" id="L148">        } catch (ClassNotFoundException e) {</span>
+<span class="nc" id="L149">            return null;</span>
+        }
+    }
+
+    /**
+     * @param request a request to run
+     * @return a list of method-level tests to run, sorted in the order
+     *         specified in the class comment.
+     */
+    public List&lt;Description&gt; sortedLeavesForTest(Request request) {
+<span class="nc" id="L159">        return findLeaves(sortRequest(request));</span>
+    }
+
+    private List&lt;Description&gt; findLeaves(Request request) {
+<span class="nc" id="L163">        List&lt;Description&gt; results = new ArrayList&lt;Description&gt;();</span>
+<span class="nc" id="L164">        findLeaves(null, request.getRunner().getDescription(), results);</span>
+<span class="nc" id="L165">        return results;</span>
+    }
+
+    private void findLeaves(Description parent, Description description, List&lt;Description&gt; results) {
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        if (description.getChildren().isEmpty()) {</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">            if (description.toString().equals(&quot;warning(junit.framework.TestSuite$1)&quot;)) {</span>
+<span class="nc" id="L171">                results.add(Description.createSuiteDescription(MALFORMED_JUNIT_3_TEST_CLASS_PREFIX + parent));</span>
+            } else {
+<span class="nc" id="L173">                results.add(description);</span>
+            }
+        } else {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">            for (Description each : description.getChildren()) {</span>
+<span class="nc" id="L177">                findLeaves(description, each, results);</span>
+<span class="nc" id="L178">            }</span>
+        }
+<span class="nc" id="L180">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

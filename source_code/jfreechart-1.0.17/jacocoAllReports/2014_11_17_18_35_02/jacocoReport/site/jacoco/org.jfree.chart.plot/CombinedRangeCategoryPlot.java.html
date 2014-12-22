@@ -1,0 +1,591 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>CombinedRangeCategoryPlot.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.plot</a> &gt; <span class="el_source">CombinedRangeCategoryPlot.java</span></div><h1>CombinedRangeCategoryPlot.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ------------------------------
+ * CombinedRangeCategoryPlot.java
+ * ------------------------------
+ * (C) Copyright 2003-2013, by Object Refinery Limited.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   Nicolas Brodu;
+ *
+ * Changes:
+ * --------
+ * 16-May-2003 : Version 1 (DG);
+ * 08-Aug-2003 : Adjusted totalWeight in remove() method (DG);
+ * 19-Aug-2003 : Implemented Cloneable (DG);
+ * 11-Sep-2003 : Fix cloning support (subplots) (NB);
+ * 15-Sep-2003 : Implemented PublicCloneable.  Fixed errors in cloning and
+ *               serialization (DG);
+ * 16-Sep-2003 : Changed ChartRenderingInfo --&gt; PlotRenderingInfo (DG);
+ * 17-Sep-2003 : Updated handling of 'clicks' (DG);
+ * 04-May-2004 : Added getter/setter methods for 'gap' attributes (DG);
+ * 12-Nov-2004 : Implements the new Zoomable interface (DG);
+ * 25-Nov-2004 : Small update to clone() implementation (DG);
+ * 21-Feb-2005 : Fixed bug in remove() method (id = 1121172) (DG);
+ * 21-Feb-2005 : The getLegendItems() method now returns the fixed legend
+ *               items if set (DG);
+ * 05-May-2005 : Updated draw() method parameters (DG);
+ * 14-Nov-2007 : Updated setFixedDomainAxisSpaceForSubplots() method (DG);
+ * 27-Mar-2008 : Add documentation for getDataRange() method (DG);
+ * 31-Mar-2008 : Updated getSubplots() to return EMPTY_LIST for null
+ *               subplots, as suggested by Richard West (DG);
+ * 26-Jun-2008 : Fixed crosshair support (DG);
+ * 11-Aug-2008 : Don't store totalWeight of subplots, calculate it as
+ *               required (DG);
+ * 03-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.chart.plot;
+
+import java.awt.Graphics2D;
+import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+
+import org.jfree.chart.LegendItemCollection;
+import org.jfree.chart.axis.AxisSpace;
+import org.jfree.chart.axis.AxisState;
+import org.jfree.chart.axis.NumberAxis;
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.event.PlotChangeEvent;
+import org.jfree.chart.event.PlotChangeListener;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.chart.util.ShadowGenerator;
+import org.jfree.data.Range;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.ui.RectangleInsets;
+import org.jfree.util.ObjectUtilities;
+
+/**
+ * A combined category plot where the range axis is shared.
+ */
+public class CombinedRangeCategoryPlot extends CategoryPlot
+        implements PlotChangeListener {
+
+    /** For serialization. */
+    private static final long serialVersionUID = 7260210007554504515L;
+
+    /** Storage for the subplot references. */
+    private List subplots;
+
+    /** The gap between subplots. */
+    private double gap;
+
+    /** Temporary storage for the subplot areas. */
+    private transient Rectangle2D[] subplotArea;  // TODO: move to plot state
+
+    /**
+     * Default constructor.
+     */
+    public CombinedRangeCategoryPlot() {
+<span class="fc" id="L110">        this(new NumberAxis());</span>
+<span class="fc" id="L111">    }</span>
+
+    /**
+     * Creates a new plot.
+     *
+     * @param rangeAxis  the shared range axis.
+     */
+    public CombinedRangeCategoryPlot(ValueAxis rangeAxis) {
+<span class="fc" id="L119">        super(null, null, rangeAxis, null);</span>
+<span class="fc" id="L120">        this.subplots = new java.util.ArrayList();</span>
+<span class="fc" id="L121">        this.gap = 5.0;</span>
+<span class="fc" id="L122">    }</span>
+
+    /**
+     * Returns the space between subplots.
+     *
+     * @return The gap (in Java2D units).
+     */
+    public double getGap() {
+<span class="nc" id="L130">        return this.gap;</span>
+    }
+
+    /**
+     * Sets the amount of space between subplots and sends a
+     * {@link PlotChangeEvent} to all registered listeners.
+     *
+     * @param gap  the gap between subplots (in Java2D units).
+     */
+    public void setGap(double gap) {
+<span class="nc" id="L140">        this.gap = gap;</span>
+<span class="nc" id="L141">        fireChangeEvent();</span>
+<span class="nc" id="L142">    }</span>
+
+    /**
+     * Adds a subplot (with a default 'weight' of 1) and sends a
+     * {@link PlotChangeEvent} to all registered listeners.
+     * &lt;br&gt;&lt;br&gt;
+     * You must ensure that the subplot has a non-null domain axis.  The range
+     * axis for the subplot will be set to &lt;code&gt;null&lt;/code&gt;.
+     *
+     * @param subplot  the subplot (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void add(CategoryPlot subplot) {
+        // defer argument checking
+<span class="fc" id="L155">        add(subplot, 1);</span>
+<span class="fc" id="L156">    }</span>
+
+    /**
+     * Adds a subplot and sends a {@link PlotChangeEvent} to all registered
+     * listeners.
+     * &lt;br&gt;&lt;br&gt;
+     * You must ensure that the subplot has a non-null domain axis.  The range
+     * axis for the subplot will be set to &lt;code&gt;null&lt;/code&gt;.
+     *
+     * @param subplot  the subplot (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param weight  the weight (must be &gt;= 1).
+     */
+    public void add(CategoryPlot subplot, int weight) {
+<span class="fc" id="L169">        ParamChecks.nullNotPermitted(subplot, &quot;subplot&quot;);</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">        if (weight &lt;= 0) {</span>
+<span class="nc" id="L171">            throw new IllegalArgumentException(&quot;Require weight &gt;= 1.&quot;);</span>
+        }
+        // store the plot and its weight
+<span class="fc" id="L174">        subplot.setParent(this);</span>
+<span class="fc" id="L175">        subplot.setWeight(weight);</span>
+<span class="fc" id="L176">        subplot.setInsets(new RectangleInsets(0.0, 0.0, 0.0, 0.0));</span>
+<span class="fc" id="L177">        subplot.setRangeAxis(null);</span>
+<span class="fc" id="L178">        subplot.setOrientation(getOrientation());</span>
+<span class="fc" id="L179">        subplot.addChangeListener(this);</span>
+<span class="fc" id="L180">        this.subplots.add(subplot);</span>
+        // configure the range axis...
+<span class="fc" id="L182">        ValueAxis axis = getRangeAxis();</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        if (axis != null) {</span>
+<span class="fc" id="L184">            axis.configure();</span>
+        }
+<span class="fc" id="L186">        fireChangeEvent();</span>
+<span class="fc" id="L187">    }</span>
+
+    /**
+     * Removes a subplot from the combined chart.
+     *
+     * @param subplot  the subplot (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+    public void remove(CategoryPlot subplot) {
+<span class="fc" id="L195">        ParamChecks.nullNotPermitted(subplot, &quot;subplot&quot;);</span>
+<span class="fc" id="L196">        int position = -1;</span>
+<span class="fc" id="L197">        int size = this.subplots.size();</span>
+<span class="fc" id="L198">        int i = 0;</span>
+<span class="pc bpc" id="L199" title="1 of 4 branches missed.">        while (position == -1 &amp;&amp; i &lt; size) {</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">            if (this.subplots.get(i) == subplot) {</span>
+<span class="fc" id="L201">                position = i;</span>
+            }
+<span class="fc" id="L203">            i++;</span>
+        }
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">        if (position != -1) {</span>
+<span class="fc" id="L206">            this.subplots.remove(position);</span>
+<span class="fc" id="L207">            subplot.setParent(null);</span>
+<span class="fc" id="L208">            subplot.removeChangeListener(this);</span>
+
+<span class="fc" id="L210">            ValueAxis range = getRangeAxis();</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">            if (range != null) {</span>
+<span class="fc" id="L212">                range.configure();</span>
+            }
+
+<span class="fc" id="L215">            ValueAxis range2 = getRangeAxis(1);</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">            if (range2 != null) {</span>
+<span class="nc" id="L217">                range2.configure();</span>
+            }
+<span class="fc" id="L219">            fireChangeEvent();</span>
+        }
+<span class="fc" id="L221">    }</span>
+
+    /**
+     * Returns the list of subplots.  The returned list may be empty, but is
+     * never &lt;code&gt;null&lt;/code&gt;.
+     *
+     * @return An unmodifiable list of subplots.
+     */
+    public List getSubplots() {
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">        if (this.subplots != null) {</span>
+<span class="fc" id="L231">            return Collections.unmodifiableList(this.subplots);</span>
+        }
+        else {
+<span class="nc" id="L234">            return Collections.EMPTY_LIST;</span>
+        }
+    }
+
+    /**
+     * Calculates the space required for the axes.
+     *
+     * @param g2  the graphics device.
+     * @param plotArea  the plot area.
+     *
+     * @return The space required for the axes.
+     */
+    @Override
+    protected AxisSpace calculateAxisSpace(Graphics2D g2, 
+            Rectangle2D plotArea) {
+
+<span class="fc" id="L250">        AxisSpace space = new AxisSpace();</span>
+<span class="fc" id="L251">        PlotOrientation orientation = getOrientation();</span>
+
+        // work out the space required by the domain axis...
+<span class="fc" id="L254">        AxisSpace fixed = getFixedRangeAxisSpace();</span>
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">        if (fixed != null) {</span>
+<span class="nc bnc" id="L256" title="All 2 branches missed.">            if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="nc" id="L257">                space.setLeft(fixed.getLeft());</span>
+<span class="nc" id="L258">                space.setRight(fixed.getRight());</span>
+            }
+<span class="nc bnc" id="L260" title="All 2 branches missed.">            else if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L261">                space.setTop(fixed.getTop());</span>
+<span class="nc" id="L262">                space.setBottom(fixed.getBottom());</span>
+            }
+        }
+        else {
+<span class="fc" id="L266">            ValueAxis valueAxis = getRangeAxis();</span>
+<span class="fc" id="L267">            RectangleEdge valueEdge = Plot.resolveRangeAxisLocation(</span>
+                    getRangeAxisLocation(), orientation);
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">            if (valueAxis != null) {</span>
+<span class="fc" id="L270">                space = valueAxis.reserveSpace(g2, this, plotArea, valueEdge,</span>
+                        space);
+            }
+        }
+
+<span class="fc" id="L275">        Rectangle2D adjustedPlotArea = space.shrink(plotArea, null);</span>
+        // work out the maximum height or width of the non-shared axes...
+<span class="fc" id="L277">        int n = this.subplots.size();</span>
+<span class="fc" id="L278">        int totalWeight = 0;</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L280">            CategoryPlot sub = (CategoryPlot) this.subplots.get(i);</span>
+<span class="fc" id="L281">            totalWeight += sub.getWeight();</span>
+        }
+        // calculate plotAreas of all sub-plots, maximum vertical/horizontal
+        // axis width/height
+<span class="fc" id="L285">        this.subplotArea = new Rectangle2D[n];</span>
+<span class="fc" id="L286">        double x = adjustedPlotArea.getX();</span>
+<span class="fc" id="L287">        double y = adjustedPlotArea.getY();</span>
+<span class="fc" id="L288">        double usableSize = 0.0;</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">        if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="fc" id="L290">            usableSize = adjustedPlotArea.getWidth() - this.gap * (n - 1);</span>
+        }
+<span class="nc bnc" id="L292" title="All 2 branches missed.">        else if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L293">            usableSize = adjustedPlotArea.getHeight() - this.gap * (n - 1);</span>
+        }
+
+<span class="fc bfc" id="L296" title="All 2 branches covered.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L297">            CategoryPlot plot = (CategoryPlot) this.subplots.get(i);</span>
+
+            // calculate sub-plot area
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">            if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="fc" id="L301">                double w = usableSize * plot.getWeight() / totalWeight;</span>
+<span class="fc" id="L302">                this.subplotArea[i] = new Rectangle2D.Double(x, y, w,</span>
+                        adjustedPlotArea.getHeight());
+<span class="fc" id="L304">                x = x + w + this.gap;</span>
+<span class="fc" id="L305">            }</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">            else if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="nc" id="L307">                double h = usableSize * plot.getWeight() / totalWeight;</span>
+<span class="nc" id="L308">                this.subplotArea[i] = new Rectangle2D.Double(x, y,</span>
+                        adjustedPlotArea.getWidth(), h);
+<span class="nc" id="L310">                y = y + h + this.gap;</span>
+            }
+
+<span class="fc" id="L313">            AxisSpace subSpace = plot.calculateDomainAxisSpace(g2,</span>
+                    this.subplotArea[i], null);
+<span class="fc" id="L315">            space.ensureAtLeast(subSpace);</span>
+
+        }
+
+<span class="fc" id="L319">        return space;</span>
+    }
+
+    /**
+     * Draws the plot on a Java 2D graphics device (such as the screen or a
+     * printer).  Will perform all the placement calculations for each
+     * sub-plots and then tell these to draw themselves.
+     *
+     * @param g2  the graphics device.
+     * @param area  the area within which the plot (including axis labels)
+     *              should be drawn.
+     * @param anchor  the anchor point (&lt;code&gt;null&lt;/code&gt; permitted).
+     * @param parentState  the parent state.
+     * @param info  collects information about the drawing (&lt;code&gt;null&lt;/code&gt;
+     *              permitted).
+     */
+    @Override
+    public void draw(Graphics2D g2, Rectangle2D area, Point2D anchor,
+                     PlotState parentState,
+                     PlotRenderingInfo info) {
+
+        // set up info collection...
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">        if (info != null) {</span>
+<span class="nc" id="L342">            info.setPlotArea(area);</span>
+        }
+
+        // adjust the drawing area for plot insets (if any)...
+<span class="fc" id="L346">        RectangleInsets insets = getInsets();</span>
+<span class="fc" id="L347">        insets.trim(area);</span>
+
+        // calculate the data area...
+<span class="fc" id="L350">        AxisSpace space = calculateAxisSpace(g2, area);</span>
+<span class="fc" id="L351">        Rectangle2D dataArea = space.shrink(area, null);</span>
+
+        // set the width and height of non-shared axis of all sub-plots
+<span class="fc" id="L354">        setFixedDomainAxisSpaceForSubplots(space);</span>
+
+        // draw the shared axis
+<span class="fc" id="L357">        ValueAxis axis = getRangeAxis();</span>
+<span class="fc" id="L358">        RectangleEdge rangeEdge = getRangeAxisEdge();</span>
+<span class="fc" id="L359">        double cursor = RectangleEdge.coordinate(dataArea, rangeEdge);</span>
+<span class="fc" id="L360">        AxisState state = axis.draw(g2, cursor, area, dataArea, rangeEdge,</span>
+                info);
+<span class="pc bpc" id="L362" title="1 of 2 branches missed.">        if (parentState == null) {</span>
+<span class="fc" id="L363">            parentState = new PlotState();</span>
+        }
+<span class="fc" id="L365">        parentState.getSharedAxisStates().put(axis, state);</span>
+
+        // draw all the charts
+<span class="fc bfc" id="L368" title="All 2 branches covered.">        for (int i = 0; i &lt; this.subplots.size(); i++) {</span>
+<span class="fc" id="L369">            CategoryPlot plot = (CategoryPlot) this.subplots.get(i);</span>
+<span class="fc" id="L370">            PlotRenderingInfo subplotInfo = null;</span>
+<span class="pc bpc" id="L371" title="1 of 2 branches missed.">            if (info != null) {</span>
+<span class="nc" id="L372">                subplotInfo = new PlotRenderingInfo(info.getOwner());</span>
+<span class="nc" id="L373">                info.addSubplotInfo(subplotInfo);</span>
+            }
+<span class="fc" id="L375">            Point2D subAnchor = null;</span>
+<span class="pc bpc" id="L376" title="3 of 4 branches missed.">            if (anchor != null &amp;&amp; this.subplotArea[i].contains(anchor)) {</span>
+<span class="nc" id="L377">                subAnchor = anchor;</span>
+            }
+<span class="fc" id="L379">            plot.draw(g2, this.subplotArea[i], subAnchor, parentState,</span>
+                    subplotInfo);
+        }
+
+<span class="pc bpc" id="L383" title="1 of 2 branches missed.">        if (info != null) {</span>
+<span class="nc" id="L384">            info.setDataArea(dataArea);</span>
+        }
+
+<span class="fc" id="L387">    }</span>
+
+    /**
+     * Sets the orientation for the plot (and all the subplots).
+     *
+     * @param orientation  the orientation.
+     */
+    @Override
+    public void setOrientation(PlotOrientation orientation) {
+<span class="nc" id="L396">        super.setOrientation(orientation);</span>
+<span class="nc" id="L397">        Iterator iterator = this.subplots.iterator();</span>
+<span class="nc bnc" id="L398" title="All 2 branches missed.">        while (iterator.hasNext()) {</span>
+<span class="nc" id="L399">            CategoryPlot plot = (CategoryPlot) iterator.next();</span>
+<span class="nc" id="L400">            plot.setOrientation(orientation);</span>
+<span class="nc" id="L401">        }</span>
+<span class="nc" id="L402">    }</span>
+
+    /**
+     * Sets the shadow generator for the plot (and all subplots) and sends
+     * a {@link PlotChangeEvent} to all registered listeners.
+     * 
+     * @param generator  the new generator (&lt;code&gt;null&lt;/code&gt; permitted).
+     */
+    @Override
+    public void setShadowGenerator(ShadowGenerator generator) {
+<span class="nc" id="L412">        setNotify(false);</span>
+<span class="nc" id="L413">        super.setShadowGenerator(generator);</span>
+<span class="nc" id="L414">        Iterator iterator = this.subplots.iterator();</span>
+<span class="nc bnc" id="L415" title="All 2 branches missed.">        while (iterator.hasNext()) {</span>
+<span class="nc" id="L416">            CategoryPlot plot = (CategoryPlot) iterator.next();</span>
+<span class="nc" id="L417">            plot.setShadowGenerator(generator);</span>
+<span class="nc" id="L418">        }</span>
+<span class="nc" id="L419">        setNotify(true);</span>
+<span class="nc" id="L420">    }</span>
+
+    /**
+     * Returns a range representing the extent of the data values in this plot
+     * (obtained from the subplots) that will be rendered against the specified
+     * axis.  NOTE: This method is intended for internal JFreeChart use, and
+     * is public only so that code in the axis classes can call it.  Since
+     * only the range axis is shared between subplots, the JFreeChart code
+     * will only call this method for the range values (although this is not
+     * checked/enforced).
+      *
+      * @param axis  the axis.
+      *
+      * @return The range.
+      */
+    @Override
+     public Range getDataRange(ValueAxis axis) {
+<span class="fc" id="L437">         Range result = null;</span>
+<span class="fc bfc" id="L438" title="All 2 branches covered.">         if (this.subplots != null) {</span>
+<span class="fc" id="L439">             Iterator iterator = this.subplots.iterator();</span>
+<span class="fc bfc" id="L440" title="All 2 branches covered.">             while (iterator.hasNext()) {</span>
+<span class="fc" id="L441">                 CategoryPlot subplot = (CategoryPlot) iterator.next();</span>
+<span class="fc" id="L442">                 result = Range.combine(result, subplot.getDataRange(axis));</span>
+<span class="fc" id="L443">             }</span>
+         }
+<span class="fc" id="L445">         return result;</span>
+     }
+
+    /**
+     * Returns a collection of legend items for the plot.
+     *
+     * @return The legend items.
+     */
+    @Override
+    public LegendItemCollection getLegendItems() {
+<span class="fc" id="L455">        LegendItemCollection result = getFixedLegendItems();</span>
+<span class="pc bpc" id="L456" title="1 of 2 branches missed.">        if (result == null) {</span>
+<span class="fc" id="L457">            result = new LegendItemCollection();</span>
+<span class="pc bpc" id="L458" title="1 of 2 branches missed.">            if (this.subplots != null) {</span>
+<span class="fc" id="L459">                Iterator iterator = this.subplots.iterator();</span>
+<span class="fc bfc" id="L460" title="All 2 branches covered.">                while (iterator.hasNext()) {</span>
+<span class="fc" id="L461">                    CategoryPlot plot = (CategoryPlot) iterator.next();</span>
+<span class="fc" id="L462">                    LegendItemCollection more = plot.getLegendItems();</span>
+<span class="fc" id="L463">                    result.addAll(more);</span>
+<span class="fc" id="L464">                }</span>
+            }
+        }
+<span class="fc" id="L467">        return result;</span>
+    }
+
+    /**
+     * Sets the size (width or height, depending on the orientation of the
+     * plot) for the domain axis of each subplot.
+     *
+     * @param space  the space.
+     */
+    protected void setFixedDomainAxisSpaceForSubplots(AxisSpace space) {
+<span class="fc" id="L477">        Iterator iterator = this.subplots.iterator();</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">        while (iterator.hasNext()) {</span>
+<span class="fc" id="L479">            CategoryPlot plot = (CategoryPlot) iterator.next();</span>
+<span class="fc" id="L480">            plot.setFixedDomainAxisSpace(space, false);</span>
+<span class="fc" id="L481">        }</span>
+<span class="fc" id="L482">    }</span>
+
+    /**
+     * Handles a 'click' on the plot by updating the anchor value.
+     *
+     * @param x  x-coordinate of the click.
+     * @param y  y-coordinate of the click.
+     * @param info  information about the plot's dimensions.
+     *
+     */
+    @Override
+    public void handleClick(int x, int y, PlotRenderingInfo info) {
+<span class="nc" id="L494">        Rectangle2D dataArea = info.getDataArea();</span>
+<span class="nc bnc" id="L495" title="All 2 branches missed.">        if (dataArea.contains(x, y)) {</span>
+<span class="nc bnc" id="L496" title="All 2 branches missed.">            for (int i = 0; i &lt; this.subplots.size(); i++) {</span>
+<span class="nc" id="L497">                CategoryPlot subplot = (CategoryPlot) this.subplots.get(i);</span>
+<span class="nc" id="L498">                PlotRenderingInfo subplotInfo = info.getSubplotInfo(i);</span>
+<span class="nc" id="L499">                subplot.handleClick(x, y, subplotInfo);</span>
+            }
+        }
+<span class="nc" id="L502">    }</span>
+
+    /**
+     * Receives a {@link PlotChangeEvent} and responds by notifying all
+     * listeners.
+     *
+     * @param event  the event.
+     */
+    @Override
+    public void plotChanged(PlotChangeEvent event) {
+<span class="nc" id="L512">        notifyListeners(event);</span>
+<span class="nc" id="L513">    }</span>
+
+    /**
+     * Tests the plot for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="fc bfc" id="L524" title="All 2 branches covered.">        if (obj == this) {</span>
+<span class="fc" id="L525">            return true;</span>
+        }
+<span class="pc bpc" id="L527" title="1 of 2 branches missed.">        if (!(obj instanceof CombinedRangeCategoryPlot)) {</span>
+<span class="nc" id="L528">            return false;</span>
+        }
+<span class="fc" id="L530">        CombinedRangeCategoryPlot that = (CombinedRangeCategoryPlot) obj;</span>
+<span class="pc bpc" id="L531" title="1 of 2 branches missed.">        if (this.gap != that.gap) {</span>
+<span class="nc" id="L532">            return false;</span>
+        }
+<span class="pc bpc" id="L534" title="1 of 2 branches missed.">        if (!ObjectUtilities.equal(this.subplots, that.subplots)) {</span>
+<span class="nc" id="L535">            return false;</span>
+        }
+<span class="fc" id="L537">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Returns a clone of the plot.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException  this class will not throw this
+     *         exception, but subclasses (if any) might.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L550">        CombinedRangeCategoryPlot result</span>
+            = (CombinedRangeCategoryPlot) super.clone();
+<span class="fc" id="L552">        result.subplots = (List) ObjectUtilities.deepClone(this.subplots);</span>
+<span class="fc bfc" id="L553" title="All 2 branches covered.">        for (Iterator it = result.subplots.iterator(); it.hasNext();) {</span>
+<span class="fc" id="L554">            Plot child = (Plot) it.next();</span>
+<span class="fc" id="L555">            child.setParent(result);</span>
+<span class="fc" id="L556">        }</span>
+
+        // after setting up all the subplots, the shared range axis may need
+        // reconfiguring
+<span class="fc" id="L560">        ValueAxis rangeAxis = result.getRangeAxis();</span>
+<span class="pc bpc" id="L561" title="1 of 2 branches missed.">        if (rangeAxis != null) {</span>
+<span class="fc" id="L562">            rangeAxis.configure();</span>
+        }
+
+<span class="fc" id="L565">        return result;</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+        throws IOException, ClassNotFoundException {
+
+<span class="fc" id="L579">        stream.defaultReadObject();</span>
+
+        // the range axis is deserialized before the subplots, so its value
+        // range is likely to be incorrect...
+<span class="fc" id="L583">        ValueAxis rangeAxis = getRangeAxis();</span>
+<span class="pc bpc" id="L584" title="1 of 2 branches missed.">        if (rangeAxis != null) {</span>
+<span class="fc" id="L585">            rangeAxis.configure();</span>
+        }
+
+<span class="fc" id="L588">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

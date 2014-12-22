@@ -1,0 +1,1769 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>SegmentedTimeline.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.axis</a> &gt; <span class="el_source">SegmentedTimeline.java</span></div><h1>SegmentedTimeline.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * -----------------------
+ * SegmentedTimeline.java
+ * -----------------------
+ * (C) Copyright 2003-2008, by Bill Kelemen and Contributors.
+ *
+ * Original Author:  Bill Kelemen;
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *
+ * Changes
+ * -------
+ * 23-May-2003 : Version 1 (BK);
+ * 15-Aug-2003 : Implemented Cloneable (DG);
+ * 01-Jun-2004 : Modified to compile with JDK 1.2.2 (DG);
+ * 30-Sep-2004 : Replaced getTime().getTime() with getTimeInMillis() (DG);
+ * 04-Nov-2004 : Reverted change of 30-Sep-2004, won't work with JDK 1.3 (DG);
+ * 11-Jan-2005 : Removed deprecated code in preparation for 1.0.0 release (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 14-Nov-2006 : Fix in toTimelineValue(long) to avoid stack overflow (DG);
+ * 02-Feb-2007 : Removed author tags all over JFreeChart sources (DG);
+ * 11-Jul-2007 : Fixed time zone bugs (DG);
+ * 06-Jun-2008 : Performance enhancement posted in forum (DG);
+ *
+ */
+
+package org.jfree.chart.axis;
+
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Collections;
+import java.util.Date;
+import java.util.GregorianCalendar;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.SimpleTimeZone;
+import java.util.TimeZone;
+
+/**
+ * A {@link Timeline} that implements a &quot;segmented&quot; timeline with included,
+ * excluded and exception segments.
+ * &lt;P&gt;
+ * A Timeline will present a series of values to be used for an axis. Each
+ * Timeline must provide transformation methods between domain values and
+ * timeline values.
+ * &lt;P&gt;
+ * A timeline can be used as parameter to a
+ * {@link org.jfree.chart.axis.DateAxis} to define the values that this axis
+ * supports. This class implements a timeline formed by segments of equal
+ * length (ex. days, hours, minutes) where some segments can be included in the
+ * timeline and others excluded. Therefore timelines like &quot;working days&quot; or
+ * &quot;working hours&quot; can be created where non-working days or non-working hours
+ * respectively can be removed from the timeline, and therefore from the axis.
+ * This creates a smooth plot with equal separation between all included
+ * segments.
+ * &lt;P&gt;
+ * Because Timelines were created mainly for Date related axis, values are
+ * represented as longs instead of doubles. In this case, the domain value is
+ * just the number of milliseconds since January 1, 1970, 00:00:00 GMT as
+ * defined by the getTime() method of {@link java.util.Date}.
+ * &lt;P&gt;
+ * In this class, a segment is defined as a unit of time of fixed length.
+ * Examples of segments are: days, hours, minutes, etc. The size of a segment
+ * is defined as the number of milliseconds in the segment. Some useful segment
+ * sizes are defined as constants in this class: DAY_SEGMENT_SIZE,
+ * HOUR_SEGMENT_SIZE, FIFTEEN_MINUTE_SEGMENT_SIZE and MINUTE_SEGMENT_SIZE.
+ * &lt;P&gt;
+ * Segments are group together to form a Segment Group. Each Segment Group will
+ * contain a number of Segments included and a number of Segments excluded. This
+ * Segment Group structure will repeat for the whole timeline.
+ * &lt;P&gt;
+ * For example, a working days SegmentedTimeline would be formed by a group of
+ * 7 daily segments, where there are 5 included (Monday through Friday) and 2
+ * excluded (Saturday and Sunday) segments.
+ * &lt;P&gt;
+ * Following is a diagram that explains the major attributes that define a
+ * segment.  Each box is one segment and must be of fixed length (ms, second,
+ * hour, day, etc).
+ * &lt;p&gt;
+ * &lt;pre&gt;
+ * start time
+ *   |
+ *   v
+ *   0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 ...
+ * +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+...
+ * |  |  |  |  |  |EE|EE|  |  |  |  |  |EE|EE|  |  |  |  |  |EE|EE|
+ * +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+...
+ *  \____________/ \___/            \_/
+ *        \/         |               |
+ *     included   excluded        segment
+ *     segments   segments         size
+ *  \_________  _______/
+ *            \/
+ *       segment group
+ * &lt;/pre&gt;
+ * Legend:&lt;br&gt;
+ * &amp;lt;space&amp;gt; = Included segment&lt;br&gt;
+ * EE      = Excluded segments in the base timeline&lt;br&gt;
+ * &lt;p&gt;
+ * In the example, the following segment attributes are presented:
+ * &lt;ul&gt;
+ * &lt;li&gt;segment size: the size of each segment in ms.
+ * &lt;li&gt;start time: the start of the first segment of the first segment group to
+ *     consider.
+ * &lt;li&gt;included segments: the number of segments to include in the group.
+ * &lt;li&gt;excluded segments: the number of segments to exclude in the group.
+ * &lt;/ul&gt;
+ * &lt;p&gt;
+ * Exception Segments are allowed. These exception segments are defined as
+ * segments that would have been in the included segments of the Segment Group,
+ * but should be excluded for special reasons. In the previous working days
+ * SegmentedTimeline example, holidays would be considered exceptions.
+ * &lt;P&gt;
+ * Additionally the &lt;code&gt;startTime&lt;/code&gt;, or start of the first Segment of
+ * the smallest segment group needs to be defined. This startTime could be
+ * relative to January 1, 1970, 00:00:00 GMT or any other date. This creates a
+ * point of reference to start counting Segment Groups. For example, for the
+ * working days SegmentedTimeline, the &lt;code&gt;startTime&lt;/code&gt; could be
+ * 00:00:00 GMT of the first Monday after January 1, 1970. In this class, the
+ * constant FIRST_MONDAY_AFTER_1900 refers to a reference point of the first
+ * Monday of the last century.
+ * &lt;p&gt;
+ * A SegmentedTimeline can include a baseTimeline. This combination of
+ * timelines allows the creation of more complex timelines. For example, in
+ * order to implement a SegmentedTimeline for an intraday stock trading
+ * application, where the trading period is defined as 9:00 AM through 4:00 PM
+ * Monday through Friday, two SegmentedTimelines are used. The first one (the
+ * baseTimeline) would be a working day SegmentedTimeline (daily timeline
+ * Monday through Friday). On top of this baseTimeline, a second one is defined
+ * that maps the 9:00 AM to 4:00 PM period. Because the baseTimeline defines a
+ * timeline of Monday through Friday, the resulting (combined) timeline will
+ * expose the period 9:00 AM through 4:00 PM only on Monday through Friday,
+ * and will remove all other intermediate intervals.
+ * &lt;P&gt;
+ * Two factory methods newMondayThroughFridayTimeline() and
+ * newFifteenMinuteTimeline() are provided as examples to create special
+ * SegmentedTimelines.
+ *
+ * @see org.jfree.chart.axis.DateAxis
+ */
+public class SegmentedTimeline implements Timeline, Cloneable, Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = 1093779862539903110L;
+
+    ////////////////////////////////////////////////////////////////////////////
+    // predetermined segments sizes
+    ////////////////////////////////////////////////////////////////////////////
+
+    /** Defines a day segment size in ms. */
+    public static final long DAY_SEGMENT_SIZE = 24 * 60 * 60 * 1000;
+
+    /** Defines a one hour segment size in ms. */
+    public static final long HOUR_SEGMENT_SIZE = 60 * 60 * 1000;
+
+    /** Defines a 15-minute segment size in ms. */
+    public static final long FIFTEEN_MINUTE_SEGMENT_SIZE = 15 * 60 * 1000;
+
+    /** Defines a one-minute segment size in ms. */
+    public static final long MINUTE_SEGMENT_SIZE = 60 * 1000;
+
+    ////////////////////////////////////////////////////////////////////////////
+    // other constants
+    ////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Utility constant that defines the startTime as the first monday after
+     * 1/1/1970.  This should be used when creating a SegmentedTimeline for
+     * Monday through Friday. See static block below for calculation of this
+     * constant.
+     *
+     * @deprecated As of 1.0.7.  This field doesn't take into account changes
+     *         to the default time zone.
+     */
+    public static long FIRST_MONDAY_AFTER_1900;
+
+    /**
+     * Utility TimeZone object that has no DST and an offset equal to the
+     * default TimeZone. This allows easy arithmetic between days as each one
+     * will have equal size.
+     *
+     * @deprecated As of 1.0.7.  This field is initialised based on the
+     *         default time zone, and doesn't take into account subsequent
+     *         changes to the default.
+     */
+    public static TimeZone NO_DST_TIME_ZONE;
+
+    /**
+     * This is the default time zone where the application is running. See
+     * getTime() below where we make use of certain transformations between
+     * times in the default time zone and the no-dst time zone used for our
+     * calculations.
+     *
+     * @deprecated As of 1.0.7.  When the default time zone is required,
+     *         just call &lt;code&gt;TimeZone.getDefault()&lt;/code&gt;.
+     */
+<span class="fc" id="L223">    public static TimeZone DEFAULT_TIME_ZONE = TimeZone.getDefault();</span>
+
+    /**
+     * This will be a utility calendar that has no DST but is shifted relative
+     * to the default time zone's offset.
+     */
+    private Calendar workingCalendarNoDST;
+
+    /**
+     * This will be a utility calendar that used the default time zone.
+     */
+<span class="fc" id="L234">    private Calendar workingCalendar = Calendar.getInstance();</span>
+
+    ////////////////////////////////////////////////////////////////////////////
+    // private attributes
+    ////////////////////////////////////////////////////////////////////////////
+
+    /** Segment size in ms. */
+    private long segmentSize;
+
+    /** Number of consecutive segments to include in a segment group. */
+    private int segmentsIncluded;
+
+    /** Number of consecutive segments to exclude in a segment group. */
+    private int segmentsExcluded;
+
+    /** Number of segments in a group (segmentsIncluded + segmentsExcluded). */
+    private int groupSegmentCount;
+
+    /**
+     * Start of time reference from time zero (1/1/1970).
+     * This is the start of segment #0.
+     */
+    private long startTime;
+
+    /** Consecutive ms in segmentsIncluded (segmentsIncluded * segmentSize). */
+    private long segmentsIncludedSize;
+
+    /** Consecutive ms in segmentsExcluded (segmentsExcluded * segmentSize). */
+    private long segmentsExcludedSize;
+
+    /** ms in a segment group (segmentsIncludedSize + segmentsExcludedSize). */
+    private long segmentsGroupSize;
+
+    /**
+     * List of exception segments (exceptions segments that would otherwise be
+     * included based on the periodic (included, excluded) grouping).
+     */
+<span class="fc" id="L271">    private List exceptionSegments = new ArrayList();</span>
+
+    /**
+     * This base timeline is used to specify exceptions at a higher level. For
+     * example, if we are a intraday timeline and want to exclude holidays,
+     * instead of having to exclude all intraday segments for the holiday,
+     * segments from this base timeline can be excluded. This baseTimeline is
+     * always optional and is only a convenience method.
+     * &lt;p&gt;
+     * Additionally, all excluded segments from this baseTimeline will be
+     * considered exceptions at this level.
+     */
+    private SegmentedTimeline baseTimeline;
+
+    /** A flag that controls whether or not to adjust for daylight saving. */
+<span class="fc" id="L286">    private boolean adjustForDaylightSaving = false;</span>
+
+    ////////////////////////////////////////////////////////////////////////////
+    // static block
+    ////////////////////////////////////////////////////////////////////////////
+
+    static {
+        // make a time zone with no DST for our Calendar calculations
+<span class="fc" id="L294">        int offset = TimeZone.getDefault().getRawOffset();</span>
+<span class="fc" id="L295">        NO_DST_TIME_ZONE = new SimpleTimeZone(offset, &quot;UTC-&quot; + offset);</span>
+
+        // calculate midnight of first monday after 1/1/1900 relative to
+        // current locale
+<span class="fc" id="L299">        Calendar cal = new GregorianCalendar(NO_DST_TIME_ZONE);</span>
+<span class="fc" id="L300">        cal.set(1900, 0, 1, 0, 0, 0);</span>
+<span class="fc" id="L301">        cal.set(Calendar.MILLISECOND, 0);</span>
+<span class="pc bpc" id="L302" title="1 of 2 branches missed.">        while (cal.get(Calendar.DAY_OF_WEEK) != Calendar.MONDAY) {</span>
+<span class="nc" id="L303">            cal.add(Calendar.DATE, 1);</span>
+        }
+        // FIRST_MONDAY_AFTER_1900 = cal.getTime().getTime();
+        // preceding code won't work with JDK 1.3
+<span class="fc" id="L307">        FIRST_MONDAY_AFTER_1900 = cal.getTime().getTime();</span>
+<span class="fc" id="L308">    }</span>
+
+    ////////////////////////////////////////////////////////////////////////////
+    // constructors and factory methods
+    ////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Constructs a new segmented timeline, optionaly using another segmented
+     * timeline as its base. This chaining of SegmentedTimelines allows further
+     * segmentation into smaller timelines.
+     *
+     * If a base
+     *
+     * @param segmentSize the size of a segment in ms. This time unit will be
+     *        used to compute the included and excluded segments of the
+     *        timeline.
+     * @param segmentsIncluded Number of consecutive segments to include.
+     * @param segmentsExcluded Number of consecutive segments to exclude.
+     */
+    public SegmentedTimeline(long segmentSize,
+                             int segmentsIncluded,
+<span class="fc" id="L329">                             int segmentsExcluded) {</span>
+
+<span class="fc" id="L331">        this.segmentSize = segmentSize;</span>
+<span class="fc" id="L332">        this.segmentsIncluded = segmentsIncluded;</span>
+<span class="fc" id="L333">        this.segmentsExcluded = segmentsExcluded;</span>
+
+<span class="fc" id="L335">        this.groupSegmentCount = this.segmentsIncluded + this.segmentsExcluded;</span>
+<span class="fc" id="L336">        this.segmentsIncludedSize = this.segmentsIncluded * this.segmentSize;</span>
+<span class="fc" id="L337">        this.segmentsExcludedSize = this.segmentsExcluded * this.segmentSize;</span>
+<span class="fc" id="L338">        this.segmentsGroupSize = this.segmentsIncludedSize</span>
+                                 + this.segmentsExcludedSize;
+<span class="fc" id="L340">        int offset = TimeZone.getDefault().getRawOffset();</span>
+<span class="fc" id="L341">        TimeZone z = new SimpleTimeZone(offset, &quot;UTC-&quot; + offset);</span>
+<span class="fc" id="L342">        this.workingCalendarNoDST = new GregorianCalendar(z,</span>
+                Locale.getDefault());
+<span class="fc" id="L344">    }</span>
+
+    /**
+     * Returns the milliseconds for midnight of the first Monday after
+     * 1-Jan-1900, ignoring daylight savings.
+     *
+     * @return The milliseconds.
+     *
+     * @since 1.0.7
+     */
+    public static long firstMondayAfter1900() {
+<span class="fc" id="L355">        int offset = TimeZone.getDefault().getRawOffset();</span>
+<span class="fc" id="L356">        TimeZone z = new SimpleTimeZone(offset, &quot;UTC-&quot; + offset);</span>
+
+        // calculate midnight of first monday after 1/1/1900 relative to
+        // current locale
+<span class="fc" id="L360">        Calendar cal = new GregorianCalendar(z);</span>
+<span class="fc" id="L361">        cal.set(1900, 0, 1, 0, 0, 0);</span>
+<span class="fc" id="L362">        cal.set(Calendar.MILLISECOND, 0);</span>
+<span class="pc bpc" id="L363" title="1 of 2 branches missed.">        while (cal.get(Calendar.DAY_OF_WEEK) != Calendar.MONDAY) {</span>
+<span class="nc" id="L364">            cal.add(Calendar.DATE, 1);</span>
+        }
+        //return cal.getTimeInMillis();
+        // preceding code won't work with JDK 1.3
+<span class="fc" id="L368">        return cal.getTime().getTime();</span>
+    }
+
+    /**
+     * Factory method to create a Monday through Friday SegmentedTimeline.
+     * &lt;P&gt;
+     * The &lt;code&gt;startTime&lt;/code&gt; of the resulting timeline will be midnight
+     * of the first Monday after 1/1/1900.
+     *
+     * @return A fully initialized SegmentedTimeline.
+     */
+    public static SegmentedTimeline newMondayThroughFridayTimeline() {
+<span class="fc" id="L380">        SegmentedTimeline timeline</span>
+            = new SegmentedTimeline(DAY_SEGMENT_SIZE, 5, 2);
+<span class="fc" id="L382">        timeline.setStartTime(firstMondayAfter1900());</span>
+<span class="fc" id="L383">        return timeline;</span>
+    }
+
+    /**
+     * Factory method to create a 15-min, 9:00 AM thought 4:00 PM, Monday
+     * through Friday SegmentedTimeline.
+     * &lt;P&gt;
+     * This timeline uses a segmentSize of FIFTEEN_MIN_SEGMENT_SIZE. The
+     * segment group is defined as 28 included segments (9:00 AM through
+     * 4:00 PM) and 68 excluded segments (4:00 PM through 9:00 AM the next day).
+     * &lt;P&gt;
+     * In order to exclude Saturdays and Sundays it uses a baseTimeline that
+     * only includes Monday through Friday days.
+     * &lt;P&gt;
+     * The &lt;code&gt;startTime&lt;/code&gt; of the resulting timeline will be 9:00 AM
+     * after the startTime of the baseTimeline. This will correspond to 9:00 AM
+     * of the first Monday after 1/1/1900.
+     *
+     * @return A fully initialized SegmentedTimeline.
+     */
+    public static SegmentedTimeline newFifteenMinuteTimeline() {
+<span class="fc" id="L404">        SegmentedTimeline timeline = new SegmentedTimeline(</span>
+                FIFTEEN_MINUTE_SEGMENT_SIZE, 28, 68);
+<span class="fc" id="L406">        timeline.setStartTime(firstMondayAfter1900() + 36</span>
+                * timeline.getSegmentSize());
+<span class="fc" id="L408">        timeline.setBaseTimeline(newMondayThroughFridayTimeline());</span>
+<span class="fc" id="L409">        return timeline;</span>
+    }
+
+    /**
+     * Returns the flag that controls whether or not the daylight saving
+     * adjustment is applied.
+     *
+     * @return A boolean.
+     */
+    public boolean getAdjustForDaylightSaving() {
+<span class="nc" id="L419">        return this.adjustForDaylightSaving;</span>
+    }
+
+    /**
+     * Sets the flag that controls whether or not the daylight saving adjustment
+     * is applied.
+     *
+     * @param adjust  the flag.
+     */
+    public void setAdjustForDaylightSaving(boolean adjust) {
+<span class="fc" id="L429">        this.adjustForDaylightSaving = adjust;</span>
+<span class="fc" id="L430">    }</span>
+
+    ////////////////////////////////////////////////////////////////////////////
+    // operations
+    ////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Sets the start time for the timeline. This is the beginning of segment
+     * zero.
+     *
+     * @param millisecond  the start time (encoded as in java.util.Date).
+     */
+    public void setStartTime(long millisecond) {
+<span class="fc" id="L443">        this.startTime = millisecond;</span>
+<span class="fc" id="L444">    }</span>
+
+    /**
+     * Returns the start time for the timeline. This is the beginning of
+     * segment zero.
+     *
+     * @return The start time.
+     */
+    public long getStartTime() {
+<span class="fc" id="L453">        return this.startTime;</span>
+    }
+
+    /**
+     * Returns the number of segments excluded per segment group.
+     *
+     * @return The number of segments excluded.
+     */
+    public int getSegmentsExcluded() {
+<span class="fc" id="L462">        return this.segmentsExcluded;</span>
+    }
+
+    /**
+     * Returns the size in milliseconds of the segments excluded per segment
+     * group.
+     *
+     * @return The size in milliseconds.
+     */
+    public long getSegmentsExcludedSize() {
+<span class="nc" id="L472">        return this.segmentsExcludedSize;</span>
+    }
+
+    /**
+     * Returns the number of segments in a segment group. This will be equal to
+     * segments included plus segments excluded.
+     *
+     * @return The number of segments.
+     */
+    public int getGroupSegmentCount() {
+<span class="fc" id="L482">        return this.groupSegmentCount;</span>
+    }
+
+    /**
+     * Returns the size in milliseconds of a segment group. This will be equal
+     * to size of the segments included plus the size of the segments excluded.
+     *
+     * @return The segment group size in milliseconds.
+     */
+    public long getSegmentsGroupSize() {
+<span class="nc" id="L492">        return this.segmentsGroupSize;</span>
+    }
+
+    /**
+     * Returns the number of segments included per segment group.
+     *
+     * @return The number of segments.
+     */
+    public int getSegmentsIncluded() {
+<span class="fc" id="L501">        return this.segmentsIncluded;</span>
+    }
+
+    /**
+     * Returns the size in ms of the segments included per segment group.
+     *
+     * @return The segment size in milliseconds.
+     */
+    public long getSegmentsIncludedSize() {
+<span class="nc" id="L510">        return this.segmentsIncludedSize;</span>
+    }
+
+    /**
+     * Returns the size of one segment in ms.
+     *
+     * @return The segment size in milliseconds.
+     */
+    public long getSegmentSize() {
+<span class="fc" id="L519">        return this.segmentSize;</span>
+    }
+
+    /**
+     * Returns a list of all the exception segments. This list is not
+     * modifiable.
+     *
+     * @return The exception segments.
+     */
+    public List getExceptionSegments() {
+<span class="fc" id="L529">        return Collections.unmodifiableList(this.exceptionSegments);</span>
+    }
+
+    /**
+     * Sets the exception segments list.
+     *
+     * @param exceptionSegments  the exception segments.
+     */
+    public void setExceptionSegments(List exceptionSegments) {
+<span class="fc" id="L538">        this.exceptionSegments = exceptionSegments;</span>
+<span class="fc" id="L539">    }</span>
+
+    /**
+     * Returns our baseTimeline, or &lt;code&gt;null&lt;/code&gt; if none.
+     *
+     * @return The base timeline.
+     */
+    public SegmentedTimeline getBaseTimeline() {
+<span class="fc" id="L547">        return this.baseTimeline;</span>
+    }
+
+    /**
+     * Sets the base timeline.
+     *
+     * @param baseTimeline  the timeline.
+     */
+    public void setBaseTimeline(SegmentedTimeline baseTimeline) {
+
+        // verify that baseTimeline is compatible with us
+<span class="pc bpc" id="L558" title="1 of 2 branches missed.">        if (baseTimeline != null) {</span>
+<span class="pc bpc" id="L559" title="1 of 2 branches missed.">            if (baseTimeline.getSegmentSize() &lt; this.segmentSize) {</span>
+<span class="nc" id="L560">                throw new IllegalArgumentException(</span>
+                        &quot;baseTimeline.getSegmentSize() &quot;
+                        + &quot;is smaller than segmentSize&quot;);
+            }
+<span class="pc bpc" id="L564" title="1 of 2 branches missed.">            else if (baseTimeline.getStartTime() &gt; this.startTime) {</span>
+<span class="nc" id="L565">                throw new IllegalArgumentException(</span>
+                        &quot;baseTimeline.getStartTime() is after startTime&quot;);
+            }
+<span class="pc bpc" id="L568" title="1 of 2 branches missed.">            else if ((baseTimeline.getSegmentSize() % this.segmentSize) != 0) {</span>
+<span class="nc" id="L569">                throw new IllegalArgumentException(</span>
+                        &quot;baseTimeline.getSegmentSize() is not multiple of &quot;
+                        + &quot;segmentSize&quot;);
+            }
+<span class="pc bpc" id="L573" title="1 of 2 branches missed.">            else if (((this.startTime</span>
+                    - baseTimeline.getStartTime()) % this.segmentSize) != 0) {
+<span class="nc" id="L575">                throw new IllegalArgumentException(</span>
+                        &quot;baseTimeline is not aligned&quot;);
+            }
+        }
+
+<span class="fc" id="L580">        this.baseTimeline = baseTimeline;</span>
+<span class="fc" id="L581">    }</span>
+
+    /**
+     * Translates a value relative to the domain value (all Dates) into a value
+     * relative to the segmented timeline. The values relative to the segmented
+     * timeline are all consecutives starting at zero at the startTime.
+     *
+     * @param millisecond  the millisecond (as encoded by java.util.Date).
+     *
+     * @return The timeline value.
+     */
+    @Override
+    public long toTimelineValue(long millisecond) {
+
+        long result;
+<span class="fc" id="L596">        long rawMilliseconds = millisecond - this.startTime;</span>
+<span class="fc" id="L597">        long groupMilliseconds = rawMilliseconds % this.segmentsGroupSize;</span>
+<span class="fc" id="L598">        long groupIndex = rawMilliseconds / this.segmentsGroupSize;</span>
+
+<span class="fc bfc" id="L600" title="All 2 branches covered.">        if (groupMilliseconds &gt;= this.segmentsIncludedSize) {</span>
+<span class="fc" id="L601">            result = toTimelineValue(this.startTime + this.segmentsGroupSize</span>
+                    * (groupIndex + 1));
+        }
+        else {
+<span class="fc" id="L605">            Segment segment = getSegment(millisecond);</span>
+<span class="fc bfc" id="L606" title="All 2 branches covered.">            if (segment.inExceptionSegments()) {</span>
+                int p;
+<span class="fc bfc" id="L608" title="All 2 branches covered.">                while ((p = binarySearchExceptionSegments(segment)) &gt;= 0) {</span>
+<span class="fc" id="L609">                    segment = getSegment(millisecond = ((Segment)</span>
+                            this.exceptionSegments.get(p)).getSegmentEnd() + 1);
+                }
+<span class="fc" id="L612">                result = toTimelineValue(millisecond);</span>
+<span class="fc" id="L613">            }</span>
+            else {
+<span class="fc" id="L615">                long shiftedSegmentedValue = millisecond - this.startTime;</span>
+<span class="fc" id="L616">                long x = shiftedSegmentedValue % this.segmentsGroupSize;</span>
+<span class="fc" id="L617">                long y = shiftedSegmentedValue / this.segmentsGroupSize;</span>
+
+<span class="fc" id="L619">                long wholeExceptionsBeforeDomainValue =</span>
+                    getExceptionSegmentCount(this.startTime, millisecond - 1);
+
+//                long partialTimeInException = 0;
+//                Segment ss = getSegment(millisecond);
+//                if (ss.inExceptionSegments()) {
+//                    partialTimeInException = millisecond
+                //     - ss.getSegmentStart();
+//                }
+
+<span class="pc bpc" id="L629" title="1 of 2 branches missed.">                if (x &lt; this.segmentsIncludedSize) {</span>
+<span class="fc" id="L630">                    result = this.segmentsIncludedSize * y</span>
+                             + x - wholeExceptionsBeforeDomainValue
+                             * this.segmentSize;
+                             // - partialTimeInException;
+                }
+                else {
+<span class="nc" id="L636">                    result = this.segmentsIncludedSize * (y + 1)</span>
+                             - wholeExceptionsBeforeDomainValue
+                             * this.segmentSize;
+                             // - partialTimeInException;
+                }
+            }
+        }
+
+<span class="fc" id="L644">        return result;</span>
+    }
+
+    /**
+     * Translates a date into a value relative to the segmented timeline. The
+     * values relative to the segmented timeline are all consecutives starting
+     * at zero at the startTime.
+     *
+     * @param date  date relative to the domain.
+     *
+     * @return The timeline value (in milliseconds).
+     */
+    @Override
+    public long toTimelineValue(Date date) {
+<span class="fc" id="L658">        return toTimelineValue(getTime(date));</span>
+        //return toTimelineValue(dateDomainValue.getTime());
+    }
+
+    /**
+     * Translates a value relative to the timeline into a millisecond.
+     *
+     * @param timelineValue  the timeline value (in milliseconds).
+     *
+     * @return The domain value (in milliseconds).
+     */
+    @Override
+    public long toMillisecond(long timelineValue) {
+
+        // calculate the result as if no exceptions
+<span class="fc" id="L673">        Segment result = new Segment(this.startTime + timelineValue</span>
+                + (timelineValue / this.segmentsIncludedSize)
+                * this.segmentsExcludedSize);
+
+<span class="fc" id="L677">        long lastIndex = this.startTime;</span>
+
+        // adjust result for any exceptions in the result calculated
+<span class="fc bfc" id="L680" title="All 2 branches covered.">        while (lastIndex &lt;= result.segmentStart) {</span>
+
+            // skip all whole exception segments in the range
+            long exceptionSegmentCount;
+<span class="fc bfc" id="L684" title="All 2 branches covered.">            while ((exceptionSegmentCount = getExceptionSegmentCount(</span>
+                 lastIndex, (result.millisecond / this.segmentSize)
+                 * this.segmentSize - 1)) &gt; 0
+            ) {
+<span class="fc" id="L688">                lastIndex = result.segmentStart;</span>
+                // move forward exceptionSegmentCount segments skipping
+                // excluded segments
+<span class="fc bfc" id="L691" title="All 2 branches covered.">                for (int i = 0; i &lt; exceptionSegmentCount; i++) {</span>
+                    do {
+<span class="fc" id="L693">                        result.inc();</span>
+                    }
+<span class="fc bfc" id="L695" title="All 2 branches covered.">                    while (result.inExcludeSegments());</span>
+                }
+            }
+<span class="fc" id="L698">            lastIndex = result.segmentStart;</span>
+
+            // skip exception or excluded segments we may fall on
+<span class="fc bfc" id="L701" title="All 4 branches covered.">            while (result.inExceptionSegments() || result.inExcludeSegments()) {</span>
+<span class="fc" id="L702">                result.inc();</span>
+<span class="fc" id="L703">                lastIndex += this.segmentSize;</span>
+            }
+
+<span class="fc" id="L706">            lastIndex++;</span>
+<span class="fc" id="L707">        }</span>
+
+<span class="fc" id="L709">        return getTimeFromLong(result.millisecond);</span>
+    }
+
+    /**
+     * Converts a date/time value to take account of daylight savings time.
+     *
+     * @param date  the milliseconds.
+     *
+     * @return The milliseconds.
+     */
+    public long getTimeFromLong(long date) {
+<span class="fc" id="L720">        long result = date;</span>
+<span class="fc bfc" id="L721" title="All 2 branches covered.">        if (this.adjustForDaylightSaving) {</span>
+<span class="fc" id="L722">            this.workingCalendarNoDST.setTime(new Date(date));</span>
+<span class="fc" id="L723">            this.workingCalendar.set(</span>
+                this.workingCalendarNoDST.get(Calendar.YEAR),
+                this.workingCalendarNoDST.get(Calendar.MONTH),
+                this.workingCalendarNoDST.get(Calendar.DATE),
+                this.workingCalendarNoDST.get(Calendar.HOUR_OF_DAY),
+                this.workingCalendarNoDST.get(Calendar.MINUTE),
+                this.workingCalendarNoDST.get(Calendar.SECOND)
+            );
+<span class="fc" id="L731">            this.workingCalendar.set(Calendar.MILLISECOND,</span>
+                    this.workingCalendarNoDST.get(Calendar.MILLISECOND));
+            // result = this.workingCalendar.getTimeInMillis();
+            // preceding code won't work with JDK 1.3
+<span class="fc" id="L735">            result = this.workingCalendar.getTime().getTime();</span>
+        }
+<span class="fc" id="L737">        return result;</span>
+    }
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; if a value is contained in the timeline.
+     *
+     * @param millisecond  the value to verify.
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; if value is contained in the timeline.
+     */
+    @Override
+    public boolean containsDomainValue(long millisecond) {
+<span class="fc" id="L749">        Segment segment = getSegment(millisecond);</span>
+<span class="fc" id="L750">        return segment.inIncludeSegments();</span>
+    }
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; if a value is contained in the timeline.
+     *
+     * @param date  date to verify
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; if value is contained in the timeline
+     */
+    @Override
+    public boolean containsDomainValue(Date date) {
+<span class="fc" id="L762">        return containsDomainValue(getTime(date));</span>
+    }
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; if a range of values are contained in the
+     * timeline. This is implemented verifying that all segments are in the
+     * range.
+     *
+     * @param domainValueStart start of the range to verify
+     * @param domainValueEnd end of the range to verify
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; if the range is contained in the timeline
+     */
+    @Override
+    public boolean containsDomainRange(long domainValueStart,
+            long domainValueEnd) {
+<span class="nc bnc" id="L778" title="All 2 branches missed.">        if (domainValueEnd &lt; domainValueStart) {</span>
+<span class="nc" id="L779">            throw new IllegalArgumentException(</span>
+                    &quot;domainValueEnd (&quot; + domainValueEnd
+                    + &quot;) &lt; domainValueStart (&quot; + domainValueStart + &quot;)&quot;);
+        }
+<span class="nc" id="L783">        Segment segment = getSegment(domainValueStart);</span>
+<span class="nc" id="L784">        boolean contains = true;</span>
+        do {
+<span class="nc" id="L786">            contains = (segment.inIncludeSegments());</span>
+<span class="nc bnc" id="L787" title="All 2 branches missed.">            if (segment.contains(domainValueEnd)) {</span>
+<span class="nc" id="L788">                break;</span>
+            }
+            else {
+<span class="nc" id="L791">                segment.inc();</span>
+            }
+        }
+<span class="nc bnc" id="L794" title="All 2 branches missed.">        while (contains);</span>
+<span class="nc" id="L795">        return (contains);</span>
+    }
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; if a range of values are contained in the
+     * timeline. This is implemented verifying that all segments are in the
+     * range.
+     *
+     * @param dateDomainValueStart start of the range to verify
+     * @param dateDomainValueEnd end of the range to verify
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; if the range is contained in the timeline
+     */
+    @Override
+    public boolean containsDomainRange(Date dateDomainValueStart,
+            Date dateDomainValueEnd) {
+<span class="nc" id="L811">        return containsDomainRange(getTime(dateDomainValueStart),</span>
+                getTime(dateDomainValueEnd));
+    }
+
+    /**
+     * Adds a segment as an exception. An exception segment is defined as a
+     * segment to exclude from what would otherwise be considered a valid
+     * segment of the timeline.  An exception segment can not be contained
+     * inside an already excluded segment.  If so, no action will occur (the
+     * proposed exception segment will be discarded).
+     * &lt;p&gt;
+     * The segment is identified by a domainValue into any part of the segment.
+     * Therefore the segmentStart &lt;= domainValue &lt;= segmentEnd.
+     *
+     * @param millisecond  domain value to treat as an exception
+     */
+    public void addException(long millisecond) {
+<span class="fc" id="L828">        addException(new Segment(millisecond));</span>
+<span class="fc" id="L829">    }</span>
+
+    /**
+     * Adds a segment range as an exception. An exception segment is defined as
+     * a segment to exclude from what would otherwise be considered a valid
+     * segment of the timeline.  An exception segment can not be contained
+     * inside an already excluded segment.  If so, no action will occur (the
+     * proposed exception segment will be discarded).
+     * &lt;p&gt;
+     * The segment range is identified by a domainValue that begins a valid
+     * segment and ends with a domainValue that ends a valid segment.
+     * Therefore the range will contain all segments whose segmentStart
+     * &lt;= domainValue and segmentEnd &lt;= toDomainValue.
+     *
+     * @param fromDomainValue  start of domain range to treat as an exception
+     * @param toDomainValue  end of domain range to treat as an exception
+     */
+    public void addException(long fromDomainValue, long toDomainValue) {
+<span class="fc" id="L847">        addException(new SegmentRange(fromDomainValue, toDomainValue));</span>
+<span class="fc" id="L848">    }</span>
+
+    /**
+     * Adds a segment as an exception. An exception segment is defined as a
+     * segment to exclude from what would otherwise be considered a valid
+     * segment of the timeline.  An exception segment can not be contained
+     * inside an already excluded segment.  If so, no action will occur (the
+     * proposed exception segment will be discarded).
+     * &lt;p&gt;
+     * The segment is identified by a Date into any part of the segment.
+     *
+     * @param exceptionDate  Date into the segment to exclude.
+     */
+    public void addException(Date exceptionDate) {
+<span class="fc" id="L862">        addException(getTime(exceptionDate));</span>
+        //addException(exceptionDate.getTime());
+<span class="fc" id="L864">    }</span>
+
+    /**
+     * Adds a list of dates as segment exceptions. Each exception segment is
+     * defined as a segment to exclude from what would otherwise be considered
+     * a valid segment of the timeline.  An exception segment can not be
+     * contained inside an already excluded segment.  If so, no action will
+     * occur (the proposed exception segment will be discarded).
+     * &lt;p&gt;
+     * The segment is identified by a Date into any part of the segment.
+     *
+     * @param exceptionList  List of Date objects that identify the segments to
+     *                       exclude.
+     */
+    public void addExceptions(List exceptionList) {
+<span class="nc bnc" id="L879" title="All 2 branches missed.">        for (Iterator iter = exceptionList.iterator(); iter.hasNext();) {</span>
+<span class="nc" id="L880">            addException((Date) iter.next());</span>
+        }
+<span class="nc" id="L882">    }</span>
+
+    /**
+     * Adds a segment as an exception. An exception segment is defined as a
+     * segment to exclude from what would otherwise be considered a valid
+     * segment of the timeline.  An exception segment can not be contained
+     * inside an already excluded segment.  This is verified inside this
+     * method, and if so, no action will occur (the proposed exception segment
+     * will be discarded).
+     *
+     * @param segment  the segment to exclude.
+     */
+    private void addException(Segment segment) {
+<span class="pc bpc" id="L895" title="1 of 2 branches missed.">         if (segment.inIncludeSegments()) {</span>
+<span class="fc" id="L896">             int p = binarySearchExceptionSegments(segment);</span>
+<span class="fc" id="L897">             this.exceptionSegments.add(-(p + 1), segment);</span>
+         }
+<span class="fc" id="L899">    }</span>
+
+    /**
+     * Adds a segment relative to the baseTimeline as an exception. Because a
+     * base segment is normally larger than our segments, this may add one or
+     * more segment ranges to the exception list.
+     * &lt;p&gt;
+     * An exception segment is defined as a segment
+     * to exclude from what would otherwise be considered a valid segment of
+     * the timeline.  An exception segment can not be contained inside an
+     * already excluded segment.  If so, no action will occur (the proposed
+     * exception segment will be discarded).
+     * &lt;p&gt;
+     * The segment is identified by a domainValue into any part of the
+     * baseTimeline segment.
+     *
+     * @param domainValue  domain value to teat as a baseTimeline exception.
+     */
+    public void addBaseTimelineException(long domainValue) {
+
+<span class="fc" id="L919">        Segment baseSegment = this.baseTimeline.getSegment(domainValue);</span>
+<span class="pc bpc" id="L920" title="1 of 2 branches missed.">        if (baseSegment.inIncludeSegments()) {</span>
+
+            // cycle through all the segments contained in the BaseTimeline
+            // exception segment
+<span class="fc" id="L924">            Segment segment = getSegment(baseSegment.getSegmentStart());</span>
+<span class="fc bfc" id="L925" title="All 2 branches covered.">            while (segment.getSegmentStart() &lt;= baseSegment.getSegmentEnd()) {</span>
+<span class="fc bfc" id="L926" title="All 2 branches covered.">                if (segment.inIncludeSegments()) {</span>
+
+                    // find all consecutive included segments
+<span class="fc" id="L929">                    long fromDomainValue = segment.getSegmentStart();</span>
+                    long toDomainValue;
+                    do {
+<span class="fc" id="L932">                        toDomainValue = segment.getSegmentEnd();</span>
+<span class="fc" id="L933">                        segment.inc();</span>
+                    }
+<span class="fc bfc" id="L935" title="All 2 branches covered.">                    while (segment.inIncludeSegments());</span>
+
+                    // add the interval as an exception
+<span class="fc" id="L938">                    addException(fromDomainValue, toDomainValue);</span>
+
+<span class="fc" id="L940">                }</span>
+                else {
+                    // this is not one of our included segment, skip it
+<span class="fc" id="L943">                    segment.inc();</span>
+                }
+            }
+        }
+<span class="fc" id="L947">    }</span>
+
+    /**
+     * Adds a segment relative to the baseTimeline as an exception. An
+     * exception segment is defined as a segment to exclude from what would
+     * otherwise be considered a valid segment of the timeline.  An exception
+     * segment can not be contained inside an already excluded segment. If so,
+     * no action will occure (the proposed exception segment will be discarded).
+     * &lt;p&gt;
+     * The segment is identified by a domainValue into any part of the segment.
+     * Therefore the segmentStart &lt;= domainValue &lt;= segmentEnd.
+     *
+     * @param date  date domain value to treat as a baseTimeline exception
+     */
+    public void addBaseTimelineException(Date date) {
+<span class="nc" id="L962">        addBaseTimelineException(getTime(date));</span>
+<span class="nc" id="L963">    }</span>
+
+    /**
+     * Adds all excluded segments from the BaseTimeline as exceptions to our
+     * timeline. This allows us to combine two timelines for more complex
+     * calculations.
+     *
+     * @param fromBaseDomainValue Start of the range where exclusions will be
+     *                            extracted.
+     * @param toBaseDomainValue End of the range to process.
+     */
+    public void addBaseTimelineExclusions(long fromBaseDomainValue,
+                                          long toBaseDomainValue) {
+
+        // find first excluded base segment starting fromDomainValue
+<span class="fc" id="L978">        Segment baseSegment = this.baseTimeline.getSegment(fromBaseDomainValue);</span>
+<span class="pc bpc" id="L979" title="1 of 4 branches missed.">        while (baseSegment.getSegmentStart() &lt;= toBaseDomainValue</span>
+               &amp;&amp; !baseSegment.inExcludeSegments()) {
+
+<span class="fc" id="L982">            baseSegment.inc();</span>
+
+        }
+
+        // cycle over all the base segments groups in the range
+<span class="fc bfc" id="L987" title="All 2 branches covered.">        while (baseSegment.getSegmentStart() &lt;= toBaseDomainValue) {</span>
+
+<span class="fc" id="L989">            long baseExclusionRangeEnd = baseSegment.getSegmentStart()</span>
+                 + this.baseTimeline.getSegmentsExcluded()
+                 * this.baseTimeline.getSegmentSize() - 1;
+
+            // cycle through all the segments contained in the base exclusion
+            // area
+<span class="fc" id="L995">            Segment segment = getSegment(baseSegment.getSegmentStart());</span>
+<span class="fc bfc" id="L996" title="All 2 branches covered.">            while (segment.getSegmentStart() &lt;= baseExclusionRangeEnd) {</span>
+<span class="fc bfc" id="L997" title="All 2 branches covered.">                if (segment.inIncludeSegments()) {</span>
+
+                    // find all consecutive included segments
+<span class="fc" id="L1000">                    long fromDomainValue = segment.getSegmentStart();</span>
+                    long toDomainValue;
+                    do {
+<span class="fc" id="L1003">                        toDomainValue = segment.getSegmentEnd();</span>
+<span class="fc" id="L1004">                        segment.inc();</span>
+                    }
+<span class="fc bfc" id="L1006" title="All 2 branches covered.">                    while (segment.inIncludeSegments());</span>
+
+                    // add the interval as an exception
+<span class="fc" id="L1009">                    addException(new BaseTimelineSegmentRange(</span>
+                            fromDomainValue, toDomainValue));
+<span class="fc" id="L1011">                }</span>
+                else {
+                    // this is not one of our included segment, skip it
+<span class="fc" id="L1014">                    segment.inc();</span>
+                }
+            }
+
+            // go to next base segment group
+<span class="fc" id="L1019">            baseSegment.inc(this.baseTimeline.getGroupSegmentCount());</span>
+<span class="fc" id="L1020">        }</span>
+<span class="fc" id="L1021">    }</span>
+
+    /**
+     * Returns the number of exception segments wholly contained in the
+     * (fromDomainValue, toDomainValue) interval.
+     *
+     * @param fromMillisecond  the beginning of the interval.
+     * @param toMillisecond  the end of the interval.
+     *
+     * @return Number of exception segments contained in the interval.
+     */
+    public long getExceptionSegmentCount(long fromMillisecond,
+                                         long toMillisecond) {
+<span class="fc bfc" id="L1034" title="All 2 branches covered.">        if (toMillisecond &lt; fromMillisecond) {</span>
+<span class="fc" id="L1035">            return (0);</span>
+        }
+
+<span class="fc" id="L1038">        int n = 0;</span>
+<span class="fc" id="L1039">        for (Iterator iter = this.exceptionSegments.iterator();</span>
+<span class="fc bfc" id="L1040" title="All 2 branches covered.">             iter.hasNext();) {</span>
+<span class="fc" id="L1041">            Segment segment = (Segment) iter.next();</span>
+<span class="fc" id="L1042">            Segment intersection = segment.intersect(fromMillisecond,</span>
+                    toMillisecond);
+<span class="fc bfc" id="L1044" title="All 2 branches covered.">            if (intersection != null) {</span>
+<span class="fc" id="L1045">                n += intersection.getSegmentCount();</span>
+            }
+<span class="fc" id="L1047">        }</span>
+
+<span class="fc" id="L1049">        return (n);</span>
+    }
+
+    /**
+     * Returns a segment that contains a domainValue. If the domainValue is
+     * not contained in the timeline (because it is not contained in the
+     * baseTimeline), a Segment that contains
+     * &lt;code&gt;index + segmentSize*m&lt;/code&gt; will be returned for the smallest
+     * &lt;code&gt;m&lt;/code&gt; possible.
+     *
+     * @param millisecond  index into the segment
+     *
+     * @return A Segment that contains index, or the next possible Segment.
+     */
+    public Segment getSegment(long millisecond) {
+<span class="fc" id="L1064">        return new Segment(millisecond);</span>
+    }
+
+    /**
+     * Returns a segment that contains a date. For accurate calculations,
+     * the calendar should use TIME_ZONE for its calculation (or any other
+     * similar time zone).
+     *
+     * If the date is not contained in the timeline (because it is not
+     * contained in the baseTimeline), a Segment that contains
+     * &lt;code&gt;date + segmentSize*m&lt;/code&gt; will be returned for the smallest
+     * &lt;code&gt;m&lt;/code&gt; possible.
+     *
+     * @param date date into the segment
+     *
+     * @return A Segment that contains date, or the next possible Segment.
+     */
+    public Segment getSegment(Date date) {
+<span class="nc" id="L1082">        return (getSegment(getTime(date)));</span>
+    }
+
+    /**
+     * Convenient method to test equality in two objects, taking into account
+     * nulls.
+     *
+     * @param o first object to compare
+     * @param p second object to compare
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; if both objects are equal or both
+     *         &lt;code&gt;null&lt;/code&gt;, &lt;code&gt;false&lt;/code&gt; otherwise.
+     */
+    private boolean equals(Object o, Object p) {
+<span class="pc bpc" id="L1096" title="3 of 6 branches missed.">        return (o == p || ((o != null) &amp;&amp; o.equals(p)));</span>
+    }
+
+    /**
+     * Returns true if we are equal to the parameter
+     *
+     * @param o Object to verify with us
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;
+     */
+    @Override
+    public boolean equals(Object o) {
+<span class="fc bfc" id="L1108" title="All 2 branches covered.">        if (o instanceof SegmentedTimeline) {</span>
+<span class="fc" id="L1109">            SegmentedTimeline other = (SegmentedTimeline) o;</span>
+
+<span class="fc bfc" id="L1111" title="All 2 branches covered.">            boolean b0 = (this.segmentSize == other.getSegmentSize());</span>
+<span class="fc bfc" id="L1112" title="All 2 branches covered.">            boolean b1 = (this.segmentsIncluded == other.getSegmentsIncluded());</span>
+<span class="fc bfc" id="L1113" title="All 2 branches covered.">            boolean b2 = (this.segmentsExcluded == other.getSegmentsExcluded());</span>
+<span class="fc bfc" id="L1114" title="All 2 branches covered.">            boolean b3 = (this.startTime == other.getStartTime());</span>
+<span class="fc" id="L1115">            boolean b4 = equals(this.exceptionSegments,</span>
+                    other.getExceptionSegments());
+<span class="pc bpc" id="L1117" title="1 of 10 branches missed.">            return b0 &amp;&amp; b1 &amp;&amp; b2 &amp;&amp; b3 &amp;&amp; b4;</span>
+        }
+        else {
+<span class="fc" id="L1120">            return (false);</span>
+        }
+    }
+
+    /**
+     * Returns a hash code for this object.
+     *
+     * @return A hash code.
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L1131">        int result = 19;</span>
+<span class="fc" id="L1132">        result = 37 * result</span>
+                 + (int) (this.segmentSize ^ (this.segmentSize &gt;&gt;&gt; 32));
+<span class="fc" id="L1134">        result = 37 * result + (int) (this.startTime ^ (this.startTime &gt;&gt;&gt; 32));</span>
+<span class="fc" id="L1135">        return result;</span>
+    }
+
+    /**
+     * Preforms a binary serach in the exceptionSegments sorted array. This
+     * array can contain Segments or SegmentRange objects.
+     *
+     * @param  segment the key to be searched for.
+     *
+     * @return index of the search segment, if it is contained in the list;
+     *         otherwise, &lt;tt&gt;(-(&lt;i&gt;insertion point&lt;/i&gt;) - 1)&lt;/tt&gt;.  The
+     *         &lt;i&gt;insertion point&lt;/i&gt; is defined as the point at which the
+     *         segment would be inserted into the list: the index of the first
+     *         element greater than the key, or &lt;tt&gt;list.size()&lt;/tt&gt;, if all
+     *         elements in the list are less than the specified segment.  Note
+     *         that this guarantees that the return value will be &amp;gt;= 0 if
+     *         and only if the key is found.
+     */
+    private int binarySearchExceptionSegments(Segment segment) {
+<span class="fc" id="L1154">        int low = 0;</span>
+<span class="fc" id="L1155">        int high = this.exceptionSegments.size() - 1;</span>
+
+<span class="fc bfc" id="L1157" title="All 2 branches covered.">        while (low &lt;= high) {</span>
+<span class="fc" id="L1158">            int mid = (low + high) / 2;</span>
+<span class="fc" id="L1159">            Segment midSegment = (Segment) this.exceptionSegments.get(mid);</span>
+
+            // first test for equality (contains or contained)
+<span class="fc bfc" id="L1162" title="All 4 branches covered.">            if (segment.contains(midSegment) || midSegment.contains(segment)) {</span>
+<span class="fc" id="L1163">                return mid;</span>
+            }
+
+<span class="fc bfc" id="L1166" title="All 2 branches covered.">            if (midSegment.before(segment)) {</span>
+<span class="fc" id="L1167">                low = mid + 1;</span>
+            }
+<span class="pc bpc" id="L1169" title="1 of 2 branches missed.">            else if (midSegment.after(segment)) {</span>
+<span class="fc" id="L1170">                high = mid - 1;</span>
+            }
+            else {
+<span class="nc" id="L1173">                throw new IllegalStateException(&quot;Invalid condition.&quot;);</span>
+            }
+<span class="fc" id="L1175">        }</span>
+<span class="fc" id="L1176">        return -(low + 1);  // key not found</span>
+    }
+
+    /**
+     * Special method that handles conversion between the Default Time Zone and
+     * a UTC time zone with no DST. This is needed so all days have the same
+     * size. This method is the prefered way of converting a Data into
+     * milliseconds for usage in this class.
+     *
+     * @param date Date to convert to long.
+     *
+     * @return The milliseconds.
+     */
+    public long getTime(Date date) {
+<span class="fc" id="L1190">        long result = date.getTime();</span>
+<span class="fc bfc" id="L1191" title="All 2 branches covered.">        if (this.adjustForDaylightSaving) {</span>
+<span class="fc" id="L1192">            this.workingCalendar.setTime(date);</span>
+<span class="fc" id="L1193">            this.workingCalendarNoDST.set(</span>
+                    this.workingCalendar.get(Calendar.YEAR),
+                    this.workingCalendar.get(Calendar.MONTH),
+                    this.workingCalendar.get(Calendar.DATE),
+                    this.workingCalendar.get(Calendar.HOUR_OF_DAY),
+                    this.workingCalendar.get(Calendar.MINUTE),
+                    this.workingCalendar.get(Calendar.SECOND));
+<span class="fc" id="L1200">            this.workingCalendarNoDST.set(Calendar.MILLISECOND,</span>
+                    this.workingCalendar.get(Calendar.MILLISECOND));
+<span class="fc" id="L1202">            Date revisedDate = this.workingCalendarNoDST.getTime();</span>
+<span class="fc" id="L1203">            result = revisedDate.getTime();</span>
+        }
+
+<span class="fc" id="L1206">        return result;</span>
+    }
+
+    /**
+     * Converts a millisecond value into a {@link Date} object.
+     *
+     * @param value  the millisecond value.
+     *
+     * @return The date.
+     */
+    public Date getDate(long value) {
+<span class="nc" id="L1217">        this.workingCalendarNoDST.setTime(new Date(value));</span>
+<span class="nc" id="L1218">        return (this.workingCalendarNoDST.getTime());</span>
+    }
+
+    /**
+     * Returns a clone of the timeline.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException ??.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L1230">        SegmentedTimeline clone = (SegmentedTimeline) super.clone();</span>
+<span class="fc" id="L1231">        return clone;</span>
+    }
+
+    /**
+     * Internal class to represent a valid segment for this timeline. A segment
+     * is valid on a timeline if it is part of its included, excluded or
+     * exception segments.
+     * &lt;p&gt;
+     * Each segment will know its segment number, segmentStart, segmentEnd and
+     * index inside the segment.
+     */
+    public class Segment implements Comparable, Cloneable, Serializable {
+
+        /** The segment number. */
+        protected long segmentNumber;
+
+        /** The segment start. */
+        protected long segmentStart;
+
+        /** The segment end. */
+        protected long segmentEnd;
+
+        /** A reference point within the segment. */
+        protected long millisecond;
+
+        /**
+         * Protected constructor only used by sub-classes.
+         */
+<span class="fc" id="L1259">        protected Segment() {</span>
+            // empty
+<span class="fc" id="L1261">        }</span>
+
+        /**
+         * Creates a segment for a given point in time.
+         *
+         * @param millisecond  the millisecond (as encoded by java.util.Date).
+         */
+<span class="fc" id="L1268">        protected Segment(long millisecond) {</span>
+<span class="fc" id="L1269">            this.segmentNumber = calculateSegmentNumber(millisecond);</span>
+<span class="fc" id="L1270">            this.segmentStart = SegmentedTimeline.this.startTime</span>
+                + this.segmentNumber * SegmentedTimeline.this.segmentSize;
+<span class="fc" id="L1272">            this.segmentEnd</span>
+                = this.segmentStart + SegmentedTimeline.this.segmentSize - 1;
+<span class="fc" id="L1274">            this.millisecond = millisecond;</span>
+<span class="fc" id="L1275">        }</span>
+
+        /**
+         * Calculates the segment number for a given millisecond.
+         *
+         * @param millis  the millisecond (as encoded by java.util.Date).
+         *
+         * @return The segment number.
+         */
+        public long calculateSegmentNumber(long millis) {
+<span class="fc bfc" id="L1285" title="All 2 branches covered.">            if (millis &gt;= SegmentedTimeline.this.startTime) {</span>
+<span class="fc" id="L1286">                return (millis - SegmentedTimeline.this.startTime)</span>
+                    / SegmentedTimeline.this.segmentSize;
+            }
+            else {
+<span class="fc" id="L1290">                return ((millis - SegmentedTimeline.this.startTime)</span>
+                    / SegmentedTimeline.this.segmentSize) - 1;
+            }
+        }
+
+        /**
+         * Returns the segment number of this segment. Segments start at 0.
+         *
+         * @return The segment number.
+         */
+        public long getSegmentNumber() {
+<span class="fc" id="L1301">            return this.segmentNumber;</span>
+        }
+
+        /**
+         * Returns always one (the number of segments contained in this
+         * segment).
+         *
+         * @return The segment count (always 1 for this class).
+         */
+        public long getSegmentCount() {
+<span class="fc" id="L1311">            return 1;</span>
+        }
+
+        /**
+         * Gets the start of this segment in ms.
+         *
+         * @return The segment start.
+         */
+        public long getSegmentStart() {
+<span class="fc" id="L1320">            return this.segmentStart;</span>
+        }
+
+        /**
+         * Gets the end of this segment in ms.
+         *
+         * @return The segment end.
+         */
+        public long getSegmentEnd() {
+<span class="fc" id="L1329">            return this.segmentEnd;</span>
+        }
+
+        /**
+         * Returns the millisecond used to reference this segment (always
+         * between the segmentStart and segmentEnd).
+         *
+         * @return The millisecond.
+         */
+        public long getMillisecond() {
+<span class="fc" id="L1339">            return this.millisecond;</span>
+        }
+
+        /**
+         * Returns a {@link java.util.Date} that represents the reference point
+         * for this segment.
+         *
+         * @return The date.
+         */
+        public Date getDate() {
+<span class="nc" id="L1349">            return SegmentedTimeline.this.getDate(this.millisecond);</span>
+        }
+
+        /**
+         * Returns true if a particular millisecond is contained in this
+         * segment.
+         *
+         * @param millis  the millisecond to verify.
+         *
+         * @return &lt;code&gt;true&lt;/code&gt; if the millisecond is contained in the
+         *         segment.
+         */
+        public boolean contains(long millis) {
+<span class="nc bnc" id="L1362" title="All 4 branches missed.">            return (this.segmentStart &lt;= millis &amp;&amp; millis &lt;= this.segmentEnd);</span>
+        }
+
+        /**
+         * Returns &lt;code&gt;true&lt;/code&gt; if an interval is contained in this
+         * segment.
+         *
+         * @param from  the start of the interval.
+         * @param to  the end of the interval.
+         *
+         * @return &lt;code&gt;true&lt;/code&gt; if the interval is contained in the
+         *         segment.
+         */
+        public boolean contains(long from, long to) {
+<span class="fc bfc" id="L1376" title="All 4 branches covered.">            return (this.segmentStart &lt;= from &amp;&amp; to &lt;= this.segmentEnd);</span>
+        }
+
+        /**
+         * Returns &lt;code&gt;true&lt;/code&gt; if a segment is contained in this segment.
+         *
+         * @param segment  the segment to test for inclusion
+         *
+         * @return &lt;code&gt;true&lt;/code&gt; if the segment is contained in this
+         *         segment.
+         */
+        public boolean contains(Segment segment) {
+<span class="fc" id="L1388">            return contains(segment.getSegmentStart(), segment.getSegmentEnd());</span>
+        }
+
+        /**
+         * Returns &lt;code&gt;true&lt;/code&gt; if this segment is contained in an
+         * interval.
+         *
+         * @param from  the start of the interval.
+         * @param to  the end of the interval.
+         *
+         * @return &lt;code&gt;true&lt;/code&gt; if this segment is contained in the
+         *         interval.
+         */
+        public boolean contained(long from, long to) {
+<span class="nc bnc" id="L1402" title="All 4 branches missed.">            return (from &lt;= this.segmentStart &amp;&amp; this.segmentEnd &lt;= to);</span>
+        }
+
+        /**
+         * Returns a segment that is the intersection of this segment and the
+         * interval.
+         *
+         * @param from  the start of the interval.
+         * @param to  the end of the interval.
+         *
+         * @return A segment.
+         */
+        public Segment intersect(long from, long to) {
+<span class="fc bfc" id="L1415" title="All 4 branches covered.">            if (from &lt;= this.segmentStart &amp;&amp; this.segmentEnd &lt;= to) {</span>
+<span class="fc" id="L1416">                return this;</span>
+            }
+            else {
+<span class="fc" id="L1419">                return null;</span>
+            }
+        }
+
+        /**
+         * Returns &lt;code&gt;true&lt;/code&gt; if this segment is wholly before another
+         * segment.
+         *
+         * @param other  the other segment.
+         *
+         * @return A boolean.
+         */
+        public boolean before(Segment other) {
+<span class="fc bfc" id="L1432" title="All 2 branches covered.">            return (this.segmentEnd &lt; other.getSegmentStart());</span>
+        }
+
+        /**
+         * Returns &lt;code&gt;true&lt;/code&gt; if this segment is wholly after another
+         * segment.
+         *
+         * @param other  the other segment.
+         *
+         * @return A boolean.
+         */
+        public boolean after(Segment other) {
+<span class="pc bpc" id="L1444" title="1 of 2 branches missed.">            return (this.segmentStart &gt; other.getSegmentEnd());</span>
+        }
+
+        /**
+         * Tests an object (usually another &lt;code&gt;Segment&lt;/code&gt;) for equality
+         * with this segment.
+         *
+         * @param object The other segment to compare with us
+         *
+         * @return &lt;code&gt;true&lt;/code&gt; if we are the same segment
+         */
+        @Override
+        public boolean equals(Object object) {
+<span class="nc bnc" id="L1457" title="All 2 branches missed.">            if (object instanceof Segment) {</span>
+<span class="nc" id="L1458">                Segment other = (Segment) object;</span>
+<span class="nc bnc" id="L1459" title="All 8 branches missed.">                return (this.segmentNumber == other.getSegmentNumber()</span>
+                        &amp;&amp; this.segmentStart == other.getSegmentStart()
+                        &amp;&amp; this.segmentEnd == other.getSegmentEnd()
+                        &amp;&amp; this.millisecond == other.getMillisecond());
+            }
+            else {
+<span class="nc" id="L1465">                return false;</span>
+            }
+        }
+
+        /**
+         * Returns a copy of ourselves or &lt;code&gt;null&lt;/code&gt; if there was an
+         * exception during cloning.
+         *
+         * @return A copy of this segment.
+         */
+        public Segment copy() {
+            try {
+<span class="fc" id="L1477">                return (Segment) this.clone();</span>
+            }
+<span class="nc" id="L1479">            catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L1480">                return null;</span>
+            }
+        }
+
+        /**
+         * Will compare this Segment with another Segment (from Comparable
+         * interface).
+         *
+         * @param object The other Segment to compare with
+         *
+         * @return -1: this &lt; object, 0: this.equal(object) and
+         *         +1: this &gt; object
+         */
+        @Override
+        public int compareTo(Object object) {
+<span class="nc" id="L1495">            Segment other = (Segment) object;</span>
+<span class="nc bnc" id="L1496" title="All 2 branches missed.">            if (this.before(other)) {</span>
+<span class="nc" id="L1497">                return -1;</span>
+            }
+<span class="nc bnc" id="L1499" title="All 2 branches missed.">            else if (this.after(other)) {</span>
+<span class="nc" id="L1500">                return +1;</span>
+            }
+            else {
+<span class="nc" id="L1503">                return 0;</span>
+            }
+        }
+
+        /**
+         * Returns true if we are an included segment and we are not an
+         * exception.
+         *
+         * @return &lt;code&gt;true&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;.
+         */
+        public boolean inIncludeSegments() {
+<span class="fc bfc" id="L1514" title="All 2 branches covered.">            if (getSegmentNumberRelativeToGroup()</span>
+                    &lt; SegmentedTimeline.this.segmentsIncluded) {
+<span class="fc bfc" id="L1516" title="All 2 branches covered.">                return !inExceptionSegments();</span>
+            }
+            else {
+<span class="fc" id="L1519">                return false;</span>
+            }
+        }
+
+        /**
+         * Returns true if we are an excluded segment.
+         *
+         * @return &lt;code&gt;true&lt;/code&gt; or &lt;code&gt;false&lt;/code&gt;.
+         */
+        public boolean inExcludeSegments() {
+<span class="fc bfc" id="L1529" title="All 2 branches covered.">            return getSegmentNumberRelativeToGroup()</span>
+                    &gt;= SegmentedTimeline.this.segmentsIncluded;
+        }
+
+        /**
+         * Calculate the segment number relative to the segment group. This
+         * will be a number between 0 and segmentsGroup-1. This value is
+         * calculated from the segmentNumber. Special care is taken for
+         * negative segmentNumbers.
+         *
+         * @return The segment number.
+         */
+        private long getSegmentNumberRelativeToGroup() {
+<span class="fc" id="L1542">            long p = (this.segmentNumber</span>
+                    % SegmentedTimeline.this.groupSegmentCount);
+<span class="fc bfc" id="L1544" title="All 2 branches covered.">            if (p &lt; 0) {</span>
+<span class="fc" id="L1545">                p += SegmentedTimeline.this.groupSegmentCount;</span>
+            }
+<span class="fc" id="L1547">            return p;</span>
+        }
+
+        /**
+         * Returns true if we are an exception segment. This is implemented via
+         * a binary search on the exceptionSegments sorted list.
+         *
+         * If the segment is not listed as an exception in our list and we have
+         * a baseTimeline, a check is performed to see if the segment is inside
+         * an excluded segment from our base. If so, it is also considered an
+         * exception.
+         *
+         * @return &lt;code&gt;true&lt;/code&gt; if we are an exception segment.
+         */
+        public boolean inExceptionSegments() {
+<span class="fc bfc" id="L1562" title="All 2 branches covered.">            return binarySearchExceptionSegments(this) &gt;= 0;</span>
+        }
+
+        /**
+         * Increments the internal attributes of this segment by a number of
+         * segments.
+         *
+         * @param n Number of segments to increment.
+         */
+        public void inc(long n) {
+<span class="fc" id="L1572">            this.segmentNumber += n;</span>
+<span class="fc" id="L1573">            long m = n * SegmentedTimeline.this.segmentSize;</span>
+<span class="fc" id="L1574">            this.segmentStart += m;</span>
+<span class="fc" id="L1575">            this.segmentEnd += m;</span>
+<span class="fc" id="L1576">            this.millisecond += m;</span>
+<span class="fc" id="L1577">        }</span>
+
+        /**
+         * Increments the internal attributes of this segment by one segment.
+         * The exact time incremented is segmentSize.
+         */
+        public void inc() {
+<span class="fc" id="L1584">            inc(1);</span>
+<span class="fc" id="L1585">        }</span>
+
+        /**
+         * Decrements the internal attributes of this segment by a number of
+         * segments.
+         *
+         * @param n Number of segments to decrement.
+         */
+        public void dec(long n) {
+<span class="nc" id="L1594">            this.segmentNumber -= n;</span>
+<span class="nc" id="L1595">            long m = n * SegmentedTimeline.this.segmentSize;</span>
+<span class="nc" id="L1596">            this.segmentStart -= m;</span>
+<span class="nc" id="L1597">            this.segmentEnd -= m;</span>
+<span class="nc" id="L1598">            this.millisecond -= m;</span>
+<span class="nc" id="L1599">        }</span>
+
+        /**
+         * Decrements the internal attributes of this segment by one segment.
+         * The exact time decremented is segmentSize.
+         */
+        public void dec() {
+<span class="nc" id="L1606">            dec(1);</span>
+<span class="nc" id="L1607">        }</span>
+
+        /**
+         * Moves the index of this segment to the beginning if the segment.
+         */
+        public void moveIndexToStart() {
+<span class="fc" id="L1613">            this.millisecond = this.segmentStart;</span>
+<span class="fc" id="L1614">        }</span>
+
+        /**
+         * Moves the index of this segment to the end of the segment.
+         */
+        public void moveIndexToEnd() {
+<span class="nc" id="L1620">            this.millisecond = this.segmentEnd;</span>
+<span class="nc" id="L1621">        }</span>
+
+    }
+
+    /**
+     * Private internal class to represent a range of segments. This class is
+     * mainly used to store in one object a range of exception segments. This
+     * optimizes certain timelines that use a small segment size (like an
+     * intraday timeline) allowing them to express a day exception as one
+     * SegmentRange instead of multi Segments.
+     */
+    protected class SegmentRange extends Segment {
+
+        /** The number of segments in the range. */
+        private long segmentCount;
+
+        /**
+         * Creates a SegmentRange between a start and end domain values.
+         *
+         * @param fromMillisecond  start of the range
+         * @param toMillisecond  end of the range
+         */
+<span class="fc" id="L1643">        public SegmentRange(long fromMillisecond, long toMillisecond) {</span>
+
+<span class="fc" id="L1645">            Segment start = getSegment(fromMillisecond);</span>
+<span class="fc" id="L1646">            Segment end = getSegment(toMillisecond);</span>
+//            if (start.getSegmentStart() != fromMillisecond
+//                || end.getSegmentEnd() != toMillisecond) {
+//                throw new IllegalArgumentException(&quot;Invalid Segment Range [&quot;
+//                    + fromMillisecond + &quot;,&quot; + toMillisecond + &quot;]&quot;);
+//            }
+
+<span class="fc" id="L1653">            this.millisecond = fromMillisecond;</span>
+<span class="fc" id="L1654">            this.segmentNumber = calculateSegmentNumber(fromMillisecond);</span>
+<span class="fc" id="L1655">            this.segmentStart = start.segmentStart;</span>
+<span class="fc" id="L1656">            this.segmentEnd = end.segmentEnd;</span>
+<span class="fc" id="L1657">            this.segmentCount</span>
+                = (end.getSegmentNumber() - start.getSegmentNumber() + 1);
+<span class="fc" id="L1659">        }</span>
+
+        /**
+         * Returns the number of segments contained in this range.
+         *
+         * @return The segment count.
+         */
+        @Override
+        public long getSegmentCount() {
+<span class="fc" id="L1668">            return this.segmentCount;</span>
+        }
+
+        /**
+         * Returns a segment that is the intersection of this segment and the
+         * interval.
+         *
+         * @param from  the start of the interval.
+         * @param to  the end of the interval.
+         *
+         * @return The intersection.
+         */
+        @Override
+        public Segment intersect(long from, long to) {
+
+            // Segment fromSegment = getSegment(from);
+            // fromSegment.inc();
+            // Segment toSegment = getSegment(to);
+            // toSegment.dec();
+<span class="fc" id="L1687">            long start = Math.max(from, this.segmentStart);</span>
+<span class="fc" id="L1688">            long end = Math.min(to, this.segmentEnd);</span>
+            // long start = Math.max(
+            //     fromSegment.getSegmentStart(), this.segmentStart
+            // );
+            // long end = Math.min(toSegment.getSegmentEnd(), this.segmentEnd);
+<span class="fc bfc" id="L1693" title="All 2 branches covered.">            if (start &lt;= end) {</span>
+<span class="fc" id="L1694">                return new SegmentRange(start, end);</span>
+            }
+            else {
+<span class="fc" id="L1697">                return null;</span>
+            }
+        }
+
+        /**
+         * Returns true if all Segments of this SegmentRenge are an included
+         * segment and are not an exception.
+         *
+         * @return &lt;code&gt;true&lt;/code&gt; or &lt;/code&gt;false&lt;/code&gt;.
+         */
+        @Override
+        public boolean inIncludeSegments() {
+<span class="fc" id="L1709">            for (Segment segment = getSegment(this.segmentStart);</span>
+<span class="fc bfc" id="L1710" title="All 2 branches covered.">                segment.getSegmentStart() &lt; this.segmentEnd;</span>
+<span class="fc" id="L1711">                segment.inc()) {</span>
+<span class="pc bpc" id="L1712" title="1 of 2 branches missed.">                if (!segment.inIncludeSegments()) {</span>
+<span class="nc" id="L1713">                    return (false);</span>
+                }
+            }
+<span class="fc" id="L1716">            return true;</span>
+        }
+
+        /**
+         * Returns true if we are an excluded segment.
+         *
+         * @return &lt;code&gt;true&lt;/code&gt; or &lt;/code&gt;false&lt;/code&gt;.
+         */
+        @Override
+        public boolean inExcludeSegments() {
+<span class="nc" id="L1726">            for (Segment segment = getSegment(this.segmentStart);</span>
+<span class="nc bnc" id="L1727" title="All 2 branches missed.">                segment.getSegmentStart() &lt; this.segmentEnd;</span>
+<span class="nc" id="L1728">                segment.inc()) {</span>
+<span class="nc bnc" id="L1729" title="All 2 branches missed.">                if (!segment.inExceptionSegments()) {</span>
+<span class="nc" id="L1730">                    return (false);</span>
+                }
+            }
+<span class="nc" id="L1733">            return true;</span>
+        }
+
+        /**
+         * Not implemented for SegmentRange. Always throws
+         * IllegalArgumentException.
+         *
+         * @param n Number of segments to increment.
+         */
+        @Override
+        public void inc(long n) {
+<span class="nc" id="L1744">            throw new IllegalArgumentException(</span>
+                    &quot;Not implemented in SegmentRange&quot;);
+        }
+
+    }
+
+    /**
+     * Special &lt;code&gt;SegmentRange&lt;/code&gt; that came from the BaseTimeline.
+     */
+    protected class BaseTimelineSegmentRange extends SegmentRange {
+
+        /**
+         * Constructor.
+         *
+         * @param fromDomainValue  the start value.
+         * @param toDomainValue  the end value.
+         */
+        public BaseTimelineSegmentRange(long fromDomainValue,
+<span class="fc" id="L1762">                                        long toDomainValue) {</span>
+<span class="fc" id="L1763">            super(fromDomainValue, toDomainValue);</span>
+<span class="fc" id="L1764">        }</span>
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,710 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>TemplateableOutput.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Jbehave-core</a> &gt; <a href="index.source.html" class="el_package">org.jbehave.core.reporters</a> &gt; <span class="el_source">TemplateableOutput.java</span></div><h1>TemplateableOutput.java</h1><pre class="source lang-java linenums">package org.jbehave.core.reporters;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.Writer;
+import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.lang.StringEscapeUtils;
+import org.apache.commons.lang.StringUtils;
+import org.jbehave.core.configuration.Keywords;
+import org.jbehave.core.model.ExamplesTable;
+import org.jbehave.core.model.GivenStories;
+import org.jbehave.core.model.Lifecycle;
+import org.jbehave.core.model.Meta;
+import org.jbehave.core.model.Narrative;
+import org.jbehave.core.model.OutcomesTable;
+import org.jbehave.core.model.Scenario;
+import org.jbehave.core.model.Story;
+import org.jbehave.core.model.StoryDuration;
+
+import freemarker.ext.beans.BeansWrapper;
+import freemarker.template.TemplateHashModel;
+import freemarker.template.TemplateModelException;
+
+import static org.jbehave.core.steps.StepCreator.PARAMETER_TABLE_END;
+import static org.jbehave.core.steps.StepCreator.PARAMETER_TABLE_START;
+import static org.jbehave.core.steps.StepCreator.PARAMETER_VALUE_END;
+import static org.jbehave.core.steps.StepCreator.PARAMETER_VALUE_START;
+
+/**
+ * &lt;p&gt;
+ * Story reporter that outputs to a template.
+ * &lt;/p&gt;
+ */
+public class TemplateableOutput implements StoryReporter {
+
+    private final File file;
+    private final Keywords keywords;
+    private final TemplateProcessor processor;
+    private final String templatePath;
+<span class="nc" id="L47">    private OutputStory outputStory = new OutputStory();</span>
+<span class="nc" id="L48">    private OutputScenario outputScenario = new OutputScenario();</span>
+    private OutputStep failedStep;
+
+<span class="nc" id="L51">    public TemplateableOutput(File file, Keywords keywords, TemplateProcessor processor, String templatePath) {</span>
+<span class="nc" id="L52">        this.file = file;</span>
+<span class="nc" id="L53">        this.keywords = keywords;</span>
+<span class="nc" id="L54">        this.processor = processor;</span>
+<span class="nc" id="L55">        this.templatePath = templatePath;</span>
+<span class="nc" id="L56">    }</span>
+
+    public void storyNotAllowed(Story story, String filter) {
+<span class="nc" id="L59">        this.outputStory.notAllowedBy = filter;</span>
+<span class="nc" id="L60">    }</span>
+
+    public void beforeStory(Story story, boolean givenStory) {
+<span class="nc bnc" id="L63" title="All 2 branches missed.">        if (!givenStory) {</span>
+<span class="nc" id="L64">            this.outputStory = new OutputStory();</span>
+<span class="nc" id="L65">            this.outputStory.description = story.getDescription().asString();</span>
+<span class="nc" id="L66">            this.outputStory.path = story.getPath();</span>
+        }
+<span class="nc bnc" id="L68" title="All 2 branches missed.">        if (!story.getMeta().isEmpty()) {</span>
+<span class="nc" id="L69">            this.outputStory.meta = new OutputMeta(story.getMeta());</span>
+        }
+<span class="nc" id="L71">    }</span>
+
+    public void narrative(Narrative narrative) {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (!narrative.isEmpty()) {</span>
+<span class="nc" id="L75">            this.outputStory.narrative = new OutputNarrative(narrative);</span>
+        }
+<span class="nc" id="L77">    }</span>
+
+    public void lifecyle(Lifecycle lifecycle) {
+<span class="nc bnc" id="L80" title="All 2 branches missed.">        if(!lifecycle.isEmpty()){</span>
+<span class="nc" id="L81">            this.outputStory.lifecycle = new OutputLifecycle(lifecycle);            </span>
+        }
+<span class="nc" id="L83">    }</span>
+
+
+    public void scenarioNotAllowed(Scenario scenario, String filter) {
+<span class="nc" id="L87">        this.outputScenario.notAllowedBy = filter;</span>
+<span class="nc" id="L88">    }</span>
+
+    public void beforeScenario(String title) {
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        if (this.outputScenario.currentExample == null) {</span>
+<span class="nc" id="L92">            this.outputScenario = new OutputScenario();</span>
+        }
+<span class="nc" id="L94">        this.outputScenario.title = title;</span>
+<span class="nc" id="L95">    }</span>
+
+    public void beforeStep(String step) {
+<span class="nc" id="L98">    }</span>
+
+    public void successful(String step) {
+<span class="nc" id="L101">        this.outputScenario.addStep(new OutputStep(step, &quot;successful&quot;));</span>
+<span class="nc" id="L102">    }</span>
+
+    public void ignorable(String step) {
+<span class="nc" id="L105">        this.outputScenario.addStep(new OutputStep(step, &quot;ignorable&quot;));</span>
+<span class="nc" id="L106">    }</span>
+
+    public void pending(String step) {
+<span class="nc" id="L109">        this.outputScenario.addStep(new OutputStep(step, &quot;pending&quot;));</span>
+<span class="nc" id="L110">    }</span>
+
+    public void notPerformed(String step) {
+<span class="nc" id="L113">        this.outputScenario.addStep(new OutputStep(step, &quot;notPerformed&quot;));</span>
+<span class="nc" id="L114">    }</span>
+
+    public void failed(String step, Throwable storyFailure) {
+<span class="nc" id="L117">        this.failedStep = new OutputStep(step, &quot;failed&quot;);</span>
+<span class="nc" id="L118">        failedStep.failure = storyFailure;</span>
+<span class="nc" id="L119">        this.outputScenario.addStep(failedStep);</span>
+<span class="nc" id="L120">    }</span>
+
+    public void failedOutcomes(String step, OutcomesTable table) {
+<span class="nc" id="L123">        failed(step, table.failureCause());</span>
+<span class="nc" id="L124">        this.failedStep.outcomes = table;</span>
+<span class="nc" id="L125">    }</span>
+
+    public void givenStories(GivenStories givenStories) {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (!givenStories.getStories().isEmpty()) {</span>
+<span class="nc" id="L129">            this.outputScenario.givenStories = givenStories;</span>
+        }
+<span class="nc" id="L131">    }</span>
+
+    public void givenStories(List&lt;String&gt; storyPaths) {
+<span class="nc" id="L134">        givenStories(new GivenStories(StringUtils.join(storyPaths, &quot;,&quot;)));</span>
+<span class="nc" id="L135">    }</span>
+
+    public void scenarioMeta(Meta meta) {
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        if (!meta.isEmpty()) {</span>
+<span class="nc" id="L139">            this.outputScenario.meta = new OutputMeta(meta);</span>
+        }
+<span class="nc" id="L141">    }</span>
+
+    public void beforeExamples(List&lt;String&gt; steps, ExamplesTable table) {
+<span class="nc" id="L144">        this.outputScenario.examplesSteps = steps;</span>
+<span class="nc" id="L145">        this.outputScenario.examplesTable = table;</span>
+<span class="nc" id="L146">    }</span>
+
+    public void example(Map&lt;String, String&gt; parameters) {
+<span class="nc" id="L149">        this.outputScenario.examples.add(parameters);</span>
+<span class="nc" id="L150">        this.outputScenario.currentExample = parameters;</span>
+<span class="nc" id="L151">    }</span>
+
+    public void afterExamples() {
+<span class="nc" id="L154">        this.outputScenario.currentExample = null;</span>
+<span class="nc" id="L155">    }</span>
+
+    public void dryRun() {
+<span class="nc" id="L158">    }</span>
+
+    public void afterScenario() {
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (this.outputScenario.currentExample == null) {</span>
+<span class="nc" id="L162">            this.outputStory.scenarios.add(outputScenario);</span>
+        }
+<span class="nc" id="L164">    }</span>
+
+    public void pendingMethods(List&lt;String&gt; methods) {
+<span class="nc" id="L167">        this.outputStory.pendingMethods = methods;</span>
+<span class="nc" id="L168">    }</span>
+
+    public void restarted(String step, Throwable cause) {
+<span class="nc" id="L171">        this.outputScenario.addStep(new OutputRestart(step, cause.getMessage()));</span>
+<span class="nc" id="L172">    }</span>
+
+    public void storyCancelled(Story story, StoryDuration storyDuration) {
+<span class="nc" id="L175">        this.outputStory.cancelled = true;</span>
+<span class="nc" id="L176">        this.outputStory.storyDuration = storyDuration;</span>
+<span class="nc" id="L177">    }</span>
+
+    public void afterStory(boolean givenStory) {
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (!givenStory) {</span>
+<span class="nc" id="L181">            Map&lt;String, Object&gt; model = newDataModel();</span>
+<span class="nc" id="L182">            model.put(&quot;story&quot;, outputStory);</span>
+<span class="nc" id="L183">            model.put(&quot;keywords&quot;, new OutputKeywords(keywords));</span>
+
+<span class="nc" id="L185">            BeansWrapper wrapper = BeansWrapper.getDefaultInstance();</span>
+<span class="nc" id="L186">            TemplateHashModel enumModels = wrapper.getEnumModels();</span>
+            TemplateHashModel escapeEnums;
+            try {
+<span class="nc" id="L189">                String escapeModeEnum = EscapeMode.class.getCanonicalName();</span>
+<span class="nc" id="L190">                escapeEnums = (TemplateHashModel) enumModels.get(escapeModeEnum);</span>
+<span class="nc" id="L191">                model.put(&quot;EscapeMode&quot;, escapeEnums);  </span>
+<span class="nc" id="L192">            } catch (TemplateModelException e) {</span>
+<span class="nc" id="L193">                throw new IllegalArgumentException(e);</span>
+<span class="nc" id="L194">            }  </span>
+
+<span class="nc" id="L196">            write(file, templatePath, model);</span>
+        }
+<span class="nc" id="L198">    }</span>
+
+    private File write(File file, String resource, Map&lt;String, Object&gt; dataModel) {
+        try {
+<span class="nc" id="L202">            file.getParentFile().mkdirs();</span>
+<span class="nc" id="L203">            Writer writer = new FileWriter(file);</span>
+<span class="nc" id="L204">            processor.process(resource, dataModel, writer);</span>
+<span class="nc" id="L205">            writer.close();</span>
+<span class="nc" id="L206">            return file;</span>
+<span class="nc" id="L207">        } catch (Exception e) {</span>
+<span class="nc" id="L208">            throw new RuntimeException(resource, e);</span>
+        }
+    }
+
+    private Map&lt;String, Object&gt; newDataModel() {
+<span class="nc" id="L213">        return new HashMap&lt;String, Object&gt;();</span>
+    }
+
+    public static class OutputKeywords {
+
+        private final Keywords keywords;
+
+<span class="nc" id="L220">        public OutputKeywords(Keywords keywords) {</span>
+<span class="nc" id="L221">            this.keywords = keywords;</span>
+<span class="nc" id="L222">        }</span>
+
+        public String getLifecycle(){
+<span class="nc" id="L225">            return keywords.lifecycle();</span>
+        }
+
+        public String getBefore(){
+<span class="nc" id="L229">            return keywords.before();</span>
+        }
+
+        public String getAfter(){
+<span class="nc" id="L233">            return keywords.after();</span>
+        }
+
+        public String getMeta() {
+<span class="nc" id="L237">            return keywords.meta();</span>
+        }
+
+        public String getMetaProperty() {
+<span class="nc" id="L241">            return keywords.metaProperty();</span>
+        }
+
+        public String getNarrative() {
+<span class="nc" id="L245">            return keywords.narrative();</span>
+        }
+
+        public String getInOrderTo() {
+<span class="nc" id="L249">            return keywords.inOrderTo();</span>
+        }
+
+        public String getAsA() {
+<span class="nc" id="L253">            return keywords.asA();</span>
+        }
+
+        public String getiWantTo() {
+<span class="nc" id="L257">            return keywords.iWantTo();</span>
+        }
+
+        public String getSoThat() {
+<span class="nc" id="L261">            return keywords.soThat();</span>
+        }
+
+        public String getScenario() {
+<span class="nc" id="L265">            return keywords.scenario();</span>
+        }
+
+        public String getGivenStories() {
+<span class="nc" id="L269">            return keywords.givenStories();</span>
+        }
+
+        public String getExamplesTable() {
+<span class="nc" id="L273">            return keywords.examplesTable();</span>
+        }
+
+        public String getExamplesTableRow() {
+<span class="nc" id="L277">            return keywords.examplesTableRow();</span>
+        }
+
+        public String getExamplesTableHeaderSeparator() {
+<span class="nc" id="L281">            return keywords.examplesTableHeaderSeparator();</span>
+        }
+
+        public String getExamplesTableValueSeparator() {
+<span class="nc" id="L285">            return keywords.examplesTableValueSeparator();</span>
+        }
+
+        public String getExamplesTableIgnorableSeparator() {
+<span class="nc" id="L289">            return keywords.examplesTableIgnorableSeparator();</span>
+        }
+
+        public String getGiven() {
+<span class="nc" id="L293">            return keywords.given();</span>
+        }
+
+        public String getWhen() {
+<span class="nc" id="L297">            return keywords.when();</span>
+        }
+
+        public String getThen() {
+<span class="nc" id="L301">            return keywords.then();</span>
+        }
+
+        public String getAnd() {
+<span class="nc" id="L305">            return keywords.and();</span>
+        }
+
+        public String getIgnorable() {
+<span class="nc" id="L309">            return keywords.ignorable();</span>
+        }
+
+        public String getPending() {
+<span class="nc" id="L313">            return keywords.pending();</span>
+        }
+
+        public String getNotPerformed() {
+<span class="nc" id="L317">            return keywords.notPerformed();</span>
+        }
+
+        public String getFailed() {
+<span class="nc" id="L321">            return keywords.failed();</span>
+        }
+
+        public String getDryRun() {
+<span class="nc" id="L325">            return keywords.dryRun();</span>
+        }
+
+        public String getStoryCancelled() {
+<span class="nc" id="L329">            return keywords.storyCancelled();</span>
+        }
+
+        public String getDuration() {
+<span class="nc" id="L333">            return keywords.duration();</span>
+        }
+
+        public String getYes() {
+<span class="nc" id="L337">            return keywords.yes();</span>
+        }
+
+        public String getNo() {
+<span class="nc" id="L341">            return keywords.no();</span>
+        }
+    }
+
+<span class="nc" id="L345">    public static class OutputStory {</span>
+        private String description;
+        private String path;
+        private OutputMeta meta;
+        private OutputNarrative narrative;
+        private OutputLifecycle lifecycle;
+        private String notAllowedBy;
+        private List&lt;String&gt; pendingMethods;
+<span class="nc" id="L353">        private List&lt;OutputScenario&gt; scenarios = new ArrayList&lt;OutputScenario&gt;();</span>
+        private boolean cancelled;
+        private StoryDuration storyDuration;
+
+        public String getDescription() {
+<span class="nc" id="L358">            return description;</span>
+        }
+
+        public String getPath() {
+<span class="nc" id="L362">            return path;</span>
+        }
+
+        public OutputMeta getMeta() {
+<span class="nc" id="L366">            return meta;</span>
+        }
+
+        public OutputNarrative getNarrative() {
+<span class="nc" id="L370">            return narrative;</span>
+        }
+
+        public OutputLifecycle getLifecycle() {
+<span class="nc" id="L374">            return lifecycle;</span>
+        }
+
+        public String getNotAllowedBy() {
+<span class="nc" id="L378">            return notAllowedBy;</span>
+        }
+
+        public List&lt;String&gt; getPendingMethods() {
+<span class="nc" id="L382">            return pendingMethods;</span>
+        }
+
+        public List&lt;OutputScenario&gt; getScenarios() {
+<span class="nc" id="L386">            return scenarios;</span>
+        }
+
+        public boolean isCancelled() {
+<span class="nc" id="L390">            return cancelled;</span>
+        }
+
+        public StoryDuration getStoryDuration() {
+<span class="nc" id="L394">            return storyDuration;</span>
+        }
+    }
+
+    public static class OutputMeta {
+
+        private final Meta meta;
+
+<span class="nc" id="L402">        public OutputMeta(Meta meta) {</span>
+<span class="nc" id="L403">            this.meta = meta;</span>
+<span class="nc" id="L404">        }</span>
+
+        public Map&lt;String, String&gt; getProperties() {
+<span class="nc" id="L407">            Map&lt;String, String&gt; properties = new HashMap&lt;String, String&gt;();</span>
+<span class="nc bnc" id="L408" title="All 2 branches missed.">            for (String name : meta.getPropertyNames()) {</span>
+<span class="nc" id="L409">                properties.put(name, meta.getProperty(name));</span>
+<span class="nc" id="L410">            }</span>
+<span class="nc" id="L411">            return properties;</span>
+        }
+
+    }
+
+    public static class OutputNarrative {
+        private final Narrative narrative;
+
+<span class="nc" id="L419">        public OutputNarrative(Narrative narrative) {</span>
+<span class="nc" id="L420">            this.narrative = narrative;</span>
+<span class="nc" id="L421">        }</span>
+
+        public String getInOrderTo() {
+<span class="nc" id="L424">            return narrative.inOrderTo();</span>
+        }
+
+        public String getAsA() {
+<span class="nc" id="L428">            return narrative.asA();</span>
+        }
+
+        public String getiWantTo() {
+<span class="nc" id="L432">            return narrative.iWantTo();</span>
+        }
+        
+        public String getSoThat(){
+<span class="nc" id="L436">            return narrative.soThat();</span>
+        }
+        
+        public boolean isAlternative(){
+<span class="nc" id="L440">            return narrative.isAlternative();</span>
+        }
+
+    }
+
+    public static class OutputLifecycle {
+        private final Lifecycle lifecycle;
+
+<span class="nc" id="L448">        public OutputLifecycle(Lifecycle lifecycle) {</span>
+<span class="nc" id="L449">            this.lifecycle = lifecycle;</span>
+<span class="nc" id="L450">        }</span>
+
+        public List&lt;String&gt; getBeforeSteps(){
+<span class="nc" id="L453">            return lifecycle.getBeforeSteps();</span>
+        }
+
+        public List&lt;String&gt; getAfterSteps(){
+<span class="nc" id="L457">            return lifecycle.getAfterSteps();</span>
+        }
+
+    }
+
+<span class="nc" id="L462">    public static class OutputScenario {</span>
+        private String title;
+<span class="nc" id="L464">        private List&lt;OutputStep&gt; steps = new ArrayList&lt;OutputStep&gt;();</span>
+        private OutputMeta meta;
+        private GivenStories givenStories;
+        private String notAllowedBy;
+        private List&lt;String&gt; examplesSteps;
+        private ExamplesTable examplesTable;
+        private Map&lt;String, String&gt; currentExample;
+<span class="nc" id="L471">        private List&lt;Map&lt;String, String&gt;&gt; examples = new ArrayList&lt;Map&lt;String, String&gt;&gt;();</span>
+<span class="nc" id="L472">        private Map&lt;Map&lt;String, String&gt;, List&lt;OutputStep&gt;&gt; stepsByExample = new HashMap&lt;Map&lt;String, String&gt;, List&lt;OutputStep&gt;&gt;();</span>
+
+        public String getTitle() {
+<span class="nc" id="L475">            return title;</span>
+        }
+
+        public void addStep(OutputStep outputStep) {
+<span class="nc bnc" id="L479" title="All 2 branches missed.">            if (examplesTable == null) {</span>
+<span class="nc" id="L480">                steps.add(outputStep);</span>
+            } else {
+<span class="nc" id="L482">                List&lt;OutputStep&gt; currentExampleSteps = stepsByExample.get(currentExample);</span>
+<span class="nc bnc" id="L483" title="All 2 branches missed.">                if (currentExampleSteps == null) {</span>
+<span class="nc" id="L484">                    currentExampleSteps = new ArrayList&lt;OutputStep&gt;();</span>
+<span class="nc" id="L485">                    stepsByExample.put(currentExample, currentExampleSteps);</span>
+                }
+<span class="nc" id="L487">                currentExampleSteps.add(outputStep);</span>
+            }
+<span class="nc" id="L489">        }</span>
+
+        public List&lt;OutputStep&gt; getSteps() {
+<span class="nc" id="L492">            return steps;</span>
+        }
+
+        public List&lt;OutputStep&gt; getStepsByExample(Map&lt;String, String&gt; example) {
+<span class="nc" id="L496">            List&lt;OutputStep&gt; steps = stepsByExample.get(example);</span>
+<span class="nc bnc" id="L497" title="All 2 branches missed.">            if (steps == null) {</span>
+<span class="nc" id="L498">                return new ArrayList&lt;OutputStep&gt;();</span>
+            }
+<span class="nc" id="L500">            return steps;</span>
+        }
+
+        public OutputMeta getMeta() {
+<span class="nc" id="L504">            return meta;</span>
+        }
+
+        public GivenStories getGivenStories() {
+<span class="nc" id="L508">            return givenStories;</span>
+        }
+
+        public String getNotAllowedBy() {
+<span class="nc" id="L512">            return notAllowedBy;</span>
+        }
+
+        public List&lt;String&gt; getExamplesSteps() {
+<span class="nc" id="L516">            return examplesSteps;</span>
+        }
+
+        public ExamplesTable getExamplesTable() {
+<span class="nc" id="L520">            return examplesTable;</span>
+        }
+
+        public List&lt;Map&lt;String, String&gt;&gt; getExamples() {
+<span class="nc" id="L524">            return examples;</span>
+        }
+    }
+
+    public static class OutputRestart extends OutputStep {
+
+        public OutputRestart(String step, String outcome) {
+<span class="nc" id="L531">            super(step, outcome);</span>
+<span class="nc" id="L532">        }</span>
+
+    }
+
+    public static class OutputStep {
+        private final String step;
+        private final String outcome;
+        private Throwable failure;
+        private OutcomesTable outcomes;
+        private List&lt;OutputParameter&gt; parameters;
+        private String stepPattern;
+        private String tableAsString;
+        private ExamplesTable table;
+
+<span class="nc" id="L546">        public OutputStep(String step, String outcome) {</span>
+<span class="nc" id="L547">            this.step = step;</span>
+<span class="nc" id="L548">            this.outcome = outcome;</span>
+<span class="nc" id="L549">            parseTableAsString();</span>
+<span class="nc" id="L550">            parseParameters();</span>
+<span class="nc" id="L551">            createStepPattern();</span>
+<span class="nc" id="L552">        }</span>
+
+        public String getStep() {
+<span class="nc" id="L555">            return step;</span>
+        }
+
+        public String getStepPattern() {
+<span class="nc" id="L559">            return stepPattern;</span>
+        }
+
+        public List&lt;OutputParameter&gt; getParameters() {
+<span class="nc" id="L563">            return parameters;</span>
+        }
+
+        public String getOutcome() {
+<span class="nc" id="L567">            return outcome;</span>
+        }
+
+        public Throwable getFailure() {
+<span class="nc" id="L571">            return failure;</span>
+        }
+
+        public String getFailureCause() {
+<span class="nc bnc" id="L575" title="All 2 branches missed.">            if (failure != null) {</span>
+<span class="nc" id="L576">                return new StackTraceFormatter(true).stackTrace(failure);</span>
+            }
+<span class="nc" id="L578">            return &quot;&quot;;</span>
+        }
+
+        public ExamplesTable getTable() {
+<span class="nc" id="L582">            return table;</span>
+        }
+
+        public OutcomesTable getOutcomes() {
+<span class="nc" id="L586">            return outcomes;</span>
+        }
+
+        public String getOutcomesFailureCause() {
+<span class="nc bnc" id="L590" title="All 2 branches missed.">            if (outcomes.failureCause() != null) {</span>
+<span class="nc" id="L591">                return new StackTraceFormatter(true).stackTrace(outcomes.failureCause());</span>
+            }
+<span class="nc" id="L593">            return &quot;&quot;;</span>
+        }
+
+        /*
+         * formatting without escaping doesn't make sense unless
+         * we do a ftl text output format
+         */
+        @Deprecated
+        public String getFormattedStep(String parameterPattern) {
+<span class="nc" id="L602">            return getFormattedStep(EscapeMode.NONE, parameterPattern);</span>
+        }
+
+        public String getFormattedStep(EscapeMode outputFormat, String parameterPattern) {
+            // note that escaping the stepPattern string only works
+            // because placeholders for parameters do not contain
+            // special chars (the placeholder is {0} etc)
+<span class="nc" id="L609">            String escapedStep = escapeString(outputFormat, stepPattern);</span>
+<span class="nc bnc" id="L610" title="All 2 branches missed.">            if (!parameters.isEmpty()) {</span>
+                try {
+<span class="nc" id="L612">                    return MessageFormat.format(escapedStep, formatParameters(outputFormat, parameterPattern));</span>
+<span class="nc" id="L613">                } catch (RuntimeException e) {</span>
+<span class="nc" id="L614">                    throw new StepFormattingFailed(stepPattern, parameterPattern, parameters, e);</span>
+                }
+            }
+<span class="nc" id="L617">            return escapedStep;</span>
+        }
+
+        private String escapeString(EscapeMode outputFormat, String string) {
+<span class="nc bnc" id="L621" title="All 2 branches missed.">            if(outputFormat==EscapeMode.HTML) {</span>
+<span class="nc" id="L622">                return StringEscapeUtils.escapeHtml(string);</span>
+<span class="nc bnc" id="L623" title="All 2 branches missed.">            } else if(outputFormat==EscapeMode.XML) {</span>
+<span class="nc" id="L624">                return StringEscapeUtils.escapeXml(string);</span>
+            } else {
+<span class="nc" id="L626">                return string;</span>
+            }
+        }
+
+        private Object[] formatParameters(EscapeMode outputFormat, String parameterPattern) {
+<span class="nc" id="L631">            Object[] arguments = new Object[parameters.size()];</span>
+<span class="nc bnc" id="L632" title="All 2 branches missed.">            for (int a = 0; a &lt; parameters.size(); a++) {</span>
+<span class="nc" id="L633">                arguments[a] = MessageFormat.format(parameterPattern, escapeString(outputFormat, parameters.get(a).getValue()));</span>
+            }
+<span class="nc" id="L635">            return arguments;</span>
+        }
+
+        private void parseParameters() {
+            // first, look for parameterized scenarios
+<span class="nc" id="L640">            parameters = findParameters(PARAMETER_VALUE_START + PARAMETER_VALUE_START, PARAMETER_VALUE_END</span>
+                    + PARAMETER_VALUE_END);
+            // second, look for normal scenarios
+<span class="nc bnc" id="L643" title="All 2 branches missed.">            if (parameters.isEmpty()) {</span>
+<span class="nc" id="L644">                parameters = findParameters(PARAMETER_VALUE_START, PARAMETER_VALUE_END);</span>
+            }
+<span class="nc" id="L646">        }</span>
+
+        private List&lt;OutputParameter&gt; findParameters(String start, String end) {
+<span class="nc" id="L649">            List&lt;OutputParameter&gt; parameters = new ArrayList&lt;OutputParameter&gt;();</span>
+<span class="nc" id="L650">            Matcher matcher = Pattern.compile(&quot;(&quot; + start + &quot;.*?&quot; + end + &quot;)(\\W|\\Z)&quot;,</span>
+                    Pattern.DOTALL).matcher(step);
+<span class="nc bnc" id="L652" title="All 2 branches missed.">            while (matcher.find()) {</span>
+<span class="nc" id="L653">                parameters.add(new OutputParameter(step, matcher.start(), matcher.end()));</span>
+            }
+<span class="nc" id="L655">            return parameters;</span>
+        }
+
+        private void parseTableAsString() {
+<span class="nc bnc" id="L659" title="All 4 branches missed.">            if (step.contains(PARAMETER_TABLE_START) &amp;&amp; step.contains(PARAMETER_TABLE_END)) {</span>
+<span class="nc" id="L660">                tableAsString = StringUtils.substringBetween(step, PARAMETER_TABLE_START, PARAMETER_TABLE_END);</span>
+<span class="nc" id="L661">                table = new ExamplesTable(tableAsString);</span>
+            }
+<span class="nc" id="L663">        }</span>
+
+        private void createStepPattern() {
+<span class="nc" id="L666">            this.stepPattern = step;</span>
+<span class="nc bnc" id="L667" title="All 2 branches missed.">            if (tableAsString != null) {</span>
+<span class="nc" id="L668">                this.stepPattern = StringUtils.replaceOnce(stepPattern, PARAMETER_TABLE_START + tableAsString</span>
+                        + PARAMETER_TABLE_END, &quot;&quot;);
+            }
+<span class="nc bnc" id="L671" title="All 2 branches missed.">            for (int count = 0; count &lt; parameters.size(); count++) {</span>
+<span class="nc" id="L672">                String value = parameters.get(count).toString();</span>
+<span class="nc" id="L673">                this.stepPattern = stepPattern.replace(value, &quot;{&quot; + count + &quot;}&quot;);</span>
+            }
+<span class="nc" id="L675">        }</span>
+
+        @SuppressWarnings(&quot;serial&quot;)
+        public static class StepFormattingFailed extends RuntimeException {
+
+            public StepFormattingFailed(String stepPattern, String parameterPattern, List&lt;OutputParameter&gt; parameters,
+                    RuntimeException cause) {
+<span class="nc" id="L682">                super(&quot;Failed to format step '&quot; + stepPattern + &quot;' with parameter pattern '&quot; + parameterPattern</span>
+                        + &quot;' and parameters: &quot; + parameters, cause);
+<span class="nc" id="L684">            }</span>
+
+        }
+
+    }
+
+    public static class OutputParameter {
+        private final String parameter;
+
+<span class="nc" id="L693">        public OutputParameter(String pattern, int start, int end) {</span>
+<span class="nc" id="L694">            this.parameter = pattern.substring(start, end).trim();</span>
+<span class="nc" id="L695">        }</span>
+
+        public String getValue() {
+<span class="nc" id="L698">            String value = StringUtils.remove(parameter, PARAMETER_VALUE_START);</span>
+<span class="nc" id="L699">            value = StringUtils.remove(value, PARAMETER_VALUE_END);</span>
+<span class="nc" id="L700">            return value;</span>
+        }
+
+        @Override
+        public String toString() {
+<span class="nc" id="L705">            return parameter;</span>
+        }
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

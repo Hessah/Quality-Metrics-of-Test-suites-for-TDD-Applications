@@ -1,0 +1,646 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>BattleStatistics.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">twfbplayer</a> &gt; <a href="index.source.html" class="el_package">de.outstare.fortbattleplayer.statistics</a> &gt; <span class="el_source">BattleStatistics.java</span></div><h1>BattleStatistics.java</h1><pre class="source lang-java linenums">package de.outstare.fortbattleplayer.statistics;
+
+/*
+ Copyright (c) 2010 Daniel Raap
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the &quot;Software&quot;), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ */
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import de.outstare.fortbattleplayer.model.Area;
+import de.outstare.fortbattleplayer.model.Combatant;
+import de.outstare.fortbattleplayer.model.CombatantObserver;
+import de.outstare.fortbattleplayer.model.CombatantSide;
+import de.outstare.fortbattleplayer.model.SectorBonus;
+import de.outstare.fortbattleplayer.model.Weapon;
+
+/**
+ * 
+ * @author daniel
+ */
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">public class BattleStatistics implements DynamicStatistics, CombatantObserver {</span>
+<span class="fc" id="L49">	private static final transient Logger LOG = Logger.getLogger(BattleStatistics.class.getName());</span>
+<span class="fc" id="L50">	private final Map&lt;Combatant, OnlineCounter&gt; onliners = new HashMap&lt;Combatant, OnlineCounter&gt;();</span>
+<span class="fc" id="L51">	private final Map&lt;CombatantSide, List&lt;CriticalHit&gt;&gt; critHits = new HashMap&lt;CombatantSide, List&lt;CriticalHit&gt;&gt;();</span>
+	{
+<span class="fc bfc" id="L53" title="All 2 branches covered.">		for (final CombatantSide side : CombatantSide.values()) {</span>
+<span class="fc" id="L54">			critHits.put(side, new ArrayList&lt;CriticalHit&gt;());</span>
+		}
+	}
+<span class="fc" id="L57">	private final Map&lt;CombatantSide, Set&lt;PositionSwitch&gt;&gt; swapList = new HashMap&lt;CombatantSide, Set&lt;PositionSwitch&gt;&gt;();</span>
+	{
+<span class="fc bfc" id="L59" title="All 2 branches covered.">		for (final CombatantSide side : CombatantSide.values()) {</span>
+<span class="fc" id="L60">			swapList.put(side, new HashSet&lt;PositionSwitch&gt;());</span>
+		}
+	}
+<span class="fc" id="L63">	private final AllCombatantSidesCounter crits = new AllCombatantSidesCounter();</span>
+<span class="fc" id="L64">	private final AllCombatantSidesCounter moves = new AllCombatantSidesCounter();</span>
+<span class="fc" id="L65">	private final AllCombatantSidesCounter swaps = new AllCombatantSidesCounter();</span>
+<span class="fc" id="L66">	private final AllCombatantSidesCounter attackBonuses = new AllCombatantSidesCounter();</span>
+<span class="fc" id="L67">	private final AllCombatantSidesCounter defenseBonuses = new AllCombatantSidesCounter();</span>
+<span class="fc" id="L68">	private final Map&lt;Combatant, Counter&gt; shots = new HashMap&lt;Combatant, Counter&gt;();</span>
+<span class="fc" id="L69">	private final Map&lt;CombatantSide, RoundStatistics&gt; shotsPerRound = new HashMap&lt;CombatantSide, RoundStatistics&gt;();</span>
+	{
+<span class="fc bfc" id="L71" title="All 2 branches covered.">		for (final CombatantSide side : CombatantSide.values()) {</span>
+<span class="fc" id="L72">			shotsPerRound.put(side, new RoundStatistics(&quot;shots&quot;, &quot;shots&quot;));</span>
+		}
+	}
+<span class="fc" id="L75">	private final Map&lt;CombatantSide, RoundStatistics&gt; hitsPerRound = new HashMap&lt;CombatantSide, RoundStatistics&gt;();</span>
+	{
+<span class="fc bfc" id="L77" title="All 2 branches covered.">		for (final CombatantSide side : CombatantSide.values()) {</span>
+<span class="fc" id="L78">			hitsPerRound.put(side, new RoundStatistics(&quot;hits&quot;, &quot;hits&quot;));</span>
+		}
+	}
+<span class="fc" id="L81">	private final Map&lt;CombatantSide, AtomicInteger&gt; shotRoundCounter = new HashMap&lt;CombatantSide, AtomicInteger&gt;();</span>
+	{
+<span class="fc bfc" id="L83" title="All 2 branches covered.">		for (final CombatantSide side : CombatantSide.values()) {</span>
+<span class="fc" id="L84">			shotRoundCounter.put(side, new AtomicInteger());</span>
+		}
+	}
+<span class="fc" id="L87">	private final Map&lt;CombatantSide, AtomicInteger&gt; hitRoundCounter = new HashMap&lt;CombatantSide, AtomicInteger&gt;();</span>
+	{
+<span class="fc bfc" id="L89" title="All 2 branches covered.">		for (final CombatantSide side : CombatantSide.values()) {</span>
+<span class="fc" id="L90">			hitRoundCounter.put(side, new AtomicInteger());</span>
+		}
+	}
+<span class="fc" id="L93">	private final Map&lt;Combatant, Counter&gt; victims = new HashMap&lt;Combatant, Counter&gt;();</span>
+<span class="fc" id="L94">	private final List&lt;Combatant&gt; turnOrder = new LinkedList&lt;Combatant&gt;();</span>
+<span class="fc" id="L95">	private final List&lt;AllCombatantSidesCounter&gt; actorsPerRound = new ArrayList&lt;AllCombatantSidesCounter&gt;(50);</span>
+<span class="fc" id="L96">	private final Map&lt;Area, AreaStatistic&gt; fieldStats = new HashMap&lt;Area, AreaStatistic&gt;();</span>
+	private final int _numberOfDefenders;
+	private final int _numberOfAttacker;
+
+<span class="fc" id="L100">	private int currentRoundNo = 0;</span>
+<span class="fc" id="L101">	private Boolean firstRound = null;</span>
+<span class="fc" id="L102">	private AllCombatantSidesCounter actorsThisRound = new AllCombatantSidesCounter();</span>
+
+	/**
+	 * set the current round. all following method calls will belong to this
+	 * round till this method is called again with another parameter.
+	 * 
+	 * @param no
+	 */
+	public void setRound(final int no) {
+<span class="nc bnc" id="L111" title="All 2 branches missed.">		if (firstRound == null) {</span>
+<span class="nc" id="L112">			firstRound = Boolean.TRUE;</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">		} else if (firstRound.booleanValue()) {</span>
+<span class="nc" id="L114">			firstRound = Boolean.FALSE;</span>
+			// the turn order is determined only in the first round
+<span class="nc bnc" id="L116" title="All 2 branches missed.">			for (final Combatant player : onliners.keySet()) {</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">				if (!turnOrder.contains(player)) {</span>
+<span class="nc" id="L118">					LOG.info(&quot;could not determine turn order for &quot; + player);</span>
+				}
+<span class="nc" id="L120">			}</span>
+		}
+<span class="nc" id="L122">		addAndResetRoundCounter(shotRoundCounter, shotsPerRound);</span>
+<span class="nc" id="L123">		addAndResetRoundCounter(hitRoundCounter, hitsPerRound);</span>
+<span class="nc" id="L124">		actorsPerRound.add(actorsThisRound);</span>
+<span class="nc" id="L125">		actorsThisRound = new AllCombatantSidesCounter();</span>
+<span class="nc" id="L126">		currentRoundNo = no;</span>
+<span class="nc" id="L127">	}</span>
+
+	/**
+	 * this adds the counters for the last round to the total counts per round
+	 * and resets the given counter
+	 * 
+	 * @param roundCounter
+	 * @param allRounds
+	 */
+	void addAndResetRoundCounter(final Map&lt;CombatantSide, AtomicInteger&gt; roundCounter,
+	        final Map&lt;CombatantSide, RoundStatistics&gt; allRounds) {
+<span class="nc bnc" id="L138" title="All 2 branches missed.">		for (final Entry&lt;CombatantSide, AtomicInteger&gt; mapping : roundCounter.entrySet()) {</span>
+<span class="nc" id="L139">			final CombatantSide side = mapping.getKey();</span>
+<span class="nc" id="L140">			final AtomicInteger roundShots = mapping.getValue();</span>
+<span class="nc" id="L141">			allRounds.get(side).addValue(roundShots.get());</span>
+			// reset for next round
+<span class="nc" id="L143">			roundShots.set(0);</span>
+<span class="nc" id="L144">		}</span>
+<span class="nc" id="L145">	}</span>
+
+	/**
+	 * @param combatant
+	 * @return
+	 */
+	int combatantLifetime(final Combatant combatant) {
+<span class="fc" id="L152">		final OnlineCounter onAndOffline = onliners.get(combatant);</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">		if (onAndOffline == null) {</span>
+<span class="nc" id="L154">			return 0;</span>
+		}
+<span class="fc" id="L156">		return onAndOffline.sumOfEvents();</span>
+	}
+
+	/**
+	 * @param numberOfAttacker
+	 * @param numberOfDefenders
+	 */
+<span class="fc" id="L163">	public BattleStatistics(final int numberOfAttacker, final int numberOfDefenders) {</span>
+<span class="fc" id="L164">		_numberOfAttacker = numberOfAttacker;</span>
+<span class="fc" id="L165">		_numberOfDefenders = numberOfDefenders;</span>
+<span class="fc" id="L166">	}</span>
+
+	/**
+	 * @param number
+	 * @return
+	 */
+	int round(final double number) {
+<span class="fc" id="L173">		return (int) Math.round(number);</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#percentAbleToShoot(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public int percentAbleToShoot(final CombatantSide side) {
+<span class="fc" id="L180">		double sum = 0;</span>
+<span class="fc" id="L181">		int players = 0;</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">		for (final Entry&lt;Combatant, Counter&gt; playerShots : shots.entrySet()) {</span>
+<span class="fc" id="L183">			final Combatant combatant = playerShots.getKey();</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">			if (isOnSide(side, combatant)) {</span>
+<span class="fc" id="L185">				final int lifetime = combatantLifetime(combatant);</span>
+<span class="fc" id="L186">				final int roundsShooting = playerShots.getValue().getValue();</span>
+<span class="fc" id="L187">				sum += roundsShooting * 100.0 / lifetime;</span>
+<span class="fc" id="L188">				players++;</span>
+			}
+<span class="fc" id="L190">		}</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">		if (players == 0) {</span>
+<span class="fc" id="L192">			return 0;</span>
+		}
+<span class="fc" id="L194">		return round(sum / players);</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#amountOfAttackBonus(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public int amountOfAttackBonus(final CombatantSide side) {
+<span class="fc" id="L201">		return attackBonuses.getSideValue(side);</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#amountOfDefenseBonus(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public int amountOfDefenseBonus(final CombatantSide side) {
+<span class="fc" id="L208">		return defenseBonuses.getSideValue(side);</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#numberOfMovesPerPlayer(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public double numberOfMovesPerPlayer(final CombatantSide side) {
+<span class="fc" id="L215">		double result = 0;</span>
+<span class="pc bpc" id="L216" title="1 of 3 branches missed.">		switch (side) {</span>
+		case ATTACKER:
+<span class="fc" id="L218">			result = moves.getSideValue(side) / (double) _numberOfAttacker;</span>
+<span class="fc" id="L219">			break;</span>
+		case DEFENDER:
+<span class="fc" id="L221">			result = moves.getSideValue(side) / (double) _numberOfDefenders;</span>
+<span class="fc" id="L222">			break;</span>
+		default:
+<span class="nc" id="L224">			result = moves.getSideValue(null) / (double) (_numberOfAttacker + _numberOfDefenders);</span>
+		}
+<span class="fc" id="L226">		return result;</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#numberOfOffliners(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public int numberOfOffliners(final CombatantSide side) {
+<span class="fc" id="L233">		int offliner = 0;</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">		for (final Entry&lt;Combatant, OnlineCounter&gt; playerStats : onliners.entrySet()) {</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">			if (isOnSide(side, playerStats.getKey())) {</span>
+<span class="fc" id="L236">				final OnlineCounter counter = playerStats.getValue();</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">				if (counter.wasOffline()) {</span>
+<span class="fc" id="L238">					offliner++;</span>
+				}
+			}
+<span class="fc" id="L241">		}</span>
+<span class="fc" id="L242">		return offliner;</span>
+	}
+
+	/**
+	 * @param side
+	 * @param combatant
+	 * @return
+	 */
+	private boolean isOnSide(final CombatantSide side, final Combatant combatant) {
+<span class="pc bpc" id="L251" title="1 of 4 branches missed.">		return side == null || side.equals(combatant.getSide());</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#roundsTillOnline(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public double roundsTillOnline(final CombatantSide side) {
+<span class="fc" id="L258">		int combatants = 0;</span>
+<span class="fc" id="L259">		int rounds = 0;</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">		for (final Entry&lt;Combatant, OnlineCounter&gt; playerStats : onliners.entrySet()) {</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">			if (isOnSide(side, playerStats.getKey())) {</span>
+<span class="fc" id="L262">				final OnlineCounter counter = playerStats.getValue();</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">				if (!counter.wasOffline()) {</span>
+<span class="fc" id="L264">					combatants++;</span>
+<span class="fc" id="L265">					rounds += counter.firstOnline();</span>
+				}
+			}
+<span class="fc" id="L268">		}</span>
+		// avoid division by zero
+<span class="fc bfc" id="L270" title="All 2 branches covered.">		if (combatants == 0) {</span>
+<span class="fc" id="L271">			return 0;</span>
+		}
+<span class="fc" id="L273">		return ((double) rounds / (double) combatants);</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#averageRoundsOnline(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public double averageRoundsOnline(final CombatantSide side) {
+<span class="fc" id="L280">		double combatants = 0;</span>
+<span class="fc" id="L281">		double rounds = 0;</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">		for (final Entry&lt;Combatant, OnlineCounter&gt; playerStats : onliners.entrySet()) {</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">			if (isOnSide(side, playerStats.getKey())) {</span>
+<span class="fc" id="L284">				final OnlineCounter counter = playerStats.getValue();</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">				if (!counter.wasOffline()) {</span>
+<span class="fc" id="L286">					combatants++;</span>
+<span class="fc" id="L287">					rounds += counter.onlineEvents();</span>
+				}
+			}
+<span class="fc" id="L290">		}</span>
+		// avoid division by zero
+<span class="fc bfc" id="L292" title="All 2 branches covered.">		if (combatants == 0.0) {</span>
+<span class="fc" id="L293">			return 0.0;</span>
+		}
+<span class="fc" id="L295">		return rounds / combatants;</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.model.CombatantObserver#hasMoved(de.outstare.fortbattleplayer.model.Combatant,
+	 *      de.outstare.fortbattleplayer.model.Area)
+	 */
+	public void hasMoved(final Combatant combatant, final Area newPos) {
+<span class="fc" id="L303">		moves.incrementSide(combatant);</span>
+<span class="fc" id="L304">	}</span>
+
+	/**
+	 * @see de.outstare.fortbattleplayer.model.CombatantObserver#newDestination(de.outstare.fortbattleplayer.model.Combatant,
+	 *      de.outstare.fortbattleplayer.model.Area)
+	 */
+	public void newDestination(final Combatant combatant, final Area destination) {
+		// TODO Auto-generated method stub
+
+<span class="nc" id="L313">	}</span>
+
+	/**
+	 * @see de.outstare.fortbattleplayer.model.CombatantObserver#aimsAt(de.outstare.fortbattleplayer.model.Combatant,
+	 *      de.outstare.fortbattleplayer.model.Combatant)
+	 */
+	public void aimsAt(final Combatant combatant, final Combatant target) {
+<span class="fc" id="L320">		incrementCombatantCounter(shots, combatant);</span>
+<span class="fc" id="L321">		incrementCombatantCounter(victims, target);</span>
+<span class="fc" id="L322">		shotRoundCounter.get(combatant.getSide()).incrementAndGet();</span>
+<span class="fc" id="L323">		final Area field = target._getLocation();</span>
+<span class="fc" id="L324">		getFieldStat(field).addShot();</span>
+<span class="fc" id="L325">	}</span>
+
+	private void incrementCombatantCounter(final Map&lt;Combatant, Counter&gt; combatantCounters, final Combatant combatant) {
+<span class="fc bfc" id="L328" title="All 2 branches covered.">		if (!combatantCounters.containsKey(combatant)) {</span>
+<span class="fc" id="L329">			combatantCounters.put(combatant, new Counter());</span>
+		}
+<span class="fc" id="L331">		combatantCounters.get(combatant).increment();</span>
+<span class="fc" id="L332">	}</span>
+
+	/**
+	 * @see de.outstare.fortbattleplayer.model.CombatantObserver#isHit(de.outstare.fortbattleplayer.model.Combatant,
+	 *      int, int)
+	 */
+	public void isHit(final Combatant combatant, final int damage, final int oldHealthAmount) {
+<span class="nc" id="L339">		hitRoundCounter.get(combatant.getSide()).incrementAndGet();</span>
+<span class="nc" id="L340">		final Area field = combatant._getLocation();</span>
+<span class="nc" id="L341">		getFieldStat(field).addHit();</span>
+<span class="nc" id="L342">	}</span>
+
+	/**
+	 * @see de.outstare.fortbattleplayer.model.CombatantObserver#isDead(de.outstare.fortbattleplayer.model.Combatant)
+	 */
+	public void isDead(final Combatant combatant) {
+		// TODO Auto-generated method stub
+
+<span class="nc" id="L350">	}</span>
+
+	/**
+	 * @see de.outstare.fortbattleplayer.model.CombatantObserver#isAlive(de.outstare.fortbattleplayer.model.Combatant)
+	 */
+	public void isAlive(final Combatant combatant) {
+		// TODO Auto-generated method stub
+
+<span class="nc" id="L358">	}</span>
+
+	/**
+	 * @see de.outstare.fortbattleplayer.model.CombatantObserver#isOnline(de.outstare.fortbattleplayer.model.Combatant,
+	 *      boolean)
+	 */
+	public void isOnline(final Combatant combatant, final boolean changed) {
+		// count all events
+<span class="fc bfc" id="L366" title="All 2 branches covered.">		if (!onliners.containsKey(combatant)) {</span>
+<span class="fc" id="L367">			onliners.put(combatant, new OnlineCounter());</span>
+		}
+<span class="fc bfc" id="L369" title="All 2 branches covered.">		if (combatant.isOnline()) {</span>
+<span class="fc" id="L370">			onliners.get(combatant).addOnline();</span>
+		} else {
+<span class="fc" id="L372">			onliners.get(combatant).addOffline();</span>
+		}
+
+		// the online event is triggered every round for a player (hopefully)
+<span class="fc" id="L376">		combatantTurn(combatant);</span>
+<span class="fc" id="L377">	}</span>
+
+	/**
+	 * no special action, just to track the state every round
+	 * 
+	 * @param combatant
+	 */
+	private void combatantTurn(final Combatant combatant) {
+<span class="fc" id="L385">		final SectorBonus bonus = combatant.getSectorBonus();</span>
+<span class="fc" id="L386">		attackBonuses.incrementBy(bonus.attackBonus, combatant);</span>
+<span class="fc" id="L387">		defenseBonuses.incrementBy(bonus.defendBonus, combatant);</span>
+<span class="pc bpc" id="L388" title="3 of 4 branches missed.">		if (firstRound != null &amp;&amp; firstRound.booleanValue()) {</span>
+<span class="nc" id="L389">			turnOrder.add(combatant);</span>
+		}
+<span class="pc bpc" id="L391" title="1 of 2 branches missed.">		if (LOG.isLoggable(Level.FINE)) {</span>
+<span class="nc bnc" id="L392" title="All 8 branches missed.">			if ((firstRound == null || !firstRound.booleanValue()) &amp;&amp; !turnOrder.contains(combatant)</span>
+			        &amp;&amp; currentRoundNo &gt; 1) {
+<span class="nc" id="L394">				LOG.fine(&quot;---- not in order: &quot; + combatant);</span>
+			}
+		}
+<span class="fc" id="L397">		actorsThisRound.incrementSide(combatant);</span>
+<span class="fc" id="L398">	}</span>
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#targetNoOne(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public String targetNoOne(final CombatantSide side) {
+<span class="fc" id="L404">		String result = &quot;&quot;;</span>
+<span class="fc" id="L405">		int max = 0;</span>
+<span class="fc bfc" id="L406" title="All 2 branches covered.">		for (final Entry&lt;Combatant, Counter&gt; victim : victims.entrySet()) {</span>
+<span class="fc" id="L407">			final Combatant combatant = victim.getKey();</span>
+<span class="fc bfc" id="L408" title="All 2 branches covered.">			if (isOnSide(side, combatant)) {</span>
+<span class="fc" id="L409">				final int receivedShots = victim.getValue().getValue();</span>
+<span class="pc bpc" id="L410" title="1 of 2 branches missed.">				if (receivedShots &gt; max) {</span>
+<span class="fc" id="L411">					max = receivedShots;</span>
+<span class="fc" id="L412">					result = combatant.getName() + &quot;(&quot; + receivedShots + &quot;)&quot;;</span>
+				}
+			}
+<span class="fc" id="L415">		}</span>
+<span class="fc" id="L416">		return result;</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#numberOfBayonets(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public int numberOfBayonets(final CombatantSide side) {
+<span class="nc" id="L423">		return countWeaponMods(side, new WeaponModCounter.BayonetCounter());</span>
+	}
+
+	/**
+	 * @param side
+	 * @param counter
+	 * @return
+	 */
+	int countWeaponMods(final CombatantSide side, final WeaponModCounter counter) {
+		// because every player should have an online/offline event, we look at
+		// the online data hoping to get all players
+<span class="nc" id="L434">		final Set&lt;Combatant&gt; players = onliners.keySet();</span>
+
+<span class="nc" id="L436">		int bayonets = 0;</span>
+<span class="nc bnc" id="L437" title="All 2 branches missed.">		for (final Combatant combatant : players) {</span>
+<span class="nc bnc" id="L438" title="All 2 branches missed.">			if (isOnSide(side, combatant)) {</span>
+<span class="nc" id="L439">				final Weapon playerWeapon = combatant.getWeapon();</span>
+				// TODO let the counter count
+<span class="nc bnc" id="L441" title="All 2 branches missed.">				if (counter.counts(combatant, playerWeapon)) {</span>
+<span class="nc" id="L442">					bayonets++;</span>
+				}
+			}
+<span class="nc" id="L445">		}</span>
+<span class="nc" id="L446">		return bayonets;</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#numberOfGraphitLubricants(CombatantSide)
+	 */
+	public int numberOfGraphitLubricants(final CombatantSide side) {
+<span class="nc" id="L453">		return countWeaponMods(side, new WeaponModCounter.GraphitLubricantCounter());</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#numberOfFettesOil(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public int numberOfFettesOil(final CombatantSide side) {
+<span class="nc" id="L460">		return countWeaponMods(side, new WeaponModCounter.FettesOilCounter());</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#numberOfSchmierOil(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public int numberOfSchmierOil(final CombatantSide side) {
+<span class="nc" id="L467">		return countWeaponMods(side, new WeaponModCounter.SchmierOilCounter());</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#numberOfShinyOil(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public int numberOfShinyOil(final CombatantSide side) {
+<span class="nc" id="L474">		return countWeaponMods(side, new WeaponModCounter.ShinyOilCounter());</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#numberOf4ShotMunition(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public int numberOf4ShotMunition(final CombatantSide side) {
+<span class="nc" id="L481">		return countWeaponMods(side, new WeaponModCounter.FourShotMunitionCounter());</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#numberOfLoadingChamerOrEnhancedPatrons(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public int numberOfLoadingChamerOrEnhancedPatrons(final CombatantSide side) {
+<span class="nc" id="L488">		return countWeaponMods(side, new WeaponModCounter.LoadingchamberOrEnhancedPatronsCounter());</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#numberOfHipFlasks(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public int numberOfHipFlasks(final CombatantSide side) {
+<span class="nc" id="L495">		return countWeaponMods(side, new WeaponModCounter.HipFlaskCounter());</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.model.CombatantObserver#hasSwappedPosition()
+	 */
+	public void hasSwappedPosition(final Combatant combatant, final Combatant swappedWith) {
+<span class="fc" id="L502">		swaps.incrementSide(combatant);</span>
+<span class="fc" id="L503">		final PositionSwitch swap = new PositionSwitch(currentRoundNo, combatant, swappedWith);</span>
+<span class="pc bpc" id="L504" title="3 of 4 branches missed.">		assert swapList.get(combatant.getSide()) != null;</span>
+<span class="fc" id="L505">		swapList.get(combatant.getSide()).add(swap);</span>
+<span class="fc" id="L506">	}</span>
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#totalSwaps(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public int totalSwaps(final CombatantSide side) {
+<span class="fc" id="L512">		return swaps.getSideValue(side);</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#switchedPosList(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public Set&lt;PositionSwitch&gt; switchedPosList(final CombatantSide side) {
+		final Set&lt;PositionSwitch&gt; allSwaps;
+<span class="nc bnc" id="L520" title="All 2 branches missed.">		if (side == null) {</span>
+<span class="nc" id="L521">			allSwaps = new HashSet&lt;PositionSwitch&gt;();</span>
+<span class="nc bnc" id="L522" title="All 2 branches missed.">			for (final Set&lt;PositionSwitch&gt; sideSwitches : swapList.values()) {</span>
+<span class="nc" id="L523">				allSwaps.addAll(sideSwitches);</span>
+<span class="nc" id="L524">			}</span>
+		} else {
+<span class="nc" id="L526">			allSwaps = swapList.get(side);</span>
+		}
+<span class="nc" id="L528">		return allSwaps;</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.model.CombatantObserver#criticalShot(de.outstare.fortbattleplayer.model.Combatant,
+	 *      Combatant, int)
+	 */
+	public void criticalShot(final Combatant combatant, final Combatant victim, final int damage) {
+<span class="fc" id="L536">		final CriticalHit crit = new CriticalHit(combatant, victim, damage, currentRoundNo);</span>
+<span class="fc" id="L537">		critHits.get(combatant.getSide()).add(crit);</span>
+<span class="fc" id="L538">		crits.incrementSide(combatant);</span>
+<span class="fc" id="L539">		final Area field = victim._getLocation();</span>
+<span class="fc" id="L540">		getFieldStat(field).addCrit();</span>
+<span class="fc" id="L541">	}</span>
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#critList(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public List&lt;CriticalHit&gt; critList(final CombatantSide side) {
+		final List&lt;CriticalHit&gt; allCrits;
+<span class="nc bnc" id="L548" title="All 2 branches missed.">		if (side == null) {</span>
+<span class="nc" id="L549">			allCrits = new ArrayList&lt;CriticalHit&gt;();</span>
+<span class="nc bnc" id="L550" title="All 2 branches missed.">			for (final List&lt;CriticalHit&gt; sideCrits : critHits.values()) {</span>
+<span class="nc" id="L551">				allCrits.addAll(sideCrits);</span>
+<span class="nc" id="L552">			}</span>
+		} else {
+<span class="nc" id="L554">			allCrits = critHits.get(side);</span>
+		}
+<span class="nc" id="L556">		return allCrits;</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#criticalHits(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public int criticalHits(final CombatantSide side) {
+<span class="fc" id="L563">		return crits.getSideValue(side);</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#criticalHitDamage(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public long criticalHitDamage(final CombatantSide side) {
+<span class="nc" id="L570">		long sum = 0;</span>
+<span class="nc bnc" id="L571" title="All 2 branches missed.">		for (final CriticalHit crit : critList(side)) {</span>
+<span class="nc" id="L572">			sum += crit.critOnlyDamage;</span>
+<span class="nc" id="L573">		}</span>
+<span class="nc" id="L574">		return sum;</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#turnOrder(de.outstare.fortbattleplayer.model.CombatantSide)
+	 */
+	public List&lt;Combatant&gt; turnOrder(final CombatantSide side) {
+<span class="nc" id="L581">		final List&lt;Combatant&gt; sidePlayers = new ArrayList&lt;Combatant&gt;(turnOrder.size() / 2);</span>
+<span class="nc bnc" id="L582" title="All 2 branches missed.">		for (final Combatant player : turnOrder) {</span>
+<span class="nc bnc" id="L583" title="All 4 branches missed.">			if (side == null || player.getSide() == side) {</span>
+<span class="nc" id="L584">				sidePlayers.add(player);</span>
+			}
+<span class="nc" id="L586">		}</span>
+<span class="nc" id="L587">		return sidePlayers;</span>
+	}
+
+	/**
+	 * @return the number of shots per round
+	 */
+	public Map&lt;CombatantSide, ? extends LabeledData&gt; getShotsPerRound() {
+<span class="nc" id="L594">		return shotsPerRound;</span>
+	}
+
+	/**
+	 * @return the number of hits per round
+	 */
+	public Map&lt;CombatantSide, ? extends LabeledData&gt; getHitsPerRound() {
+<span class="nc" id="L601">		return hitsPerRound;</span>
+	}
+
+	/**
+	 * @see de.outstare.fortbattleplayer.statistics.DynamicStatistics#getNotShootersPerRound()
+	 */
+	public Map&lt;CombatantSide, ? extends LabeledData&gt; getNotShootersPerRound() {
+<span class="nc" id="L608">		final Map&lt;CombatantSide, RoundStatistics&gt; nonShootersPerRound = new HashMap&lt;CombatantSide, RoundStatistics&gt;();</span>
+<span class="nc bnc" id="L609" title="All 2 branches missed.">		for (final CombatantSide side : CombatantSide.values()) {</span>
+<span class="nc" id="L610">			final RoundStatistics nonShooters = new RoundStatistics(&quot;Not shooting&quot;, &quot;players&quot;);</span>
+<span class="nc" id="L611">			nonShootersPerRound.put(side, nonShooters);</span>
+
+<span class="nc" id="L613">			final LabeledData shotRoundCounts = shotsPerRound.get(side);</span>
+<span class="nc bnc" id="L614" title="All 2 branches missed.">			if (shotRoundCounts != null) {</span>
+<span class="nc" id="L615">				final double[] shotCounts = shotRoundCounts.toArray();</span>
+<span class="nc bnc" id="L616" title="All 2 branches missed.">				if (actorsPerRound.size() == shotCounts.length) {</span>
+<span class="nc bnc" id="L617" title="All 2 branches missed.">					for (int i = 0; i &lt; shotCounts.length; i++) {</span>
+<span class="nc" id="L618">						final int actors = actorsPerRound.get(i).getSideValue(side);</span>
+<span class="nc" id="L619">						final double numberNotShooting = actors - shotCounts[i];</span>
+<span class="nc" id="L620">						nonShooters.addValue(numberNotShooting);</span>
+					}
+				} else {
+<span class="nc" id="L623">					LOG.warning(&quot;round statistics for players and shots differ!&quot;);</span>
+				}
+<span class="nc" id="L625">			} else {</span>
+<span class="nc" id="L626">				LOG.warning(&quot;no data for players and shots for side &quot; + side);</span>
+			}
+		}
+<span class="nc" id="L629">		return nonShootersPerRound;</span>
+	}
+
+	private AreaStatistic getFieldStat(final Area area) {
+<span class="fc bfc" id="L633" title="All 2 branches covered.">		if (!fieldStats.containsKey(area)) {</span>
+<span class="fc" id="L634">			fieldStats.put(area, new AreaStatistic(area));</span>
+		}
+<span class="fc" id="L636">		return fieldStats.get(area);</span>
+	}
+
+	/**
+	 * @return statistics for every field
+	 */
+	public Map&lt;Area, AreaStatistic&gt; getFieldStatistics() {
+<span class="nc" id="L643">		return fieldStats;</span>
+	}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

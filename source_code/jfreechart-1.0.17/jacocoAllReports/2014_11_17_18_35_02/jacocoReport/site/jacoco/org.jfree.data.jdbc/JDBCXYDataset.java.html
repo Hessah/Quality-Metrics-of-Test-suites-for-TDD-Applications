@@ -1,0 +1,595 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>JDBCXYDataset.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.data.jdbc</a> &gt; <span class="el_source">JDBCXYDataset.java</span></div><h1>JDBCXYDataset.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates.
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ------------------
+ * JDBCXYDataset.java
+ * ------------------
+ * (C) Copyright 2002-2009, by Bryan Scott and Contributors.
+ *
+ * Original Author:  Bryan Scott;
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *                   Eric Alexander;
+ *
+ *
+ * Changes
+ * -------
+ * 14-Mar-2002 : Version 1 contributed by Bryan Scott (DG);
+ * 19-Apr-2002 : Updated executeQuery, to close cursors and to improve support
+ *               for types.
+ * 26-Apr-2002 : Renamed JdbcXYDataset to better fit in with the existing data
+ *               source conventions.
+ * 26-Apr-2002 : Changed to extend AbstractDataset.
+ * 13-Aug-2002 : Updated Javadoc comments and imports (DG);
+ * 18-Sep-2002 : Updated to support BIGINT (BS);
+ * 21-Jan-2003 : Renamed JdbcXYDataset --&gt; JDBCXYDataset (DG);
+ * 01-Jul-2003 : Added support to query whether a timeseries (BS);
+ * 30-Jul-2003 : Added empty contructor and executeQuery(connection,string)
+ *               method (BS);
+ * 24-Sep-2003 : Added a check to ensure at least two valid columns are
+ *               returned by the query in executeQuery as suggest in online
+ *               forum by anonymous (BS);
+ * 02-Dec-2003 : Throwing exceptions allows to handle errors, removed default
+ *               constructor, as without a connection, a query can never be
+ *               executed.
+ * 16-Mar-2004 : Added check for null values (EA);
+ * 05-May-2004 : Now extends AbstractXYDataset (DG);
+ * 21-May-2004 : Implemented TableXYDataset, added support for SMALLINT and
+ *               fixed bug in code that determines the min and max values (see
+ *               bug id 938138) (DG);
+ * 15-Jul-2004 : Switched getX() with getXValue() and getY() with
+ *               getYValue() (DG);
+ * 18-Nov-2004 : Updated for changes in RangeInfo interface (DG);
+ * 11-Jan-2005 : Removed deprecated code in preparation for the 1.0.0
+ *               release (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 17-Oct-2006 : Deprecated unused methods - see bug 1578293 (DG);
+ * 19-May-2009 : Fixed FindBugs warnings, patch by Michal Wozniak (DG);
+ *
+ */
+
+package org.jfree.data.jdbc;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Types;
+import java.util.ArrayList;
+import java.util.Date;
+
+import org.jfree.data.Range;
+import org.jfree.data.RangeInfo;
+import org.jfree.data.general.Dataset;
+import org.jfree.data.xy.AbstractXYDataset;
+import org.jfree.data.xy.TableXYDataset;
+import org.jfree.data.xy.XYDataset;
+import org.jfree.util.Log;
+
+/**
+ * This class provides an {@link XYDataset} implementation over a database
+ * JDBC result set.  The dataset is populated via a call to executeQuery with
+ * the string sql query.  The sql query must return at least two columns.
+ * The first column will be the x-axis and remaining columns y-axis values.
+ * executeQuery can be called a number of times.
+ *
+ * The database connection is read-only and no write back facility exists.
+ */
+public class JDBCXYDataset extends AbstractXYDataset
+        implements XYDataset, TableXYDataset, RangeInfo {
+
+    /** The database connection. */
+    private transient Connection connection;
+
+    /** Column names. */
+<span class="nc" id="L109">    private String[] columnNames = {};</span>
+
+    /** Rows. */
+    private ArrayList rows;
+
+    /** The maximum y value of the returned result set */
+<span class="nc" id="L115">    private double maxValue = 0.0;</span>
+
+    /** The minimum y value of the returned result set */
+<span class="nc" id="L118">    private double minValue = 0.0;</span>
+
+    /** Is this dataset a timeseries ? */
+<span class="nc" id="L121">    private boolean isTimeSeries = false;</span>
+
+    /**
+     * Creates a new JDBCXYDataset (initially empty) with no database
+     * connection.
+     */
+<span class="nc" id="L127">    private JDBCXYDataset() {</span>
+<span class="nc" id="L128">        this.rows = new ArrayList();</span>
+<span class="nc" id="L129">    }</span>
+
+    /**
+     * Creates a new dataset (initially empty) and establishes a new database
+     * connection.
+     *
+     * @param  url  URL of the database connection.
+     * @param  driverName  the database driver class name.
+     * @param  user  the database user.
+     * @param  password  the database user's password.
+     *
+     * @throws ClassNotFoundException if the driver cannot be found.
+     * @throws SQLException if there is a problem connecting to the database.
+     */
+    public JDBCXYDataset(String url,
+                         String driverName,
+                         String user,
+                         String password)
+        throws SQLException, ClassNotFoundException {
+
+<span class="nc" id="L149">        this();</span>
+<span class="nc" id="L150">        Class.forName(driverName);</span>
+<span class="nc" id="L151">        this.connection = DriverManager.getConnection(url, user, password);</span>
+<span class="nc" id="L152">    }</span>
+
+    /**
+     * Creates a new dataset (initially empty) using the specified database
+     * connection.
+     *
+     * @param  con  the database connection.
+     *
+     * @throws SQLException if there is a problem connecting to the database.
+     */
+    public JDBCXYDataset(Connection con) throws SQLException {
+<span class="nc" id="L163">        this();</span>
+<span class="nc" id="L164">        this.connection = con;</span>
+<span class="nc" id="L165">    }</span>
+
+    /**
+     * Creates a new dataset using the specified database connection, and
+     * populates it using data obtained with the supplied query.
+     *
+     * @param con  the connection.
+     * @param query  the SQL query.
+     *
+     * @throws SQLException if there is a problem executing the query.
+     */
+    public JDBCXYDataset(Connection con, String query) throws SQLException {
+<span class="nc" id="L177">        this(con);</span>
+<span class="nc" id="L178">        executeQuery(query);</span>
+<span class="nc" id="L179">    }</span>
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; if the dataset represents time series data,
+     * and &lt;code&gt;false&lt;/code&gt; otherwise.
+     *
+     * @return A boolean.
+     */
+    public boolean isTimeSeries() {
+<span class="nc" id="L188">        return this.isTimeSeries;</span>
+    }
+
+    /**
+     * Sets a flag that indicates whether or not the data represents a time
+     * series.
+     *
+     * @param timeSeries  the new value of the flag.
+     */
+    public void setTimeSeries(boolean timeSeries) {
+<span class="nc" id="L198">        this.isTimeSeries = timeSeries;</span>
+<span class="nc" id="L199">    }</span>
+
+    /**
+     * ExecuteQuery will attempt execute the query passed to it against the
+     * existing database connection.  If no connection exists then no action
+     * is taken.
+     *
+     * The results from the query are extracted and cached locally, thus
+     * applying an upper limit on how many rows can be retrieved successfully.
+     *
+     * @param  query  the query to be executed.
+     *
+     * @throws SQLException if there is a problem executing the query.
+     */
+    public void executeQuery(String query) throws SQLException {
+<span class="nc" id="L214">        executeQuery(this.connection, query);</span>
+<span class="nc" id="L215">    }</span>
+
+    /**
+     * ExecuteQuery will attempt execute the query passed to it against the
+     * provided database connection.  If connection is null then no action is
+     * taken.
+     *
+     * The results from the query are extracted and cached locally, thus
+     * applying an upper limit on how many rows can be retrieved successfully.
+     *
+     * @param  query  the query to be executed.
+     * @param  con  the connection the query is to be executed against.
+     *
+     * @throws SQLException if there is a problem executing the query.
+     */
+    public void executeQuery(Connection con, String query)
+        throws SQLException {
+
+<span class="nc bnc" id="L233" title="All 2 branches missed.">        if (con == null) {</span>
+<span class="nc" id="L234">            throw new SQLException(</span>
+                &quot;There is no database to execute the query.&quot;
+            );
+        }
+
+<span class="nc" id="L239">        ResultSet resultSet = null;</span>
+<span class="nc" id="L240">        Statement statement = null;</span>
+        try {
+<span class="nc" id="L242">            statement = con.createStatement();</span>
+<span class="nc" id="L243">            resultSet = statement.executeQuery(query);</span>
+<span class="nc" id="L244">            ResultSetMetaData metaData = resultSet.getMetaData();</span>
+
+<span class="nc" id="L246">            int numberOfColumns = metaData.getColumnCount();</span>
+<span class="nc" id="L247">            int numberOfValidColumns = 0;</span>
+<span class="nc" id="L248">            int [] columnTypes = new int[numberOfColumns];</span>
+<span class="nc bnc" id="L249" title="All 2 branches missed.">            for (int column = 0; column &lt; numberOfColumns; column++) {</span>
+                try {
+<span class="nc" id="L251">                    int type = metaData.getColumnType(column + 1);</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">                    switch (type) {</span>
+
+                        case Types.NUMERIC:
+                        case Types.REAL:
+                        case Types.INTEGER:
+                        case Types.DOUBLE:
+                        case Types.FLOAT:
+                        case Types.DECIMAL:
+                        case Types.BIT:
+                        case Types.DATE:
+                        case Types.TIME:
+                        case Types.TIMESTAMP:
+                        case Types.BIGINT:
+                        case Types.SMALLINT:
+<span class="nc" id="L266">                            ++numberOfValidColumns;</span>
+<span class="nc" id="L267">                            columnTypes[column] = type;</span>
+<span class="nc" id="L268">                            break;</span>
+                        default:
+<span class="nc" id="L270">                            Log.warn(</span>
+                                &quot;Unable to load column &quot;
+                                + column + &quot; (&quot; + type + &quot;,&quot;
+                                + metaData.getColumnClassName(column + 1)
+                                + &quot;)&quot;
+                            );
+<span class="nc" id="L276">                            columnTypes[column] = Types.NULL;</span>
+                            break;
+                    }
+                }
+<span class="nc" id="L280">                catch (SQLException e) {</span>
+<span class="nc" id="L281">                    columnTypes[column] = Types.NULL;</span>
+<span class="nc" id="L282">                    throw e;</span>
+<span class="nc" id="L283">                }</span>
+            }
+
+
+<span class="nc bnc" id="L287" title="All 2 branches missed.">            if (numberOfValidColumns &lt;= 1) {</span>
+<span class="nc" id="L288">                throw new SQLException(</span>
+                    &quot;Not enough valid columns where generated by query.&quot;
+                );
+            }
+
+            /// First column is X data
+<span class="nc" id="L294">            this.columnNames = new String[numberOfValidColumns - 1];</span>
+            /// Get the column names and cache them.
+<span class="nc" id="L296">            int currentColumn = 0;</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">            for (int column = 1; column &lt; numberOfColumns; column++) {</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">                if (columnTypes[column] != Types.NULL) {</span>
+<span class="nc" id="L299">                    this.columnNames[currentColumn]</span>
+                        = metaData.getColumnLabel(column + 1);
+<span class="nc" id="L301">                    ++currentColumn;</span>
+                }
+            }
+
+            // Might need to add, to free memory from any previous result sets
+<span class="nc bnc" id="L306" title="All 2 branches missed.">            if (this.rows != null) {</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">                for (int column = 0; column &lt; this.rows.size(); column++) {</span>
+<span class="nc" id="L308">                    ArrayList row = (ArrayList) this.rows.get(column);</span>
+<span class="nc" id="L309">                    row.clear();</span>
+                }
+<span class="nc" id="L311">                this.rows.clear();</span>
+            }
+
+            // Are we working with a time series.
+<span class="nc bnc" id="L315" title="All 2 branches missed.">            switch (columnTypes[0]) {</span>
+                case Types.DATE:
+                case Types.TIME:
+                case Types.TIMESTAMP:
+<span class="nc" id="L319">                    this.isTimeSeries = true;</span>
+<span class="nc" id="L320">                    break;</span>
+                default :
+<span class="nc" id="L322">                    this.isTimeSeries = false;</span>
+                    break;
+            }
+
+            // Get all rows.
+            // rows = new ArrayList();
+<span class="nc bnc" id="L328" title="All 2 branches missed.">            while (resultSet.next()) {</span>
+<span class="nc" id="L329">                ArrayList newRow = new ArrayList();</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">                for (int column = 0; column &lt; numberOfColumns; column++) {</span>
+<span class="nc" id="L331">                    Object xObject = resultSet.getObject(column + 1);</span>
+<span class="nc bnc" id="L332" title="All 4 branches missed.">                    switch (columnTypes[column]) {</span>
+                        case Types.NUMERIC:
+                        case Types.REAL:
+                        case Types.INTEGER:
+                        case Types.DOUBLE:
+                        case Types.FLOAT:
+                        case Types.DECIMAL:
+                        case Types.BIGINT:
+                        case Types.SMALLINT:
+<span class="nc" id="L341">                            newRow.add(xObject);</span>
+<span class="nc" id="L342">                            break;</span>
+
+                        case Types.DATE:
+                        case Types.TIME:
+                        case Types.TIMESTAMP:
+<span class="nc" id="L347">                            newRow.add(new Long(((Date) xObject).getTime()));</span>
+<span class="nc" id="L348">                            break;</span>
+                        case Types.NULL:
+<span class="nc" id="L350">                            break;</span>
+                        default:
+<span class="nc" id="L352">                            System.err.println(&quot;Unknown data&quot;);</span>
+<span class="nc" id="L353">                            columnTypes[column] = Types.NULL;</span>
+                            break;
+                    }
+                }
+<span class="nc" id="L357">                this.rows.add(newRow);</span>
+<span class="nc" id="L358">            }</span>
+
+            /// a kludge to make everything work when no rows returned
+<span class="nc bnc" id="L361" title="All 2 branches missed.">            if (this.rows.isEmpty()) {</span>
+<span class="nc" id="L362">                ArrayList newRow = new ArrayList();</span>
+<span class="nc bnc" id="L363" title="All 2 branches missed.">                for (int column = 0; column &lt; numberOfColumns; column++) {</span>
+<span class="nc bnc" id="L364" title="All 2 branches missed.">                    if (columnTypes[column] != Types.NULL) {</span>
+<span class="nc" id="L365">                        newRow.add(new Integer(0));</span>
+                    }
+                }
+<span class="nc" id="L368">                this.rows.add(newRow);</span>
+            }
+
+            /// Determine max and min values.
+<span class="nc bnc" id="L372" title="All 2 branches missed.">            if (this.rows.size() &lt; 1) {</span>
+<span class="nc" id="L373">                this.maxValue = 0.0;</span>
+<span class="nc" id="L374">                this.minValue = 0.0;</span>
+            }
+            else {
+<span class="nc" id="L377">                this.maxValue = Double.NEGATIVE_INFINITY;</span>
+<span class="nc" id="L378">                this.minValue = Double.POSITIVE_INFINITY;</span>
+<span class="nc bnc" id="L379" title="All 2 branches missed.">                for (int rowNum = 0; rowNum &lt; this.rows.size(); ++rowNum) {</span>
+<span class="nc" id="L380">                    ArrayList row = (ArrayList) this.rows.get(rowNum);</span>
+<span class="nc bnc" id="L381" title="All 2 branches missed.">                    for (int column = 1; column &lt; numberOfColumns; column++) {</span>
+<span class="nc" id="L382">                        Object testValue = row.get(column);</span>
+<span class="nc bnc" id="L383" title="All 2 branches missed.">                        if (testValue != null) {</span>
+<span class="nc" id="L384">                            double test = ((Number) testValue).doubleValue();</span>
+
+<span class="nc bnc" id="L386" title="All 2 branches missed.">                            if (test &lt; this.minValue) {</span>
+<span class="nc" id="L387">                                this.minValue = test;</span>
+                            }
+<span class="nc bnc" id="L389" title="All 2 branches missed.">                            if (test &gt; this.maxValue) {</span>
+<span class="nc" id="L390">                                this.maxValue = test;</span>
+                            }
+                        }
+                    }
+                }
+            }
+
+<span class="nc" id="L397">            fireDatasetChanged(); // Tell the listeners a new table has arrived.</span>
+        }
+        finally {
+<span class="nc bnc" id="L400" title="All 4 branches missed.">            if (resultSet != null) {</span>
+                try {
+<span class="nc" id="L402">                    resultSet.close();</span>
+                }
+<span class="nc" id="L404">                catch (Exception e) {</span>
+                    // TODO: is this a good idea?
+<span class="nc" id="L406">                }</span>
+            }
+<span class="nc bnc" id="L408" title="All 4 branches missed.">            if (statement != null) {</span>
+                try {
+<span class="nc" id="L410">                    statement.close();</span>
+                }
+<span class="nc" id="L412">                catch (Exception e) {</span>
+                    // TODO: is this a good idea?
+<span class="nc" id="L414">                }</span>
+            }
+        }
+
+<span class="nc" id="L418">    }</span>
+
+    /**
+     * Returns the x-value for the specified series and item.  The
+     * implementation is responsible for ensuring that the x-values are
+     * presented in ascending order.
+     *
+     * @param  seriesIndex  the series (zero-based index).
+     * @param  itemIndex  the item (zero-based index).
+     *
+     * @return The x-value
+     *
+     * @see XYDataset
+     */
+    @Override
+    public Number getX(int seriesIndex, int itemIndex) {
+<span class="nc" id="L434">        ArrayList row = (ArrayList) this.rows.get(itemIndex);</span>
+<span class="nc" id="L435">        return (Number) row.get(0);</span>
+    }
+
+    /**
+     * Returns the y-value for the specified series and item.
+     *
+     * @param  seriesIndex  the series (zero-based index).
+     * @param  itemIndex  the item (zero-based index).
+     *
+     * @return The yValue value
+     *
+     * @see XYDataset
+     */
+    @Override
+    public Number getY(int seriesIndex, int itemIndex) {
+<span class="nc" id="L450">        ArrayList row = (ArrayList) this.rows.get(itemIndex);</span>
+<span class="nc" id="L451">        return (Number) row.get(seriesIndex + 1);</span>
+    }
+
+    /**
+     * Returns the number of items in the specified series.
+     *
+     * @param  seriesIndex  the series (zero-based index).
+     *
+     * @return The itemCount value
+     *
+     * @see XYDataset
+     */
+    @Override
+    public int getItemCount(int seriesIndex) {
+<span class="nc" id="L465">        return this.rows.size();</span>
+    }
+
+    /**
+     * Returns the number of items in all series.  This method is defined by
+     * the {@link TableXYDataset} interface.
+     *
+     * @return The item count.
+     */
+    @Override
+    public int getItemCount() {
+<span class="nc" id="L476">        return getItemCount(0);</span>
+    }
+
+    /**
+     * Returns the number of series in the dataset.
+     *
+     * @return The seriesCount value
+     *
+     * @see XYDataset
+     * @see Dataset
+     */
+    @Override
+    public int getSeriesCount() {
+<span class="nc" id="L489">        return this.columnNames.length;</span>
+    }
+
+    /**
+     * Returns the key for the specified series.
+     *
+     * @param seriesIndex  the series (zero-based index).
+     *
+     * @return The seriesName value
+     *
+     * @see XYDataset
+     * @see Dataset
+     */
+    @Override
+    public Comparable getSeriesKey(int seriesIndex) {
+
+<span class="nc bnc" id="L505" title="All 4 branches missed.">        if ((seriesIndex &lt; this.columnNames.length)</span>
+                &amp;&amp; (this.columnNames[seriesIndex] != null)) {
+<span class="nc" id="L507">            return this.columnNames[seriesIndex];</span>
+        }
+        else {
+<span class="nc" id="L510">            return &quot;&quot;;</span>
+        }
+
+    }
+
+    /**
+     * Returns the number of items that should be displayed in the legend.
+     *
+     * @return The legendItemCount value
+     *
+     * @deprecated This method is not used in JFreeChart 1.0.x (it was left in
+     *     the API by mistake and is officially deprecated from version 1.0.3
+     *     onwards).
+     */
+    public int getLegendItemCount() {
+<span class="nc" id="L525">        return getSeriesCount();</span>
+    }
+
+    /**
+     * Returns the legend item labels.
+     *
+     * @return The legend item labels.
+     *
+     * @deprecated This method is not used in JFreeChart 1.0.x (it was left in
+     *     the API by mistake and is officially deprecated from version 1.0.3
+     *     onwards).
+     */
+    public String[] getLegendItemLabels() {
+<span class="nc" id="L538">        return this.columnNames;</span>
+    }
+
+    /**
+     * Close the database connection
+     */
+    public void close() {
+
+        try {
+<span class="nc" id="L547">            this.connection.close();</span>
+        }
+<span class="nc" id="L549">        catch (Exception e) {</span>
+<span class="nc" id="L550">            System.err.println(&quot;JdbcXYDataset: swallowing exception.&quot;);</span>
+<span class="nc" id="L551">        }</span>
+
+<span class="nc" id="L553">    }</span>
+
+    /**
+     * Returns the minimum y-value in the dataset.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         y-interval is taken into account.
+     *
+     * @return The minimum value.
+     */
+    @Override
+    public double getRangeLowerBound(boolean includeInterval) {
+<span class="nc" id="L565">        return this.minValue;</span>
+    }
+
+    /**
+     * Returns the maximum y-value in the dataset.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         y-interval is taken into account.
+     *
+     * @return The maximum value.
+     */
+    @Override
+    public double getRangeUpperBound(boolean includeInterval) {
+<span class="nc" id="L578">        return this.maxValue;</span>
+    }
+
+    /**
+     * Returns the range of the values in this dataset's range.
+     *
+     * @param includeInterval  a flag that determines whether or not the
+     *                         y-interval is taken into account.
+     *
+     * @return The range.
+     */
+    @Override
+    public Range getRangeBounds(boolean includeInterval) {
+<span class="nc" id="L591">        return new Range(this.minValue, this.maxValue);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

@@ -1,0 +1,440 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StandardDialRange.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.plot.dial</a> &gt; <span class="el_source">StandardDialRange.java</span></div><h1>StandardDialRange.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ----------------------
+ * StandardDialRange.java
+ * ----------------------
+ * (C) Copyright 2006-2013, by Object Refinery Limited.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   -;
+ *
+ * Changes
+ * -------
+ * 03-Nov-2006 : Version 1 (DG);
+ * 08-Mar-2007 : Fix in hashCode() (DG);
+ * 17-Oct-2007 : Removed increment attribute (DG);
+ * 24-Oct-2007 : Added scaleIndex (DG);
+ * 03-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.chart.plot.dial;
+
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.geom.Arc2D;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+
+import org.jfree.chart.HashUtilities;
+import org.jfree.chart.util.ParamChecks;
+import org.jfree.io.SerialUtilities;
+import org.jfree.util.PaintUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A layer that draws a range highlight on a dial plot.
+ *
+ * @since 1.0.7
+ */
+public class StandardDialRange extends AbstractDialLayer implements DialLayer,
+        Cloneable, PublicCloneable, Serializable {
+
+    /** For serialization. */
+    static final long serialVersionUID = 345515648249364904L;
+
+    /** The scale index. */
+    private int scaleIndex;
+
+    /** The minimum data value for the scale. */
+    private double lowerBound;
+
+    /** The maximum data value for the scale. */
+    private double upperBound;
+
+    /**
+     * The paint used to draw the range highlight.  This field is transient
+     * because it requires special handling for serialization.
+     */
+    private transient Paint paint;
+
+    /**
+     * The factor (in the range 0.0 to 1.0) that determines the inside limit
+     * of the range highlight.
+     */
+    private double innerRadius;
+
+    /**
+     * The factor (in the range 0.0 to 1.0) that determines the outside limit
+     * of the range highlight.
+     */
+    private double outerRadius;
+
+    /**
+     * Creates a new instance of &lt;code&gt;StandardDialRange&lt;/code&gt;.
+     */
+    public StandardDialRange() {
+<span class="fc" id="L106">        this(0.0, 100.0, Color.white);</span>
+<span class="fc" id="L107">    }</span>
+
+    /**
+     * Creates a new instance of &lt;code&gt;StandardDialRange&lt;/code&gt;.
+     *
+     * @param lower  the lower bound.
+     * @param upper  the upper bound.
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     */
+<span class="fc" id="L116">    public StandardDialRange(double lower, double upper, Paint paint) {</span>
+<span class="fc" id="L117">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L118">        this.scaleIndex = 0;</span>
+<span class="fc" id="L119">        this.lowerBound = lower;</span>
+<span class="fc" id="L120">        this.upperBound = upper;</span>
+<span class="fc" id="L121">        this.innerRadius = 0.48;</span>
+<span class="fc" id="L122">        this.outerRadius = 0.52;</span>
+<span class="fc" id="L123">        this.paint = paint;</span>
+<span class="fc" id="L124">    }</span>
+
+    /**
+     * Returns the scale index.
+     *
+     * @return The scale index.
+     *
+     * @see #setScaleIndex(int)
+     */
+    public int getScaleIndex() {
+<span class="nc" id="L134">        return this.scaleIndex;</span>
+    }
+
+    /**
+     * Sets the scale index and sends a {@link DialLayerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param index  the scale index.
+     *
+     * @see #getScaleIndex()
+     */
+    public void setScaleIndex(int index) {
+<span class="nc" id="L146">        this.scaleIndex = index;</span>
+<span class="nc" id="L147">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="nc" id="L148">    }</span>
+
+    /**
+     * Returns the lower bound (a data value) of the dial range.
+     *
+     * @return The lower bound of the dial range.
+     *
+     * @see #setLowerBound(double)
+     */
+    public double getLowerBound() {
+<span class="nc" id="L158">        return this.lowerBound;</span>
+    }
+
+    /**
+     * Sets the lower bound of the dial range and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param bound  the lower bound.
+     *
+     * @see #getLowerBound()
+     */
+    public void setLowerBound(double bound) {
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">        if (bound &gt;= this.upperBound) {</span>
+<span class="nc" id="L171">            throw new IllegalArgumentException(</span>
+                    &quot;Lower bound must be less than upper bound.&quot;);
+        }
+<span class="fc" id="L174">        this.lowerBound = bound;</span>
+<span class="fc" id="L175">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L176">    }</span>
+
+    /**
+     * Returns the upper bound of the dial range.
+     *
+     * @return The upper bound.
+     *
+     * @see #setUpperBound(double)
+     */
+    public double getUpperBound() {
+<span class="nc" id="L186">        return this.upperBound;</span>
+    }
+
+    /**
+     * Sets the upper bound of the dial range and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param bound  the upper bound.
+     *
+     * @see #getUpperBound()
+     */
+    public void setUpperBound(double bound) {
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">        if (bound &lt;= this.lowerBound) {</span>
+<span class="nc" id="L199">            throw new IllegalArgumentException(</span>
+                    &quot;Lower bound must be less than upper bound.&quot;);
+        }
+<span class="fc" id="L202">        this.upperBound = bound;</span>
+<span class="fc" id="L203">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L204">    }</span>
+
+    /**
+     * Sets the bounds for the range and sends a {@link DialLayerChangeEvent}
+     * to all registered listeners.
+     *
+     * @param lower  the lower bound.
+     * @param upper  the upper bound.
+     */
+    public void setBounds(double lower, double upper) {
+<span class="nc bnc" id="L214" title="All 2 branches missed.">        if (lower &gt;= upper) {</span>
+<span class="nc" id="L215">            throw new IllegalArgumentException(</span>
+                    &quot;Lower must be less than upper.&quot;);
+        }
+<span class="nc" id="L218">        this.lowerBound = lower;</span>
+<span class="nc" id="L219">        this.upperBound = upper;</span>
+<span class="nc" id="L220">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="nc" id="L221">    }</span>
+
+    /**
+     * Returns the paint used to highlight the range.
+     *
+     * @return The paint (never &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setPaint(Paint)
+     */
+    public Paint getPaint() {
+<span class="nc" id="L231">        return this.paint;</span>
+    }
+
+    /**
+     * Sets the paint used to highlight the range and sends a
+     * {@link DialLayerChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #getPaint()
+     */
+    public void setPaint(Paint paint) {
+<span class="fc" id="L243">        ParamChecks.nullNotPermitted(paint, &quot;paint&quot;);</span>
+<span class="fc" id="L244">        this.paint = paint;</span>
+<span class="fc" id="L245">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="fc" id="L246">    }</span>
+
+    /**
+     * Returns the inner radius.
+     *
+     * @return The inner radius.
+     *
+     * @see #setInnerRadius(double)
+     */
+    public double getInnerRadius() {
+<span class="nc" id="L256">        return this.innerRadius;</span>
+    }
+
+    /**
+     * Sets the inner radius and sends a {@link DialLayerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param radius  the radius.
+     *
+     * @see #getInnerRadius()
+     */
+    public void setInnerRadius(double radius) {
+<span class="nc" id="L268">        this.innerRadius = radius;</span>
+<span class="nc" id="L269">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="nc" id="L270">    }</span>
+
+    /**
+     * Returns the outer radius.
+     *
+     * @return The outer radius.
+     *
+     * @see #setOuterRadius(double)
+     */
+    public double getOuterRadius() {
+<span class="nc" id="L280">        return this.outerRadius;</span>
+    }
+
+    /**
+     * Sets the outer radius and sends a {@link DialLayerChangeEvent} to all
+     * registered listeners.
+     *
+     * @param radius  the radius.
+     *
+     * @see #getOuterRadius()
+     */
+    public void setOuterRadius(double radius) {
+<span class="nc" id="L292">        this.outerRadius = radius;</span>
+<span class="nc" id="L293">        notifyListeners(new DialLayerChangeEvent(this));</span>
+<span class="nc" id="L294">    }</span>
+
+    /**
+     * Returns &lt;code&gt;true&lt;/code&gt; to indicate that this layer should be
+     * clipped within the dial window.
+     *
+     * @return &lt;code&gt;true&lt;/code&gt;.
+     */
+    @Override
+    public boolean isClippedToWindow() {
+<span class="nc" id="L304">        return true;</span>
+    }
+
+    /**
+     * Draws the range.
+     *
+     * @param g2  the graphics target.
+     * @param plot  the plot.
+     * @param frame  the dial's reference frame (in Java2D space).
+     * @param view  the dial's view rectangle (in Java2D space).
+     */
+    @Override
+    public void draw(Graphics2D g2, DialPlot plot, Rectangle2D frame,
+            Rectangle2D view) {
+
+<span class="nc" id="L319">        Rectangle2D arcRectInner = DialPlot.rectangleByRadius(frame,</span>
+                this.innerRadius, this.innerRadius);
+<span class="nc" id="L321">        Rectangle2D arcRectOuter = DialPlot.rectangleByRadius(frame,</span>
+                this.outerRadius, this.outerRadius);
+
+<span class="nc" id="L324">        DialScale scale = plot.getScale(this.scaleIndex);</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">        if (scale == null) {</span>
+<span class="nc" id="L326">            throw new RuntimeException(&quot;No scale for scaleIndex = &quot;</span>
+                    + this.scaleIndex);
+        }
+<span class="nc" id="L329">        double angleMin = scale.valueToAngle(this.lowerBound);</span>
+<span class="nc" id="L330">        double angleMax = scale.valueToAngle(this.upperBound);</span>
+
+<span class="nc" id="L332">        Arc2D arcInner = new Arc2D.Double(arcRectInner, angleMin,</span>
+                angleMax - angleMin, Arc2D.OPEN);
+<span class="nc" id="L334">        Arc2D arcOuter = new Arc2D.Double(arcRectOuter, angleMax,</span>
+                angleMin - angleMax, Arc2D.OPEN);
+
+<span class="nc" id="L337">        g2.setPaint(this.paint);</span>
+<span class="nc" id="L338">        g2.setStroke(new BasicStroke(2.0f));</span>
+<span class="nc" id="L339">        g2.draw(arcInner);</span>
+<span class="nc" id="L340">        g2.draw(arcOuter);</span>
+<span class="nc" id="L341">    }</span>
+
+    /**
+     * Tests this instance for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L352" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L353">            return true;</span>
+        }
+<span class="pc bpc" id="L355" title="1 of 2 branches missed.">        if (!(obj instanceof StandardDialRange)) {</span>
+<span class="nc" id="L356">            return false;</span>
+        }
+<span class="fc" id="L358">        StandardDialRange that = (StandardDialRange) obj;</span>
+<span class="pc bpc" id="L359" title="1 of 2 branches missed.">        if (this.scaleIndex != that.scaleIndex) {</span>
+<span class="nc" id="L360">            return false;</span>
+        }
+<span class="fc bfc" id="L362" title="All 2 branches covered.">        if (this.lowerBound != that.lowerBound) {</span>
+<span class="fc" id="L363">            return false;</span>
+        }
+<span class="fc bfc" id="L365" title="All 2 branches covered.">        if (this.upperBound != that.upperBound) {</span>
+<span class="fc" id="L366">            return false;</span>
+        }
+<span class="fc bfc" id="L368" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.paint, that.paint)) {</span>
+<span class="fc" id="L369">            return false;</span>
+        }
+<span class="pc bpc" id="L371" title="1 of 2 branches missed.">        if (this.innerRadius != that.innerRadius) {</span>
+<span class="nc" id="L372">            return false;</span>
+        }
+<span class="pc bpc" id="L374" title="1 of 2 branches missed.">        if (this.outerRadius != that.outerRadius) {</span>
+<span class="nc" id="L375">            return false;</span>
+        }
+<span class="fc" id="L377">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Returns a hash code for this instance.
+     *
+     * @return The hash code.
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L387">        int result = 193;</span>
+<span class="fc" id="L388">        long temp = Double.doubleToLongBits(this.lowerBound);</span>
+<span class="fc" id="L389">        result = 37 * result + (int) (temp ^ (temp &gt;&gt;&gt; 32));</span>
+<span class="fc" id="L390">        temp = Double.doubleToLongBits(this.upperBound);</span>
+<span class="fc" id="L391">        result = 37 * result + (int) (temp ^ (temp &gt;&gt;&gt; 32));</span>
+<span class="fc" id="L392">        temp = Double.doubleToLongBits(this.innerRadius);</span>
+<span class="fc" id="L393">        result = 37 * result + (int) (temp ^ (temp &gt;&gt;&gt; 32));</span>
+<span class="fc" id="L394">        temp = Double.doubleToLongBits(this.outerRadius);</span>
+<span class="fc" id="L395">        result = 37 * result + (int) (temp ^ (temp &gt;&gt;&gt; 32));</span>
+<span class="fc" id="L396">        result = 37 * result + HashUtilities.hashCodeForPaint(this.paint);</span>
+<span class="fc" id="L397">        return result;</span>
+    }
+
+    /**
+     * Returns a clone of this instance.
+     *
+     * @return A clone.
+     *
+     * @throws CloneNotSupportedException if any of the attributes of this
+     *     instance cannot be cloned.
+     */
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+<span class="fc" id="L410">        return super.clone();</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L421">        stream.defaultWriteObject();</span>
+<span class="fc" id="L422">        SerialUtilities.writePaint(this.paint, stream);</span>
+<span class="fc" id="L423">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+            throws IOException, ClassNotFoundException {
+<span class="fc" id="L435">        stream.defaultReadObject();</span>
+<span class="fc" id="L436">        this.paint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L437">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

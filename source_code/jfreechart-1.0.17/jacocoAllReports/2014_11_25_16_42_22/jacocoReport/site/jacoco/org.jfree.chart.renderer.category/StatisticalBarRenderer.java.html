@@ -1,0 +1,597 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>StatisticalBarRenderer.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.chart.renderer.category</a> &gt; <span class="el_source">StatisticalBarRenderer.java</span></div><h1>StatisticalBarRenderer.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates. 
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ---------------------------
+ * StatisticalBarRenderer.java
+ * ---------------------------
+ * (C) Copyright 2002-2011, by Pascal Collet and Contributors.
+ *
+ * Original Author:  Pascal Collet;
+ * Contributor(s):   David Gilbert (for Object Refinery Limited);
+ *                   Christian W. Zuckschwerdt;
+ *                   Peter Kolb (patches 2497611, 2791407);
+ *                   Martin Hoeller;
+ *
+ * Changes
+ * -------
+ * 21-Aug-2002 : Version 1, contributed by Pascal Collet (DG);
+ * 01-Oct-2002 : Fixed errors reported by Checkstyle (DG);
+ * 24-Oct-2002 : Changes to dataset interface (DG);
+ * 05-Nov-2002 : Base dataset is now TableDataset not CategoryDataset (DG);
+ * 05-Feb-2003 : Updates for new DefaultStatisticalCategoryDataset (DG);
+ * 25-Mar-2003 : Implemented Serializable (DG);
+ * 30-Jul-2003 : Modified entity constructor (CZ);
+ * 06-Oct-2003 : Corrected typo in exception message (DG);
+ * 05-Nov-2004 : Modified drawItem() signature (DG);
+ * 15-Jun-2005 : Added errorIndicatorPaint attribute (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 19-May-2006 : Added support for tooltips and URLs (DG);
+ * 12-Jul-2006 : Added support for item labels (DG);
+ * 02-Feb-2007 : Removed author tags all over JFreeChart sources (DG);
+ * 28-Aug-2007 : Fixed NullPointerException - see bug 1779941 (DG);
+ * 14-Nov-2007 : Added errorIndicatorStroke, and fixed bugs with drawBarOutline
+ *               and gradientPaintTransformer attributes being ignored (DG);
+ * 14-Jan-2009 : Added support for seriesVisible flags (PK);
+ * 16-May-2009 : Added findRangeBounds() override to take into account the
+ *               dataset interval (PK);
+ * 28-Oct-2011 : Fixed problem with maximalBarWidth, bug #2810220 (MH);
+ * 30-Oct-2011 : Additional change for bug #2810220 (DG);
+ *
+ */
+
+package org.jfree.chart.renderer.category;
+
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.GradientPaint;
+import java.awt.Graphics2D;
+import java.awt.Paint;
+import java.awt.Stroke;
+import java.awt.geom.Line2D;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+
+import org.jfree.chart.axis.CategoryAxis;
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.entity.EntityCollection;
+import org.jfree.chart.event.RendererChangeEvent;
+import org.jfree.chart.labels.CategoryItemLabelGenerator;
+import org.jfree.chart.plot.CategoryPlot;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.data.Range;
+import org.jfree.data.category.CategoryDataset;
+import org.jfree.data.statistics.StatisticalCategoryDataset;
+import org.jfree.io.SerialUtilities;
+import org.jfree.ui.GradientPaintTransformer;
+import org.jfree.ui.RectangleEdge;
+import org.jfree.util.ObjectUtilities;
+import org.jfree.util.PaintUtilities;
+import org.jfree.util.PublicCloneable;
+
+/**
+ * A renderer that handles the drawing a bar plot where
+ * each bar has a mean value and a standard deviation line.  The example shown
+ * here is generated by the &lt;code&gt;StatisticalBarChartDemo1.java&lt;/code&gt; program
+ * included in the JFreeChart Demo Collection:
+ * &lt;br&gt;&lt;br&gt;
+ * &lt;img src=&quot;../../../../../images/StatisticalBarRendererSample.png&quot;
+ * alt=&quot;StatisticalBarRendererSample.png&quot; /&gt;
+ */
+public class StatisticalBarRenderer extends BarRenderer
+        implements CategoryItemRenderer, Cloneable, PublicCloneable,
+                   Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = -4986038395414039117L;
+
+    /** The paint used to show the error indicator. */
+    private transient Paint errorIndicatorPaint;
+
+    /**
+     * The stroke used to draw the error indicators.
+     *
+     * @since 1.0.8
+     */
+    private transient Stroke errorIndicatorStroke;
+
+    /**
+     * Default constructor.
+     */
+    public StatisticalBarRenderer() {
+<span class="fc" id="L127">        super();</span>
+<span class="fc" id="L128">        this.errorIndicatorPaint = Color.gray;</span>
+<span class="fc" id="L129">        this.errorIndicatorStroke = new BasicStroke(1.0f);</span>
+<span class="fc" id="L130">    }</span>
+
+    /**
+     * Returns the paint used for the error indicators.
+     *
+     * @return The paint used for the error indicators (possibly
+     *         &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setErrorIndicatorPaint(Paint)
+     */
+    public Paint getErrorIndicatorPaint() {
+<span class="nc" id="L141">        return this.errorIndicatorPaint;</span>
+    }
+
+    /**
+     * Sets the paint used for the error indicators (if &lt;code&gt;null&lt;/code&gt;,
+     * the item outline paint is used instead) and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param paint  the paint (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @see #getErrorIndicatorPaint()
+     */
+    public void setErrorIndicatorPaint(Paint paint) {
+<span class="fc" id="L154">        this.errorIndicatorPaint = paint;</span>
+<span class="fc" id="L155">        fireChangeEvent();</span>
+<span class="fc" id="L156">    }</span>
+
+    /**
+     * Returns the stroke used to draw the error indicators.  If this is
+     * &lt;code&gt;null&lt;/code&gt;, the renderer will use the item outline stroke).
+     *
+     * @return The stroke (possibly &lt;code&gt;null&lt;/code&gt;).
+     *
+     * @see #setErrorIndicatorStroke(Stroke)
+     *
+     * @since 1.0.8
+     */
+    public Stroke getErrorIndicatorStroke() {
+<span class="nc" id="L169">        return this.errorIndicatorStroke;</span>
+    }
+
+    /**
+     * Sets the stroke used to draw the error indicators, and sends a
+     * {@link RendererChangeEvent} to all registered listeners.  If you set
+     * this to &lt;code&gt;null&lt;/code&gt;, the renderer will use the item outline
+     * stroke.
+     *
+     * @param stroke  the stroke (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @see #getErrorIndicatorStroke()
+     *
+     * @since 1.0.8
+     */
+    public void setErrorIndicatorStroke(Stroke stroke) {
+<span class="fc" id="L185">        this.errorIndicatorStroke = stroke;</span>
+<span class="fc" id="L186">        fireChangeEvent();</span>
+<span class="fc" id="L187">    }</span>
+
+    /**
+     * Returns the range of values the renderer requires to display all the
+     * items from the specified dataset. This takes into account the range
+     * between the min/max values, possibly ignoring invisible series.
+     *
+     * @param dataset  the dataset (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return The range (or &lt;code&gt;null&lt;/code&gt; if the dataset is
+     *         &lt;code&gt;null&lt;/code&gt; or empty).
+     */
+    @Override
+    public Range findRangeBounds(CategoryDataset dataset) {
+<span class="fc" id="L201">         return findRangeBounds(dataset, true);</span>
+    }
+
+    /**
+     * Draws the bar with its standard deviation line range for a single
+     * (series, category) data item.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the data area.
+     * @param plot  the plot.
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param data  the data.
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     * @param pass  the pass index.
+     */
+    @Override
+    public void drawItem(Graphics2D g2, CategoryItemRendererState state,
+            Rectangle2D dataArea, CategoryPlot plot, CategoryAxis domainAxis,
+            ValueAxis rangeAxis, CategoryDataset data, int row, int column,
+            int pass) {
+
+<span class="fc" id="L225">        int visibleRow = state.getVisibleSeriesIndex(row);</span>
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">        if (visibleRow &lt; 0) {</span>
+<span class="nc" id="L227">            return;</span>
+        }
+        // defensive check
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">        if (!(data instanceof StatisticalCategoryDataset)) {</span>
+<span class="nc" id="L231">            throw new IllegalArgumentException(</span>
+                &quot;Requires StatisticalCategoryDataset.&quot;);
+        }
+<span class="fc" id="L234">        StatisticalCategoryDataset statData = (StatisticalCategoryDataset) data;</span>
+
+<span class="fc" id="L236">        PlotOrientation orientation = plot.getOrientation();</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">        if (orientation == PlotOrientation.HORIZONTAL) {</span>
+<span class="fc" id="L238">            drawHorizontalItem(g2, state, dataArea, plot, domainAxis,</span>
+                    rangeAxis, statData, visibleRow, row, column);
+        }
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">        else if (orientation == PlotOrientation.VERTICAL) {</span>
+<span class="fc" id="L242">            drawVerticalItem(g2, state, dataArea, plot, domainAxis, rangeAxis,</span>
+                    statData, visibleRow, row, column);
+        }
+<span class="fc" id="L245">    }</span>
+
+    /**
+     * Draws an item for a plot with a horizontal orientation.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the data area.
+     * @param plot  the plot.
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the data.
+     * @param visibleRow  the visible row index.
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     */
+    protected void drawHorizontalItem(Graphics2D g2,
+                                      CategoryItemRendererState state,
+                                      Rectangle2D dataArea,
+                                      CategoryPlot plot,
+                                      CategoryAxis domainAxis,
+                                      ValueAxis rangeAxis,
+                                      StatisticalCategoryDataset dataset,
+                                      int visibleRow,
+                                      int row,
+                                      int column) {
+
+        // BAR Y
+<span class="fc" id="L273">        double rectY = calculateBarW0(plot, PlotOrientation.HORIZONTAL, </span>
+                dataArea, domainAxis, state, visibleRow, column);
+
+        // BAR X
+<span class="fc" id="L277">        Number meanValue = dataset.getMeanValue(row, column);</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        if (meanValue == null) {</span>
+<span class="fc" id="L279">            return;</span>
+        }
+<span class="fc" id="L281">        double value = meanValue.doubleValue();</span>
+<span class="fc" id="L282">        double base = 0.0;</span>
+<span class="fc" id="L283">        double lclip = getLowerClip();</span>
+<span class="fc" id="L284">        double uclip = getUpperClip();</span>
+
+<span class="pc bpc" id="L286" title="1 of 2 branches missed.">        if (uclip &lt;= 0.0) {  // cases 1, 2, 3 and 4</span>
+<span class="nc bnc" id="L287" title="All 2 branches missed.">            if (value &gt;= uclip) {</span>
+<span class="nc" id="L288">                return; // bar is not visible</span>
+            }
+<span class="nc" id="L290">            base = uclip;</span>
+<span class="nc bnc" id="L291" title="All 2 branches missed.">            if (value &lt;= lclip) {</span>
+<span class="nc" id="L292">                value = lclip;</span>
+            }
+        }
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">        else if (lclip &lt;= 0.0) { // cases 5, 6, 7 and 8</span>
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">            if (value &gt;= uclip) {</span>
+<span class="nc" id="L297">                value = uclip;</span>
+            }
+            else {
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">                if (value &lt;= lclip) {</span>
+<span class="nc" id="L301">                    value = lclip;</span>
+                }
+            }
+        }
+        else { // cases 9, 10, 11 and 12
+<span class="nc bnc" id="L306" title="All 2 branches missed.">            if (value &lt;= lclip) {</span>
+<span class="nc" id="L307">                return; // bar is not visible</span>
+            }
+<span class="nc" id="L309">            base = getLowerClip();</span>
+<span class="nc bnc" id="L310" title="All 2 branches missed.">            if (value &gt;= uclip) {</span>
+<span class="nc" id="L311">               value = uclip;</span>
+            }
+        }
+
+<span class="fc" id="L315">        RectangleEdge yAxisLocation = plot.getRangeAxisEdge();</span>
+<span class="fc" id="L316">        double transY1 = rangeAxis.valueToJava2D(base, dataArea, yAxisLocation);</span>
+<span class="fc" id="L317">        double transY2 = rangeAxis.valueToJava2D(value, dataArea,</span>
+                yAxisLocation);
+<span class="fc" id="L319">        double rectX = Math.min(transY2, transY1);</span>
+
+<span class="fc" id="L321">        double rectHeight = state.getBarWidth();</span>
+<span class="fc" id="L322">        double rectWidth = Math.abs(transY2 - transY1);</span>
+
+<span class="fc" id="L324">        Rectangle2D bar = new Rectangle2D.Double(rectX, rectY, rectWidth,</span>
+                rectHeight);
+<span class="fc" id="L326">        Paint itemPaint = getItemPaint(row, column);</span>
+<span class="fc" id="L327">        GradientPaintTransformer t = getGradientPaintTransformer();</span>
+<span class="pc bpc" id="L328" title="2 of 4 branches missed.">        if (t != null &amp;&amp; itemPaint instanceof GradientPaint) {</span>
+<span class="nc" id="L329">            itemPaint = t.transform((GradientPaint) itemPaint, bar);</span>
+        }
+<span class="fc" id="L331">        g2.setPaint(itemPaint);</span>
+<span class="fc" id="L332">        g2.fill(bar);</span>
+
+        // draw the outline...
+<span class="pc bpc" id="L335" title="3 of 4 branches missed.">        if (isDrawBarOutline()</span>
+                &amp;&amp; state.getBarWidth() &gt; BAR_OUTLINE_WIDTH_THRESHOLD) {
+<span class="nc" id="L337">            Stroke stroke = getItemOutlineStroke(row, column);</span>
+<span class="nc" id="L338">            Paint paint = getItemOutlinePaint(row, column);</span>
+<span class="nc bnc" id="L339" title="All 4 branches missed.">            if (stroke != null &amp;&amp; paint != null) {</span>
+<span class="nc" id="L340">                g2.setStroke(stroke);</span>
+<span class="nc" id="L341">                g2.setPaint(paint);</span>
+<span class="nc" id="L342">                g2.draw(bar);</span>
+            }
+        }
+
+        // standard deviation lines
+<span class="fc" id="L347">        Number n = dataset.getStdDevValue(row, column);</span>
+<span class="fc bfc" id="L348" title="All 2 branches covered.">        if (n != null) {</span>
+<span class="fc" id="L349">            double valueDelta = n.doubleValue();</span>
+<span class="fc" id="L350">            double highVal = rangeAxis.valueToJava2D(meanValue.doubleValue()</span>
+                    + valueDelta, dataArea, yAxisLocation);
+<span class="fc" id="L352">            double lowVal = rangeAxis.valueToJava2D(meanValue.doubleValue()</span>
+                    - valueDelta, dataArea, yAxisLocation);
+
+<span class="pc bpc" id="L355" title="1 of 2 branches missed.">            if (this.errorIndicatorPaint != null) {</span>
+<span class="fc" id="L356">                g2.setPaint(this.errorIndicatorPaint);</span>
+            }
+            else {
+<span class="nc" id="L359">                g2.setPaint(getItemOutlinePaint(row, column));</span>
+            }
+<span class="pc bpc" id="L361" title="1 of 2 branches missed.">            if (this.errorIndicatorStroke != null) {</span>
+<span class="fc" id="L362">                g2.setStroke(this.errorIndicatorStroke);</span>
+            }
+            else {
+<span class="nc" id="L365">                g2.setStroke(getItemOutlineStroke(row, column));</span>
+            }
+            Line2D line;
+<span class="fc" id="L368">            line = new Line2D.Double(lowVal, rectY + rectHeight / 2.0d,</span>
+                                     highVal, rectY + rectHeight / 2.0d);
+<span class="fc" id="L370">            g2.draw(line);</span>
+<span class="fc" id="L371">            line = new Line2D.Double(highVal, rectY + rectHeight * 0.25,</span>
+                                     highVal, rectY + rectHeight * 0.75);
+<span class="fc" id="L373">            g2.draw(line);</span>
+<span class="fc" id="L374">            line = new Line2D.Double(lowVal, rectY + rectHeight * 0.25,</span>
+                                     lowVal, rectY + rectHeight * 0.75);
+<span class="fc" id="L376">            g2.draw(line);</span>
+        }
+
+<span class="fc" id="L379">        CategoryItemLabelGenerator generator = getItemLabelGenerator(row,</span>
+                column);
+<span class="pc bpc" id="L381" title="3 of 4 branches missed.">        if (generator != null &amp;&amp; isItemLabelVisible(row, column)) {</span>
+<span class="nc bnc" id="L382" title="All 2 branches missed.">            drawItemLabel(g2, dataset, row, column, plot, generator, bar,</span>
+                    (value &lt; 0.0));
+        }
+
+        // add an item entity, if this information is being collected
+<span class="fc" id="L387">        EntityCollection entities = state.getEntityCollection();</span>
+<span class="pc bpc" id="L388" title="1 of 2 branches missed.">        if (entities != null) {</span>
+<span class="nc" id="L389">            addItemEntity(entities, dataset, row, column, bar);</span>
+        }
+
+<span class="fc" id="L392">    }</span>
+
+    /**
+     * Draws an item for a plot with a vertical orientation.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the data area.
+     * @param plot  the plot.
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the data.
+     * @param visibleRow  the visible row index.
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     */
+    protected void drawVerticalItem(Graphics2D g2,
+                                    CategoryItemRendererState state,
+                                    Rectangle2D dataArea,
+                                    CategoryPlot plot,
+                                    CategoryAxis domainAxis,
+                                    ValueAxis rangeAxis,
+                                    StatisticalCategoryDataset dataset,
+                                    int visibleRow,
+                                    int row,
+                                    int column) {
+
+        // BAR X
+<span class="fc" id="L420">        double rectX = calculateBarW0(plot, PlotOrientation.VERTICAL, dataArea,</span>
+                domainAxis, state, visibleRow, column);
+
+        // BAR Y
+<span class="fc" id="L424">        Number meanValue = dataset.getMeanValue(row, column);</span>
+<span class="fc bfc" id="L425" title="All 2 branches covered.">        if (meanValue == null) {</span>
+<span class="fc" id="L426">            return;</span>
+        }
+
+<span class="fc" id="L429">        double value = meanValue.doubleValue();</span>
+<span class="fc" id="L430">        double base = 0.0;</span>
+<span class="fc" id="L431">        double lclip = getLowerClip();</span>
+<span class="fc" id="L432">        double uclip = getUpperClip();</span>
+
+<span class="pc bpc" id="L434" title="1 of 2 branches missed.">        if (uclip &lt;= 0.0) {  // cases 1, 2, 3 and 4</span>
+<span class="nc bnc" id="L435" title="All 2 branches missed.">            if (value &gt;= uclip) {</span>
+<span class="nc" id="L436">                return; // bar is not visible</span>
+            }
+<span class="nc" id="L438">            base = uclip;</span>
+<span class="nc bnc" id="L439" title="All 2 branches missed.">            if (value &lt;= lclip) {</span>
+<span class="nc" id="L440">                value = lclip;</span>
+            }
+        }
+<span class="pc bpc" id="L443" title="1 of 2 branches missed.">        else if (lclip &lt;= 0.0) { // cases 5, 6, 7 and 8</span>
+<span class="pc bpc" id="L444" title="1 of 2 branches missed.">            if (value &gt;= uclip) {</span>
+<span class="nc" id="L445">                value = uclip;</span>
+            }
+            else {
+<span class="pc bpc" id="L448" title="1 of 2 branches missed.">                if (value &lt;= lclip) {</span>
+<span class="nc" id="L449">                    value = lclip;</span>
+                }
+            }
+        }
+        else { // cases 9, 10, 11 and 12
+<span class="nc bnc" id="L454" title="All 2 branches missed.">            if (value &lt;= lclip) {</span>
+<span class="nc" id="L455">                return; // bar is not visible</span>
+            }
+<span class="nc" id="L457">            base = getLowerClip();</span>
+<span class="nc bnc" id="L458" title="All 2 branches missed.">            if (value &gt;= uclip) {</span>
+<span class="nc" id="L459">               value = uclip;</span>
+            }
+        }
+
+<span class="fc" id="L463">        RectangleEdge yAxisLocation = plot.getRangeAxisEdge();</span>
+<span class="fc" id="L464">        double transY1 = rangeAxis.valueToJava2D(base, dataArea, yAxisLocation);</span>
+<span class="fc" id="L465">        double transY2 = rangeAxis.valueToJava2D(value, dataArea,</span>
+                yAxisLocation);
+<span class="fc" id="L467">        double rectY = Math.min(transY2, transY1);</span>
+
+<span class="fc" id="L469">        double rectWidth = state.getBarWidth();</span>
+<span class="fc" id="L470">        double rectHeight = Math.abs(transY2 - transY1);</span>
+
+<span class="fc" id="L472">        Rectangle2D bar = new Rectangle2D.Double(rectX, rectY, rectWidth,</span>
+                rectHeight);
+<span class="fc" id="L474">        Paint itemPaint = getItemPaint(row, column);</span>
+<span class="fc" id="L475">        GradientPaintTransformer t = getGradientPaintTransformer();</span>
+<span class="pc bpc" id="L476" title="2 of 4 branches missed.">        if (t != null &amp;&amp; itemPaint instanceof GradientPaint) {</span>
+<span class="nc" id="L477">            itemPaint = t.transform((GradientPaint) itemPaint, bar);</span>
+        }
+<span class="fc" id="L479">        g2.setPaint(itemPaint);</span>
+<span class="fc" id="L480">        g2.fill(bar);</span>
+        // draw the outline...
+<span class="pc bpc" id="L482" title="3 of 4 branches missed.">        if (isDrawBarOutline()</span>
+                &amp;&amp; state.getBarWidth() &gt; BAR_OUTLINE_WIDTH_THRESHOLD) {
+<span class="nc" id="L484">            Stroke stroke = getItemOutlineStroke(row, column);</span>
+<span class="nc" id="L485">            Paint paint = getItemOutlinePaint(row, column);</span>
+<span class="nc bnc" id="L486" title="All 4 branches missed.">            if (stroke != null &amp;&amp; paint != null) {</span>
+<span class="nc" id="L487">                g2.setStroke(stroke);</span>
+<span class="nc" id="L488">                g2.setPaint(paint);</span>
+<span class="nc" id="L489">                g2.draw(bar);</span>
+            }
+        }
+
+        // standard deviation lines
+<span class="fc" id="L494">        Number n = dataset.getStdDevValue(row, column);</span>
+<span class="fc bfc" id="L495" title="All 2 branches covered.">        if (n != null) {</span>
+<span class="fc" id="L496">            double valueDelta = n.doubleValue();</span>
+<span class="fc" id="L497">            double highVal = rangeAxis.valueToJava2D(meanValue.doubleValue()</span>
+                    + valueDelta, dataArea, yAxisLocation);
+<span class="fc" id="L499">            double lowVal = rangeAxis.valueToJava2D(meanValue.doubleValue()</span>
+                    - valueDelta, dataArea, yAxisLocation);
+
+<span class="pc bpc" id="L502" title="1 of 2 branches missed.">            if (this.errorIndicatorPaint != null) {</span>
+<span class="fc" id="L503">                g2.setPaint(this.errorIndicatorPaint);</span>
+            }
+            else {
+<span class="nc" id="L506">                g2.setPaint(getItemOutlinePaint(row, column));</span>
+            }
+<span class="pc bpc" id="L508" title="1 of 2 branches missed.">            if (this.errorIndicatorStroke != null) {</span>
+<span class="fc" id="L509">                g2.setStroke(this.errorIndicatorStroke);</span>
+            }
+            else {
+<span class="nc" id="L512">                g2.setStroke(getItemOutlineStroke(row, column));</span>
+            }
+
+            Line2D line;
+<span class="fc" id="L516">            line = new Line2D.Double(rectX + rectWidth / 2.0d, lowVal,</span>
+                                     rectX + rectWidth / 2.0d, highVal);
+<span class="fc" id="L518">            g2.draw(line);</span>
+<span class="fc" id="L519">            line = new Line2D.Double(rectX + rectWidth / 2.0d - 5.0d, highVal,</span>
+                                     rectX + rectWidth / 2.0d + 5.0d, highVal);
+<span class="fc" id="L521">            g2.draw(line);</span>
+<span class="fc" id="L522">            line = new Line2D.Double(rectX + rectWidth / 2.0d - 5.0d, lowVal,</span>
+                                     rectX + rectWidth / 2.0d + 5.0d, lowVal);
+<span class="fc" id="L524">            g2.draw(line);</span>
+        }
+
+<span class="fc" id="L527">        CategoryItemLabelGenerator generator = getItemLabelGenerator(row,</span>
+                column);
+<span class="pc bpc" id="L529" title="3 of 4 branches missed.">        if (generator != null &amp;&amp; isItemLabelVisible(row, column)) {</span>
+<span class="nc bnc" id="L530" title="All 2 branches missed.">            drawItemLabel(g2, dataset, row, column, plot, generator, bar,</span>
+                    (value &lt; 0.0));
+        }
+
+        // add an item entity, if this information is being collected
+<span class="fc" id="L535">        EntityCollection entities = state.getEntityCollection();</span>
+<span class="pc bpc" id="L536" title="1 of 2 branches missed.">        if (entities != null) {</span>
+<span class="nc" id="L537">            addItemEntity(entities, dataset, row, column, bar);</span>
+        }
+<span class="fc" id="L539">    }</span>
+
+    /**
+     * Tests this renderer for equality with an arbitrary object.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return A boolean.
+     */
+    @Override
+    public boolean equals(Object obj) {
+<span class="pc bpc" id="L550" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L551">            return true;</span>
+        }
+<span class="pc bpc" id="L553" title="1 of 2 branches missed.">        if (!(obj instanceof StatisticalBarRenderer)) {</span>
+<span class="nc" id="L554">            return false;</span>
+        }
+<span class="fc" id="L556">        StatisticalBarRenderer that = (StatisticalBarRenderer) obj;</span>
+<span class="fc bfc" id="L557" title="All 2 branches covered.">        if (!PaintUtilities.equal(this.errorIndicatorPaint,</span>
+                that.errorIndicatorPaint)) {
+<span class="fc" id="L559">            return false;</span>
+        }
+<span class="fc bfc" id="L561" title="All 2 branches covered.">        if (!ObjectUtilities.equal(this.errorIndicatorStroke,</span>
+                that.errorIndicatorStroke)) {
+<span class="fc" id="L563">            return false;</span>
+        }
+<span class="fc" id="L565">        return super.equals(obj);</span>
+    }
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the output stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+<span class="fc" id="L576">        stream.defaultWriteObject();</span>
+<span class="fc" id="L577">        SerialUtilities.writePaint(this.errorIndicatorPaint, stream);</span>
+<span class="fc" id="L578">        SerialUtilities.writeStroke(this.errorIndicatorStroke, stream);</span>
+<span class="fc" id="L579">    }</span>
+
+    /**
+     * Provides serialization support.
+     *
+     * @param stream  the input stream.
+     *
+     * @throws IOException  if there is an I/O error.
+     * @throws ClassNotFoundException  if there is a classpath problem.
+     */
+    private void readObject(ObjectInputStream stream)
+        throws IOException, ClassNotFoundException {
+<span class="fc" id="L591">        stream.defaultReadObject();</span>
+<span class="fc" id="L592">        this.errorIndicatorPaint = SerialUtilities.readPaint(stream);</span>
+<span class="fc" id="L593">        this.errorIndicatorStroke = SerialUtilities.readStroke(stream);</span>
+<span class="fc" id="L594">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

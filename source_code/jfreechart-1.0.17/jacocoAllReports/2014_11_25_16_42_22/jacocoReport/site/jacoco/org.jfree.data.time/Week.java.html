@@ -1,0 +1,660 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Week.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jfreechart-1.0.17</a> &gt; <a href="index.source.html" class="el_package">org.jfree.data.time</a> &gt; <span class="el_source">Week.java</span></div><h1>Week.java</h1><pre class="source lang-java linenums">/* ===========================================================
+ * JFreeChart : a free chart library for the Java(tm) platform
+ * ===========================================================
+ *
+ * (C) Copyright 2000-2013, by Object Refinery Limited and Contributors.
+ *
+ * Project Info:  http://www.jfree.org/jfreechart/index.html
+ *
+ * This library is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+ * License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
+ *
+ * [Oracle and Java are registered trademarks of Oracle and/or its affiliates.
+ * Other names may be trademarks of their respective owners.]
+ *
+ * ---------
+ * Week.java
+ * ---------
+ * (C) Copyright 2001-2013, by Object Refinery Limited and Contributors.
+ *
+ * Original Author:  David Gilbert (for Object Refinery Limited);
+ * Contributor(s):   Aimin Han;
+ *
+ * Changes
+ * -------
+ * 11-Oct-2001 : Version 1 (DG);
+ * 18-Dec-2001 : Changed order of parameters in constructor (DG);
+ * 19-Dec-2001 : Added a new constructor as suggested by Paul English (DG);
+ * 29-Jan-2002 : Worked on the parseWeek() method (DG);
+ * 13-Feb-2002 : Fixed bug in Week(Date) constructor (DG);
+ * 26-Feb-2002 : Changed getStart(), getMiddle() and getEnd() methods to
+ *               evaluate with reference to a particular time zone (DG);
+ * 05-Apr-2002 : Reinstated this class to the JCommon library (DG);
+ * 24-Jun-2002 : Removed unnecessary main method (DG);
+ * 10-Sep-2002 : Added getSerialIndex() method (DG);
+ * 06-Oct-2002 : Fixed errors reported by Checkstyle (DG);
+ * 18-Oct-2002 : Changed to observe 52 or 53 weeks per year, consistent with
+ *               GregorianCalendar. Thanks to Aimin Han for the code (DG);
+ * 02-Jan-2003 : Removed debug code (DG);
+ * 13-Mar-2003 : Moved to com.jrefinery.data.time package, and implemented
+ *               Serializable (DG);
+ * 21-Oct-2003 : Added hashCode() method (DG);
+ * 24-May-2004 : Modified getFirstMillisecond() and getLastMillisecond() to
+ *               take account of firstDayOfWeek setting in Java's Calendar
+ *               class (DG);
+ * 30-Sep-2004 : Replaced getTime().getTime() with getTimeInMillis() (DG);
+ * 04-Nov-2004 : Reverted change of 30-Sep-2004, because it won't work for
+ *               JDK 1.3 (DG);
+ * ------------- JFREECHART 1.0.x ---------------------------------------------
+ * 06-Mar-2006 : Fix for bug 1448828, incorrect calculation of week and year
+ *               for the first few days of some years (DG);
+ * 05-Oct-2006 : Updated API docs (DG);
+ * 06-Oct-2006 : Refactored to cache first and last millisecond values (DG);
+ * 09-Jan-2007 : Fixed bug in next() (DG);
+ * 28-Aug-2007 : Added new constructor to avoid problem in creating new
+ *               instances (DG);
+ * 19-Dec-2007 : Fixed bug in deprecated constructor (DG);
+ * 16-Sep-2008 : Deprecated DEFAULT_TIME_ZONE (DG);
+ * 05-Jul-2012 : Replaced getTime().getTime() with getTimeInMillis() (DG);
+ * 03-Jul-2013 : Use ParamChecks (DG);
+ *
+ */
+
+package org.jfree.data.time;
+
+import java.io.Serializable;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
+import org.jfree.chart.util.ParamChecks;
+
+/**
+ * A calendar week.  All years are considered to have 53 weeks, numbered from 1
+ * to 53, although in many cases the 53rd week is empty.  Most of the time, the
+ * 1st week of the year *begins* in the previous calendar year, but it always
+ * finishes in the current year (this behaviour matches the workings of the
+ * &lt;code&gt;GregorianCalendar&lt;/code&gt; class).
+ * &lt;P&gt;
+ * This class is immutable, which is a requirement for all
+ * {@link RegularTimePeriod} subclasses.
+ */
+public class Week extends RegularTimePeriod implements Serializable {
+
+    /** For serialization. */
+    private static final long serialVersionUID = 1856387786939865061L;
+
+    /** Constant for the first week in the year. */
+    public static final int FIRST_WEEK_IN_YEAR = 1;
+
+    /** Constant for the last week in the year. */
+    public static final int LAST_WEEK_IN_YEAR = 53;
+
+    /** The year in which the week falls. */
+    private short year;
+
+    /** The week (1-53). */
+    private byte week;
+
+    /** The first millisecond. */
+    private long firstMillisecond;
+
+    /** The last millisecond. */
+    private long lastMillisecond;
+
+    /**
+     * Creates a new time period for the week in which the current system
+     * date/time falls.
+     */
+    public Week() {
+<span class="nc" id="L122">        this(new Date());</span>
+<span class="nc" id="L123">    }</span>
+
+    /**
+     * Creates a time period representing the week in the specified year.
+     *
+     * @param week  the week (1 to 53).
+     * @param year  the year (1900 to 9999).
+     */
+<span class="fc" id="L131">    public Week(int week, int year) {</span>
+<span class="pc bpc" id="L132" title="3 of 4 branches missed.">        if ((week &lt; FIRST_WEEK_IN_YEAR) &amp;&amp; (week &gt; LAST_WEEK_IN_YEAR)) {</span>
+<span class="nc" id="L133">            throw new IllegalArgumentException(</span>
+                    &quot;The 'week' argument must be in the range 1 - 53.&quot;);
+        }
+<span class="fc" id="L136">        this.week = (byte) week;</span>
+<span class="fc" id="L137">        this.year = (short) year;</span>
+<span class="fc" id="L138">        peg(Calendar.getInstance());</span>
+<span class="fc" id="L139">    }</span>
+
+    /**
+     * Creates a time period representing the week in the specified year.
+     *
+     * @param week  the week (1 to 53).
+     * @param year  the year (1900 to 9999).
+     */
+<span class="nc" id="L147">    public Week(int week, Year year) {</span>
+<span class="nc bnc" id="L148" title="All 4 branches missed.">        if ((week &lt; FIRST_WEEK_IN_YEAR) &amp;&amp; (week &gt; LAST_WEEK_IN_YEAR)) {</span>
+<span class="nc" id="L149">            throw new IllegalArgumentException(</span>
+                    &quot;The 'week' argument must be in the range 1 - 53.&quot;);
+        }
+<span class="nc" id="L152">        this.week = (byte) week;</span>
+<span class="nc" id="L153">        this.year = (short) year.getYear();</span>
+<span class="nc" id="L154">        peg(Calendar.getInstance());</span>
+<span class="nc" id="L155">   }</span>
+
+    /**
+     * Creates a time period for the week in which the specified date/time
+     * falls, using the default time zone and locale (the locale can affect the
+     * day-of-the-week that marks the beginning of the week, as well as the
+     * minimal number of days in the first week of the year).
+     *
+     * @param time  the time (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @see #Week(Date, TimeZone, Locale)
+     */
+    public Week(Date time) {
+        // defer argument checking...
+<span class="nc" id="L169">        this(time, TimeZone.getDefault(), Locale.getDefault());</span>
+<span class="nc" id="L170">    }</span>
+
+    /**
+     * Creates a time period for the week in which the specified date/time
+     * falls, calculated relative to the specified time zone.
+     *
+     * @param time  the date/time (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param zone  the time zone (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @deprecated As of 1.0.7, use {@link #Week(Date, TimeZone, Locale)}.
+     */
+    public Week(Date time, TimeZone zone) {
+        // defer argument checking...
+<span class="fc" id="L183">        this(time, zone, Locale.getDefault());</span>
+<span class="fc" id="L184">    }</span>
+
+    /**
+     * Creates a time period for the week in which the specified date/time
+     * falls, calculated relative to the specified time zone.
+     *
+     * @param time  the date/time (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param zone  the time zone (&lt;code&gt;null&lt;/code&gt; not permitted).
+     * @param locale  the locale (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @since 1.0.7
+     */
+<span class="fc" id="L196">    public Week(Date time, TimeZone zone, Locale locale) {</span>
+<span class="fc" id="L197">        ParamChecks.nullNotPermitted(time, &quot;time&quot;);</span>
+<span class="fc" id="L198">        ParamChecks.nullNotPermitted(zone, &quot;zone&quot;);</span>
+<span class="fc" id="L199">        ParamChecks.nullNotPermitted(locale, &quot;locale&quot;);</span>
+<span class="fc" id="L200">        Calendar calendar = Calendar.getInstance(zone, locale);</span>
+<span class="fc" id="L201">        calendar.setTime(time);</span>
+
+        // sometimes the last few days of the year are considered to fall in
+        // the *first* week of the following year.  Refer to the Javadocs for
+        // GregorianCalendar.
+<span class="fc" id="L206">        int tempWeek = calendar.get(Calendar.WEEK_OF_YEAR);</span>
+<span class="pc bpc" id="L207" title="3 of 4 branches missed.">        if (tempWeek == 1</span>
+                &amp;&amp; calendar.get(Calendar.MONTH) == Calendar.DECEMBER) {
+<span class="nc" id="L209">            this.week = 1;</span>
+<span class="nc" id="L210">            this.year = (short) (calendar.get(Calendar.YEAR) + 1);</span>
+        }
+        else {
+<span class="fc" id="L213">            this.week = (byte) Math.min(tempWeek, LAST_WEEK_IN_YEAR);</span>
+<span class="fc" id="L214">            int yyyy = calendar.get(Calendar.YEAR);</span>
+            // alternatively, sometimes the first few days of the year are
+            // considered to fall in the *last* week of the previous year...
+<span class="pc bpc" id="L217" title="1 of 4 branches missed.">            if (calendar.get(Calendar.MONTH) == Calendar.JANUARY</span>
+                    &amp;&amp; this.week &gt;= 52) {
+<span class="fc" id="L219">                yyyy--;</span>
+            }
+<span class="fc" id="L221">            this.year = (short) yyyy;</span>
+        }
+<span class="fc" id="L223">        peg(calendar);</span>
+<span class="fc" id="L224">    }</span>
+
+    /**
+     * Returns the year in which the week falls.
+     *
+     * @return The year (never &lt;code&gt;null&lt;/code&gt;).
+     */
+    public Year getYear() {
+<span class="fc" id="L232">        return new Year(this.year);</span>
+    }
+
+    /**
+     * Returns the year in which the week falls, as an integer value.
+     *
+     * @return The year.
+     */
+    public int getYearValue() {
+<span class="fc" id="L241">        return this.year;</span>
+    }
+
+    /**
+     * Returns the week.
+     *
+     * @return The week.
+     */
+    public int getWeek() {
+<span class="fc" id="L250">        return this.week;</span>
+    }
+
+    /**
+     * Returns the first millisecond of the week.  This will be determined
+     * relative to the time zone specified in the constructor, or in the
+     * calendar instance passed in the most recent call to the
+     * {@link #peg(Calendar)} method.
+     *
+     * @return The first millisecond of the week.
+     *
+     * @see #getLastMillisecond()
+     */
+    @Override
+    public long getFirstMillisecond() {
+<span class="fc" id="L265">        return this.firstMillisecond;</span>
+    }
+
+    /**
+     * Returns the last millisecond of the week.  This will be
+     * determined relative to the time zone specified in the constructor, or
+     * in the calendar instance passed in the most recent call to the
+     * {@link #peg(Calendar)} method.
+     *
+     * @return The last millisecond of the week.
+     *
+     * @see #getFirstMillisecond()
+     */
+    @Override
+    public long getLastMillisecond() {
+<span class="fc" id="L280">        return this.lastMillisecond;</span>
+    }
+
+    /**
+     * Recalculates the start date/time and end date/time for this time period
+     * relative to the supplied calendar (which incorporates a time zone).
+     *
+     * @param calendar  the calendar (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @since 1.0.3
+     */
+    @Override
+    public void peg(Calendar calendar) {
+<span class="fc" id="L293">        this.firstMillisecond = getFirstMillisecond(calendar);</span>
+<span class="fc" id="L294">        this.lastMillisecond = getLastMillisecond(calendar);</span>
+<span class="fc" id="L295">    }</span>
+
+    /**
+     * Returns the week preceding this one.  This method will return
+     * &lt;code&gt;null&lt;/code&gt; for some lower limit on the range of weeks (currently
+     * week 1, 1900).  For week 1 of any year, the previous week is always week
+     * 53, but week 53 may not contain any days (you should check for this).
+     *
+     * @return The preceding week (possibly &lt;code&gt;null&lt;/code&gt;).
+     */
+    @Override
+    public RegularTimePeriod previous() {
+
+        Week result;
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        if (this.week != FIRST_WEEK_IN_YEAR) {</span>
+<span class="fc" id="L310">            result = new Week(this.week - 1, this.year);</span>
+        }
+        else {
+            // we need to work out if the previous year has 52 or 53 weeks...
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">            if (this.year &gt; 1900) {</span>
+<span class="nc" id="L315">                int yy = this.year - 1;</span>
+<span class="nc" id="L316">                Calendar prevYearCalendar = Calendar.getInstance();</span>
+<span class="nc" id="L317">                prevYearCalendar.set(yy, Calendar.DECEMBER, 31);</span>
+<span class="nc" id="L318">                result = new Week(prevYearCalendar.getActualMaximum(</span>
+                        Calendar.WEEK_OF_YEAR), yy);
+<span class="nc" id="L320">            }</span>
+            else {
+<span class="fc" id="L322">                result = null;</span>
+            }
+        }
+<span class="fc" id="L325">        return result;</span>
+
+    }
+
+    /**
+     * Returns the week following this one.  This method will return
+     * &lt;code&gt;null&lt;/code&gt; for some upper limit on the range of weeks (currently
+     * week 53, 9999).  For week 52 of any year, the following week is always
+     * week 53, but week 53 may not contain any days (you should check for
+     * this).
+     *
+     * @return The following week (possibly &lt;code&gt;null&lt;/code&gt;).
+     */
+    @Override
+    public RegularTimePeriod next() {
+
+        Week result;
+<span class="fc bfc" id="L342" title="All 2 branches covered.">        if (this.week &lt; 52) {</span>
+<span class="fc" id="L343">            result = new Week(this.week + 1, this.year);</span>
+        }
+        else {
+<span class="fc" id="L346">            Calendar calendar = Calendar.getInstance();</span>
+<span class="fc" id="L347">            calendar.set(this.year, Calendar.DECEMBER, 31);</span>
+<span class="fc" id="L348">            int actualMaxWeek</span>
+                = calendar.getActualMaximum(Calendar.WEEK_OF_YEAR);
+<span class="pc bpc" id="L350" title="1 of 2 branches missed.">            if (this.week &lt; actualMaxWeek) {</span>
+<span class="nc" id="L351">                result = new Week(this.week + 1, this.year);</span>
+            }
+            else {
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">                if (this.year &lt; 9999) {</span>
+<span class="nc" id="L355">                    result = new Week(FIRST_WEEK_IN_YEAR, this.year + 1);</span>
+                }
+                else {
+<span class="fc" id="L358">                    result = null;</span>
+                }
+            }
+        }
+<span class="fc" id="L362">        return result;</span>
+
+    }
+
+    /**
+     * Returns a serial index number for the week.
+     *
+     * @return The serial index number.
+     */
+    @Override
+    public long getSerialIndex() {
+<span class="fc" id="L373">        return this.year * 53L + this.week;</span>
+    }
+
+    /**
+     * Returns the first millisecond of the week, evaluated using the supplied
+     * calendar (which determines the time zone).
+     *
+     * @param calendar  the calendar (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return The first millisecond of the week.
+     *
+     * @throws NullPointerException if &lt;code&gt;calendar&lt;/code&gt; is
+     *     &lt;code&gt;null&lt;/code&gt;.
+     */
+    @Override
+    public long getFirstMillisecond(Calendar calendar) {
+<span class="fc" id="L389">        Calendar c = (Calendar) calendar.clone();</span>
+<span class="fc" id="L390">        c.clear();</span>
+<span class="fc" id="L391">        c.set(Calendar.YEAR, this.year);</span>
+<span class="fc" id="L392">        c.set(Calendar.WEEK_OF_YEAR, this.week);</span>
+<span class="fc" id="L393">        c.set(Calendar.DAY_OF_WEEK, c.getFirstDayOfWeek());</span>
+<span class="fc" id="L394">        c.set(Calendar.HOUR, 0);</span>
+<span class="fc" id="L395">        c.set(Calendar.MINUTE, 0);</span>
+<span class="fc" id="L396">        c.set(Calendar.SECOND, 0);</span>
+<span class="fc" id="L397">        c.set(Calendar.MILLISECOND, 0);</span>
+<span class="fc" id="L398">        return c.getTimeInMillis();</span>
+    }
+
+    /**
+     * Returns the last millisecond of the week, evaluated using the supplied
+     * calendar (which determines the time zone).
+     *
+     * @param calendar  the calendar (&lt;code&gt;null&lt;/code&gt; not permitted).
+     *
+     * @return The last millisecond of the week.
+     *
+     * @throws NullPointerException if &lt;code&gt;calendar&lt;/code&gt; is
+     *     &lt;code&gt;null&lt;/code&gt;.
+     */
+    @Override
+    public long getLastMillisecond(Calendar calendar) {
+<span class="fc" id="L414">        Calendar c = (Calendar) calendar.clone();</span>
+<span class="fc" id="L415">        c.clear();</span>
+<span class="fc" id="L416">        c.set(Calendar.YEAR, this.year);</span>
+<span class="fc" id="L417">        c.set(Calendar.WEEK_OF_YEAR, this.week + 1);</span>
+<span class="fc" id="L418">        c.set(Calendar.DAY_OF_WEEK, c.getFirstDayOfWeek());</span>
+<span class="fc" id="L419">        c.set(Calendar.HOUR, 0);</span>
+<span class="fc" id="L420">        c.set(Calendar.MINUTE, 0);</span>
+<span class="fc" id="L421">        c.set(Calendar.SECOND, 0);</span>
+<span class="fc" id="L422">        c.set(Calendar.MILLISECOND, 0);</span>
+<span class="fc" id="L423">        return c.getTimeInMillis() - 1;</span>
+    }
+
+    /**
+     * Returns a string representing the week (e.g. &quot;Week 9, 2002&quot;).
+     *
+     * TODO: look at internationalisation.
+     *
+     * @return A string representing the week.
+     */
+    @Override
+    public String toString() {
+<span class="nc" id="L435">        return &quot;Week &quot; + this.week + &quot;, &quot; + this.year;</span>
+    }
+
+    /**
+     * Tests the equality of this Week object to an arbitrary object.  Returns
+     * true if the target is a Week instance representing the same week as this
+     * object.  In all other cases, returns false.
+     *
+     * @param obj  the object (&lt;code&gt;null&lt;/code&gt; permitted).
+     *
+     * @return &lt;code&gt;true&lt;/code&gt; if week and year of this and object are the
+     *         same.
+     */
+    @Override
+    public boolean equals(Object obj) {
+
+<span class="pc bpc" id="L451" title="1 of 2 branches missed.">        if (obj == this) {</span>
+<span class="nc" id="L452">            return true;</span>
+        }
+<span class="pc bpc" id="L454" title="1 of 2 branches missed.">        if (!(obj instanceof Week)) {</span>
+<span class="nc" id="L455">            return false;</span>
+        }
+<span class="fc" id="L457">        Week that = (Week) obj;</span>
+<span class="fc bfc" id="L458" title="All 2 branches covered.">        if (this.week != that.week) {</span>
+<span class="fc" id="L459">            return false;</span>
+        }
+<span class="fc bfc" id="L461" title="All 2 branches covered.">        if (this.year != that.year) {</span>
+<span class="fc" id="L462">            return false;</span>
+        }
+<span class="fc" id="L464">        return true;</span>
+
+    }
+
+    /**
+     * Returns a hash code for this object instance.  The approach described by
+     * Joshua Bloch in &quot;Effective Java&quot; has been used here:
+     * &lt;p&gt;
+     * &lt;code&gt;http://developer.java.sun.com/developer/Books/effectivejava
+     * /Chapter3.pdf&lt;/code&gt;
+     *
+     * @return A hash code.
+     */
+    @Override
+    public int hashCode() {
+<span class="fc" id="L479">        int result = 17;</span>
+<span class="fc" id="L480">        result = 37 * result + this.week;</span>
+<span class="fc" id="L481">        result = 37 * result + this.year;</span>
+<span class="fc" id="L482">        return result;</span>
+    }
+
+    /**
+     * Returns an integer indicating the order of this Week object relative to
+     * the specified object:
+     *
+     * negative == before, zero == same, positive == after.
+     *
+     * @param o1  the object to compare.
+     *
+     * @return negative == before, zero == same, positive == after.
+     */
+    @Override
+    public int compareTo(Object o1) {
+
+        int result;
+
+        // CASE 1 : Comparing to another Week object
+        // --------------------------------------------
+<span class="nc bnc" id="L502" title="All 2 branches missed.">        if (o1 instanceof Week) {</span>
+<span class="nc" id="L503">            Week w = (Week) o1;</span>
+<span class="nc" id="L504">            result = this.year - w.getYear().getYear();</span>
+<span class="nc bnc" id="L505" title="All 2 branches missed.">            if (result == 0) {</span>
+<span class="nc" id="L506">                result = this.week - w.getWeek();</span>
+            }
+<span class="nc" id="L508">        }</span>
+
+        // CASE 2 : Comparing to another TimePeriod object
+        // -----------------------------------------------
+<span class="nc bnc" id="L512" title="All 2 branches missed.">        else if (o1 instanceof RegularTimePeriod) {</span>
+            // more difficult case - evaluate later...
+<span class="nc" id="L514">            result = 0;</span>
+        }
+
+        // CASE 3 : Comparing to a non-TimePeriod object
+        // ---------------------------------------------
+        else {
+            // consider time periods to be ordered after general objects
+<span class="nc" id="L521">            result = 1;</span>
+        }
+
+<span class="nc" id="L524">        return result;</span>
+
+    }
+
+    /**
+     * Parses the string argument as a week.
+     * &lt;P&gt;
+     * This method is required to accept the format &quot;YYYY-Wnn&quot;.  It will also
+     * accept &quot;Wnn-YYYY&quot;. Anything else, at the moment, is a bonus.
+     *
+     * @param s  string to parse.
+     *
+     * @return &lt;code&gt;null&lt;/code&gt; if the string is not parseable, the week
+     *         otherwise.
+     */
+    public static Week parseWeek(String s) {
+
+<span class="nc" id="L541">        Week result = null;</span>
+<span class="nc bnc" id="L542" title="All 2 branches missed.">        if (s != null) {</span>
+
+            // trim whitespace from either end of the string
+<span class="nc" id="L545">            s = s.trim();</span>
+
+<span class="nc" id="L547">            int i = Week.findSeparator(s);</span>
+<span class="nc bnc" id="L548" title="All 2 branches missed.">            if (i != -1) {</span>
+<span class="nc" id="L549">                String s1 = s.substring(0, i).trim();</span>
+<span class="nc" id="L550">                String s2 = s.substring(i + 1, s.length()).trim();</span>
+
+<span class="nc" id="L552">                Year y = Week.evaluateAsYear(s1);</span>
+                int w;
+<span class="nc bnc" id="L554" title="All 2 branches missed.">                if (y != null) {</span>
+<span class="nc" id="L555">                    w = Week.stringToWeek(s2);</span>
+<span class="nc bnc" id="L556" title="All 2 branches missed.">                    if (w == -1) {</span>
+<span class="nc" id="L557">                        throw new TimePeriodFormatException(</span>
+                                &quot;Can't evaluate the week.&quot;);
+                    }
+<span class="nc" id="L560">                    result = new Week(w, y);</span>
+                }
+                else {
+<span class="nc" id="L563">                    y = Week.evaluateAsYear(s2);</span>
+<span class="nc bnc" id="L564" title="All 2 branches missed.">                    if (y != null) {</span>
+<span class="nc" id="L565">                        w = Week.stringToWeek(s1);</span>
+<span class="nc bnc" id="L566" title="All 2 branches missed.">                        if (w == -1) {</span>
+<span class="nc" id="L567">                            throw new TimePeriodFormatException(</span>
+                                    &quot;Can't evaluate the week.&quot;);
+                        }
+<span class="nc" id="L570">                        result = new Week(w, y);</span>
+                    }
+                    else {
+<span class="nc" id="L573">                        throw new TimePeriodFormatException(</span>
+                                &quot;Can't evaluate the year.&quot;);
+                    }
+                }
+
+<span class="nc" id="L578">            }</span>
+            else {
+<span class="nc" id="L580">                throw new TimePeriodFormatException(</span>
+                        &quot;Could not find separator.&quot;);
+            }
+
+        }
+<span class="nc" id="L585">        return result;</span>
+
+    }
+
+    /**
+     * Finds the first occurrence of ' ', '-', ',' or '.'
+     *
+     * @param s  the string to parse.
+     *
+     * @return &lt;code&gt;-1&lt;/code&gt; if none of the characters was found, the
+     *      index of the first occurrence otherwise.
+     */
+    private static int findSeparator(String s) {
+
+<span class="nc" id="L599">        int result = s.indexOf('-');</span>
+<span class="nc bnc" id="L600" title="All 2 branches missed.">        if (result == -1) {</span>
+<span class="nc" id="L601">            result = s.indexOf(',');</span>
+        }
+<span class="nc bnc" id="L603" title="All 2 branches missed.">        if (result == -1) {</span>
+<span class="nc" id="L604">            result = s.indexOf(' ');</span>
+        }
+<span class="nc bnc" id="L606" title="All 2 branches missed.">        if (result == -1) {</span>
+<span class="nc" id="L607">            result = s.indexOf('.');</span>
+        }
+<span class="nc" id="L609">        return result;</span>
+    }
+
+    /**
+     * Creates a year from a string, or returns null (format exceptions
+     * suppressed).
+     *
+     * @param s  string to parse.
+     *
+     * @return &lt;code&gt;null&lt;/code&gt; if the string is not parseable, the year
+     *         otherwise.
+     */
+    private static Year evaluateAsYear(String s) {
+
+<span class="nc" id="L623">        Year result = null;</span>
+        try {
+<span class="nc" id="L625">            result = Year.parseYear(s);</span>
+        }
+<span class="nc" id="L627">        catch (TimePeriodFormatException e) {</span>
+            // suppress
+<span class="nc" id="L629">        }</span>
+<span class="nc" id="L630">        return result;</span>
+
+    }
+
+    /**
+     * Converts a string to a week.
+     *
+     * @param s  the string to parse.
+     * @return &lt;code&gt;-1&lt;/code&gt; if the string does not contain a week number,
+     *         the number of the week otherwise.
+     */
+    private static int stringToWeek(String s) {
+
+<span class="nc" id="L643">        int result = -1;</span>
+<span class="nc" id="L644">        s = s.replace('W', ' ');</span>
+<span class="nc" id="L645">        s = s.trim();</span>
+        try {
+<span class="nc" id="L647">            result = Integer.parseInt(s);</span>
+<span class="nc bnc" id="L648" title="All 4 branches missed.">            if ((result &lt; 1) || (result &gt; LAST_WEEK_IN_YEAR)) {</span>
+<span class="nc" id="L649">                result = -1;</span>
+            }
+        }
+<span class="nc" id="L652">        catch (NumberFormatException e) {</span>
+            // suppress
+<span class="nc" id="L654">        }</span>
+<span class="nc" id="L655">        return result;</span>
+
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>

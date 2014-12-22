@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../.resources/report.css" type="text/css"/><link rel="shortcut icon" href="../.resources/report.gif" type="image/gif"/><title>Suite.java</title><link rel="stylesheet" href="../.resources/prettify.css" type="text/css"/><script type="text/javascript" src="../.resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../.sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Junit-r4.11</a> &gt; <a href="index.source.html" class="el_package">org.junit.runners</a> &gt; <span class="el_source">Suite.java</span></div><h1>Suite.java</h1><pre class="source lang-java linenums">package org.junit.runners;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Inherited;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.util.List;
+
+import org.junit.internal.builders.AllDefaultPossibilitiesBuilder;
+import org.junit.runner.Description;
+import org.junit.runner.Runner;
+import org.junit.runner.notification.RunNotifier;
+import org.junit.runners.model.InitializationError;
+import org.junit.runners.model.RunnerBuilder;
+
+/**
+ * Using &lt;code&gt;Suite&lt;/code&gt; as a runner allows you to manually
+ * build a suite containing tests from many classes. It is the JUnit 4 equivalent of the JUnit 3.8.x
+ * static {@link junit.framework.Test} &lt;code&gt;suite()&lt;/code&gt; method. To use it, annotate a class
+ * with &lt;code&gt;@RunWith(Suite.class)&lt;/code&gt; and &lt;code&gt;@SuiteClasses({TestClass1.class, ...})&lt;/code&gt;.
+ * When you run this class, it will run all the tests in all the suite classes.
+ *
+ * @since 4.0
+ */
+public class Suite extends ParentRunner&lt;Runner&gt; {
+    /**
+     * Returns an empty suite.
+     */
+    public static Runner emptySuite() {
+        try {
+<span class="nc" id="L32">            return new Suite((Class&lt;?&gt;) null, new Class&lt;?&gt;[0]);</span>
+<span class="nc" id="L33">        } catch (InitializationError e) {</span>
+<span class="nc" id="L34">            throw new RuntimeException(&quot;This shouldn't be possible&quot;);</span>
+        }
+    }
+
+    /**
+     * The &lt;code&gt;SuiteClasses&lt;/code&gt; annotation specifies the classes to be run when a class
+     * annotated with &lt;code&gt;@RunWith(Suite.class)&lt;/code&gt; is run.
+     */
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    @Inherited
+    public @interface SuiteClasses {
+        /**
+         * @return the classes to be run
+         */
+        public Class&lt;?&gt;[] value();
+    }
+
+    private static Class&lt;?&gt;[] getAnnotatedClasses(Class&lt;?&gt; klass) throws InitializationError {
+<span class="fc" id="L53">        SuiteClasses annotation = klass.getAnnotation(SuiteClasses.class);</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (annotation == null) {</span>
+<span class="fc" id="L55">            throw new InitializationError(String.format(&quot;class '%s' must have a SuiteClasses annotation&quot;, klass.getName()));</span>
+        }
+<span class="fc" id="L57">        return annotation.value();</span>
+    }
+
+    private final List&lt;Runner&gt; fRunners;
+
+    /**
+     * Called reflectively on classes annotated with &lt;code&gt;@RunWith(Suite.class)&lt;/code&gt;
+     *
+     * @param klass the root class
+     * @param builder builds runners for classes in the suite
+     */
+    public Suite(Class&lt;?&gt; klass, RunnerBuilder builder) throws InitializationError {
+<span class="fc" id="L69">        this(builder, klass, getAnnotatedClasses(klass));</span>
+<span class="fc" id="L70">    }</span>
+
+    /**
+     * Call this when there is no single root class (for example, multiple class names
+     * passed on the command line to {@link org.junit.runner.JUnitCore}
+     *
+     * @param builder builds runners for classes in the suite
+     * @param classes the classes in the suite
+     */
+    public Suite(RunnerBuilder builder, Class&lt;?&gt;[] classes) throws InitializationError {
+<span class="fc" id="L80">        this(null, builder.runners(null, classes));</span>
+<span class="fc" id="L81">    }</span>
+
+    /**
+     * Call this when the default builder is good enough. Left in for compatibility with JUnit 4.4.
+     *
+     * @param klass the root of the suite
+     * @param suiteClasses the classes in the suite
+     */
+    protected Suite(Class&lt;?&gt; klass, Class&lt;?&gt;[] suiteClasses) throws InitializationError {
+<span class="fc" id="L90">        this(new AllDefaultPossibilitiesBuilder(true), klass, suiteClasses);</span>
+<span class="fc" id="L91">    }</span>
+
+    /**
+     * Called by this class and subclasses once the classes making up the suite have been determined
+     *
+     * @param builder builds runners for classes in the suite
+     * @param klass the root of the suite
+     * @param suiteClasses the classes in the suite
+     */
+    protected Suite(RunnerBuilder builder, Class&lt;?&gt; klass, Class&lt;?&gt;[] suiteClasses) throws InitializationError {
+<span class="fc" id="L101">        this(klass, builder.runners(klass, suiteClasses));</span>
+<span class="fc" id="L102">    }</span>
+
+    /**
+     * Called by this class and subclasses once the runners making up the suite have been determined
+     *
+     * @param klass root of the suite
+     * @param runners for each class in the suite, a {@link Runner}
+     */
+    protected Suite(Class&lt;?&gt; klass, List&lt;Runner&gt; runners) throws InitializationError {
+<span class="fc" id="L111">        super(klass);</span>
+<span class="fc" id="L112">        fRunners = runners;</span>
+<span class="fc" id="L113">    }</span>
+
+    @Override
+    protected List&lt;Runner&gt; getChildren() {
+<span class="fc" id="L117">        return fRunners;</span>
+    }
+
+    @Override
+    protected Description describeChild(Runner child) {
+<span class="fc" id="L122">        return child.getDescription();</span>
+    }
+
+    @Override
+    protected void runChild(Runner runner, final RunNotifier notifier) {
+<span class="fc" id="L127">        runner.run(notifier);</span>
+<span class="fc" id="L128">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.eclemma.org/jacoco">JaCoCo</a> 0.7.0.201403182114</span></div></body></html>
